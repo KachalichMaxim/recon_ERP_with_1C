@@ -80,6 +80,7 @@
     matrixSelectionReconBtn: $('matrixSelectionReconBtn'),
     matrixSelectionDetailsBtn: $('matrixSelectionDetailsBtn'),
     matrixSelectionExportBtn: $('matrixSelectionExportBtn'),
+    matrixExportBtn: $('matrixExportBtn'),
     matrixPagerText: $('matrixPagerText'),
     matrixPrevBtn: $('matrixPrevBtn'),
     matrixNextBtn: $('matrixNextBtn'),
@@ -206,7 +207,7 @@
     }
     if (!state.selectedSpecId) {
       setView('matrix');
-      setMessage(els.matrixMessage, 'Выберите поставку в таблице для проверки ПДР.', true);
+      setMessage(els.matrixMessage, 'Выберите поставку в таблице для сверки с 1С.', true);
       highlightMatrixSelection();
       return false;
     }
@@ -431,7 +432,7 @@
       const selectionText = state.matrix.length === 1 && state.selectedSpecId
         ? ' Найдена одна поставка — она выбрана автоматически.'
         : state.matrix.length
-          ? ' Выберите поставку для проверки ПДР.'
+          ? ' Выберите поставку для сверки с 1С.'
           : '';
       setMessage(els.matrixMessage, `${modeText} Поставок: ${state.matrix.length}${totalText}.${selectionText}`);
       updateMatrixPager();
@@ -711,7 +712,7 @@
     state.matrixDetailsOpen = false;
     localStorage.setItem('recon_matrix_details_open', '0');
     state.run = null;
-    setMessage(els.matrixMessage, 'Поставка выбрана. Можно проверить ПДР или скачать XLSX.');
+    setMessage(els.matrixMessage, 'Поставка выбрана. Можно сверить ее с 1С или скачать поставку XLSX.');
     renderMatrix(buildMatrixSummary(matrixVisibleItems()));
     renderSelectedContext();
     renderResults();
@@ -781,7 +782,7 @@
       : `data-toggle-key="${escapeHtml(toggleKey || '')}"`;
     const marker = toggleKey
       ? `<span class="level-toggle" aria-hidden="true">${expanded ? '⌄' : '›'}</span>`
-      : `<button class="select-spec-btn ${selected ? 'selected' : ''}" type="button" data-select-spec-id="${escapeHtml(specId || '')}" aria-label="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}">${selected ? '●' : '○'} ${selected ? 'Выбрано' : 'Выбрать'}</button>`;
+      : `<button class="select-spec-btn ${selected ? 'selected' : ''}" type="button" data-select-spec-id="${escapeHtml(specId || '')}" aria-label="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}" title="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}"><span aria-hidden="true">${selected ? '✓' : ''}</span></button>`;
     return `<tr class="${rowClass}" ${rowAttrs}>
       <td class="sticky-col">
         <div class="hierarchy-cell level-${level}">
@@ -811,7 +812,7 @@
     return `<tr class="matrix-detail-row">
       <td colspan="10">
         <div class="matrix-detail-box">
-          <div class="matrix-detail-title">Документы внутри поставки</div>
+          <div class="matrix-detail-title">Документы по выбранной поставке</div>
           <div class="matrix-detail-grid">
             <div class="matrix-detail-head">Тип</div>
             <div class="matrix-detail-head">Номер / код 1С</div>
@@ -906,7 +907,7 @@
       els.selectedContext.innerHTML = `
         <div class="empty-state">
           <h3>Поставка не выбрана</h3>
-          <p>Чтобы проверить ПДР, загрузите поставки и выберите одну строку в матрице.</p>
+          <p>Чтобы сверить поставку с 1С, загрузите поставки и выберите одну строку в матрице.</p>
           <ol>
             <li>Перейдите к взаиморасчетам.</li>
             <li>Нажмите “Найти поставки”.</li>
@@ -1291,13 +1292,36 @@
     if (!state.matrix.length) return;
     if (!validateClientFilter(els.matrixMessage)) return;
     if (!validateDogFilter(els.matrixMessage)) return;
-    setMessage(els.matrixMessage, 'Формируем XLSX по текущей матрице...');
+    const visibleItems = matrixVisibleItems();
+    await exportMatrixItemsXlsx({
+      items: visibleItems,
+      filename: `akt-sverki-matrix-${els.clientIdInput.value || 'client'}-${els.dateFromInput.value || 'from'}-${els.dateToInput.value || 'to'}.xlsx`,
+      startMessage: 'Формируем XLSX по текущей матрице...',
+      successMessage: 'XLSX матрицы сформирован.',
+    });
+  }
+
+  async function exportSelectedSpecXlsx() {
+    const row = selectedSpec();
+    if (!row) return;
+    await exportMatrixItemsXlsx({
+      items: [row],
+      filename: `akt-sverki-delivery-${String(row.spec_number || row.spec_id).replace(/[^\wа-яА-Я-]+/g, '_')}.xlsx`,
+      startMessage: 'Формируем XLSX по выбранной поставке...',
+      successMessage: 'XLSX поставки сформирован.',
+    });
+  }
+
+  async function exportMatrixItemsXlsx({ items, filename, startMessage, successMessage }) {
+    if (!Array.isArray(items) || !items.length) return;
+    setMessage(els.matrixMessage, startMessage);
     try {
-      const visibleItems = matrixVisibleItems();
       const matrix = Object.assign({}, state.matrixPayload || {}, {
-        items: visibleItems,
-        count: visibleItems.length,
-        summary: buildMatrixSummary(visibleItems),
+        items,
+        count: items.length,
+        total_count: items.length,
+        has_more: false,
+        summary: buildMatrixSummary(items),
       });
       const resp = await api('/api/reconciliation/matrix.xlsx', {
         method: 'POST',
@@ -1316,12 +1340,12 @@
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `akt-sverki-matrix-${els.clientIdInput.value || 'client'}-${els.dateFromInput.value || 'from'}-${els.dateToInput.value || 'to'}.xlsx`;
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setMessage(els.matrixMessage, 'XLSX матрицы сформирован.');
+      setMessage(els.matrixMessage, successMessage);
     } catch (err) {
       setMessage(els.matrixMessage, normalizeErrorMessage(err), true);
     }
@@ -1331,9 +1355,13 @@
     const hasSpec = Boolean(state.selectedSpecId);
     const hasRun = Boolean(state.run);
     els.matrixToReconBtn.disabled = !hasSpec;
+    if (els.matrixExportBtn) els.matrixExportBtn.disabled = !state.matrix.length;
+    if (els.matrixSelectionExportBtn) els.matrixSelectionExportBtn.disabled = !hasSpec;
     els.runBtn.disabled = !hasSpec;
-    els.runBtn.textContent = hasRun ? 'Обновить сверку' : 'Проверить ПДР';
+    els.runBtn.textContent = hasRun ? 'Обновить сверку' : 'Сверить с 1С';
     els.exportBtn.disabled = !hasRun;
+    els.refreshBtn.textContent = state.view === 'matrix' ? '↻ Обновить список' : '↻ Обновить сверку';
+    els.refreshBtn.title = state.view === 'matrix' ? 'Обновить список поставок' : 'Обновить сверку с 1С';
     updateWorkflowState();
   }
 
@@ -1345,7 +1373,7 @@
 
   function applySidebarState() {
     els.workArea.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
-    els.sidebarToggleBtn.textContent = state.sidebarCollapsed ? '☰' : '☰';
+    els.sidebarToggleBtn.textContent = state.sidebarCollapsed ? '☰' : '←';
     els.sidebarToggleBtn.title = state.sidebarCollapsed ? 'Показать меню' : 'Скрыть меню';
   }
 
@@ -1466,7 +1494,8 @@
     els.resetFiltersBtn.addEventListener('click', resetFilters);
     els.matrixSelectionReconBtn.addEventListener('click', openReconGuarded);
     els.matrixSelectionDetailsBtn.addEventListener('click', toggleMatrixDetails);
-    els.matrixSelectionExportBtn.addEventListener('click', exportMatrixXlsx);
+    els.matrixSelectionExportBtn.addEventListener('click', exportSelectedSpecXlsx);
+    els.matrixExportBtn.addEventListener('click', exportMatrixXlsx);
     els.matrixPrevBtn.addEventListener('click', () => matrixPage(-1));
     els.matrixNextBtn.addEventListener('click', () => matrixPage(1));
     els.runBtn.addEventListener('click', runReconciliation);

@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light">
   <title>Сверка ERP и 1С</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23C4122F'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='26' font-family='Arial' font-weight='700' fill='white'%3EV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="reconciliation.css?v=20260702_workflow_guard">
-  <script src="reconciliation.js?v=20260702_workflow_guard" defer></script>
+  <link rel="stylesheet" href="reconciliation.css?v=20260702_user_terms">
+  <script src="reconciliation.js?v=20260702_user_terms" defer></script>
 </head>
 <body>
   <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
@@ -99,15 +99,15 @@
           </div>
         </div>
         <div class="top-actions">
-          <button class="btn btn-outline" id="refreshBtn" type="button">↻ Обновить</button>
+          <button class="btn btn-outline" id="refreshBtn" type="button">↻ Обновить список</button>
         </div>
       </header>
 
       <div class="workflow-steps" aria-label="Маршрут работы">
-        <div class="workflow-step active" data-workflow-step="matrix"><span>1</span> Найдите поставки</div>
-        <div class="workflow-step" data-workflow-step="select"><span>2</span> Выберите поставку</div>
-        <div class="workflow-step" data-workflow-step="recon"><span>3</span> Проверьте ПДР</div>
-        <div class="workflow-step" data-workflow-step="review"><span>4</span> Разберите расхождения</div>
+        <div class="workflow-step active" data-workflow-step="matrix"><span>1</span> Поиск</div>
+        <div class="workflow-step" data-workflow-step="select"><span>2</span> Поставка</div>
+        <div class="workflow-step" data-workflow-step="recon"><span>3</span> Сверка с 1С</div>
+        <div class="workflow-step" data-workflow-step="review"><span>4</span> Расхождения</div>
       </div>
 
       <section class="screen" id="matrixScreen" aria-labelledby="matrixTitle">
@@ -116,7 +116,10 @@
             <h2 id="matrixTitle">Взаиморасчеты с клиентом по поставкам</h2>
             <p>Иерархия клиент → ЮЛ → договор → поставка. Это ERP-сальдовка: счета, оплаты, возмещаемые и невозмещаемые суммы.</p>
           </div>
-          <button class="btn btn-outline" id="matrixToReconBtn" type="button" title="ПДР — проверка документных расхождений" disabled>Проверить ПДР</button>
+          <div class="button-row">
+            <button class="btn btn-outline" id="matrixExportBtn" type="button" disabled>Скачать матрицу XLSX</button>
+            <button class="btn btn-outline" id="matrixToReconBtn" type="button" disabled>Сверить с 1С</button>
+          </div>
         </div>
 
         <section class="filters" aria-label="Фильтры матрицы">
@@ -173,9 +176,9 @@
         <div class="selected-delivery-panel hidden" id="matrixSelectionPanel">
           <div id="matrixSelectionText"></div>
           <div class="button-row">
-            <button class="btn btn-primary" id="matrixSelectionReconBtn" type="button" title="ПДР — проверка документных расхождений">Проверить ПДР</button>
+            <button class="btn btn-primary" id="matrixSelectionReconBtn" type="button">Сверить с 1С</button>
             <button class="btn btn-outline" id="matrixSelectionDetailsBtn" type="button">Показать документы</button>
-            <button class="btn btn-outline" id="matrixSelectionExportBtn" type="button">Скачать XLSX</button>
+            <button class="btn btn-outline" id="matrixSelectionExportBtn" type="button">Скачать поставку XLSX</button>
           </div>
         </div>
 
@@ -215,7 +218,7 @@
           </div>
           <div class="button-row">
             <button class="btn btn-primary" id="runBtn" type="button" disabled>Сверить с 1С</button>
-            <button class="btn btn-outline" id="exportBtn" type="button" disabled>Экспорт XLSX</button>
+            <button class="btn btn-outline" id="exportBtn" type="button" disabled>Скачать сверку XLSX</button>
           </div>
         </div>
 

@@ -942,26 +942,32 @@ th.sticky-right-balance {
 }
 
 .select-spec-btn {
-  height: 24px;
+  width: 22px;
+  height: 22px;
   flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+  display: inline-grid;
+  place-items: center;
   border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border-radius: 50%;
   background: #fff;
-  color: var(--ink-2);
-  padding: 0 9px;
+  color: #fff;
+  padding: 0;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 850;
+  line-height: 1;
 }
 
-.select-spec-btn:hover,
+.select-spec-btn:hover {
+  border-color: var(--red);
+  background: #fff7f8;
+  color: var(--red-strong);
+}
+
 .select-spec-btn.selected {
   border-color: var(--red);
-  background: var(--red-soft);
-  color: var(--red-strong);
+  background: var(--red);
+  color: #fff;
 }
 
 .level-toggle {
