@@ -73,6 +73,7 @@
     preset90Btn: $('preset90Btn'),
     resetFiltersBtn: $('resetFiltersBtn'),
     matrixMessage: $('matrixMessage'),
+    matrixHint: $('matrixHint'),
     matrixRows: $('matrixRows'),
     matrixSummaryCards: $('matrixSummaryCards'),
     matrixSelectionPanel: $('matrixSelectionPanel'),
@@ -207,7 +208,7 @@
     }
     if (!state.selectedSpecId) {
       setView('matrix');
-      setMessage(els.matrixMessage, 'Выберите поставку в таблице для сверки с 1С.', true);
+      setMessage(els.matrixMessage, 'Отметьте поставку слева в таблице для сверки с 1С.', true);
       highlightMatrixSelection();
       return false;
     }
@@ -432,7 +433,7 @@
       const selectionText = state.matrix.length === 1 && state.selectedSpecId
         ? ' Найдена одна поставка — она выбрана автоматически.'
         : state.matrix.length
-          ? ' Выберите поставку для сверки с 1С.'
+          ? ' Отметьте поставку слева в таблице для сверки с 1С.'
           : '';
       setMessage(els.matrixMessage, `${modeText} Поставок: ${state.matrix.length}${totalText}.${selectionText}`);
       updateMatrixPager();
@@ -782,7 +783,7 @@
       : `data-toggle-key="${escapeHtml(toggleKey || '')}"`;
     const marker = toggleKey
       ? `<span class="level-toggle" aria-hidden="true">${expanded ? '⌄' : '›'}</span>`
-      : `<button class="select-spec-btn ${selected ? 'selected' : ''}" type="button" data-select-spec-id="${escapeHtml(specId || '')}" aria-label="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}" title="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}"><span aria-hidden="true">${selected ? '✓' : ''}</span></button>`;
+      : `<button class="select-spec-btn ${selected ? 'selected' : ''}" type="button" data-select-spec-id="${escapeHtml(specId || '')}" aria-label="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}" title="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}"><span aria-hidden="true">${selected ? '●' : '○'}</span></button>`;
     return `<tr class="${rowClass}" ${rowAttrs}>
       <td class="sticky-col">
         <div class="hierarchy-cell level-${level}">
@@ -907,11 +908,11 @@
       els.selectedContext.innerHTML = `
         <div class="empty-state">
           <h3>Поставка не выбрана</h3>
-          <p>Чтобы сверить поставку с 1С, загрузите поставки и выберите одну строку в матрице.</p>
+          <p>Чтобы сверить поставку с 1С, загрузите поставки и отметьте нужную строку слева в матрице.</p>
           <ol>
-            <li>Перейдите к взаиморасчетам.</li>
             <li>Нажмите “Найти поставки”.</li>
-            <li>Выберите поставку кнопкой “Выбрать”.</li>
+            <li>Отметьте нужную поставку слева в таблице.</li>
+            <li>Нажмите “Сверить с 1С”.</li>
           </ol>
           <button class="btn btn-primary" type="button" data-go-matrix-select>Перейти к выбору поставки</button>
         </div>`;
@@ -1306,7 +1307,7 @@
     if (!row) return;
     await exportMatrixItemsXlsx({
       items: [row],
-      filename: `akt-sverki-delivery-${String(row.spec_number || row.spec_id).replace(/[^\wа-яА-Я-]+/g, '_')}.xlsx`,
+      filename: `postavka-${String(row.spec_number || row.spec_id).replace(/[^\wа-яА-Я-]+/g, '_')}-vzaimoraschety.xlsx`,
       startMessage: 'Формируем XLSX по выбранной поставке...',
       successMessage: 'XLSX поставки сформирован.',
     });
@@ -1354,14 +1355,28 @@
   function updateActionState() {
     const hasSpec = Boolean(state.selectedSpecId);
     const hasRun = Boolean(state.run);
+    const hasMatrix = Boolean(state.matrix.length);
+    const isMatrixView = state.view === 'matrix';
     els.matrixToReconBtn.disabled = !hasSpec;
-    if (els.matrixExportBtn) els.matrixExportBtn.disabled = !state.matrix.length;
-    if (els.matrixSelectionExportBtn) els.matrixSelectionExportBtn.disabled = !hasSpec;
+    els.matrixToReconBtn.title = hasSpec ? 'Сверить выбранную поставку с 1С' : 'Сначала отметьте поставку слева в таблице';
+    if (els.matrixExportBtn) {
+      els.matrixExportBtn.disabled = !hasMatrix;
+      els.matrixExportBtn.title = hasMatrix
+        ? 'Экспортирует только загруженные и отфильтрованные строки на экране'
+        : 'Сначала найдите поставки';
+    }
+    if (els.matrixSelectionExportBtn) {
+      els.matrixSelectionExportBtn.disabled = !hasSpec;
+      els.matrixSelectionExportBtn.title = hasSpec ? 'Скачать XLSX по выбранной поставке' : 'Сначала отметьте поставку';
+    }
+    if (els.matrixHint) els.matrixHint.classList.toggle('hidden', !hasMatrix || hasSpec);
     els.runBtn.disabled = !hasSpec;
     els.runBtn.textContent = hasRun ? 'Обновить сверку' : 'Сверить с 1С';
     els.exportBtn.disabled = !hasRun;
-    els.refreshBtn.textContent = state.view === 'matrix' ? '↻ Обновить список' : '↻ Обновить сверку';
-    els.refreshBtn.title = state.view === 'matrix' ? 'Обновить список поставок' : 'Обновить сверку с 1С';
+    els.refreshBtn.classList.toggle('hidden', isMatrixView && !hasMatrix);
+    els.refreshBtn.disabled = isMatrixView && !hasMatrix;
+    els.refreshBtn.textContent = isMatrixView ? '↻ Обновить список' : '↻ Обновить сверку';
+    els.refreshBtn.title = isMatrixView ? 'Обновить список поставок' : 'Обновить сверку с 1С';
     updateWorkflowState();
   }
 

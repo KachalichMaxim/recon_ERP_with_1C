@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light">
   <title>Сверка ERP и 1С</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23C4122F'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='26' font-family='Arial' font-weight='700' fill='white'%3EV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="reconciliation.css?v=20260702_user_terms">
-  <script src="reconciliation.js?v=20260702_user_terms" defer></script>
+  <link rel="stylesheet" href="reconciliation.css?v=20260702_workflow_polish">
+  <script src="reconciliation.js?v=20260702_workflow_polish" defer></script>
 </head>
 <body>
   <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
@@ -90,7 +90,7 @@
         <div>
           <div class="top-title-row">
             <button class="btn btn-ghost icon-btn" id="sidebarToggleBtn" type="button" title="Скрыть меню">☰</button>
-            <h1>Сверка ERP и 1С</h1>
+            <h1>Модуль сверки ERP и 1С</h1>
           </div>
           <div class="top-meta">
             <span id="erpStatusChip">ERP: ожидает запрос</span>
@@ -99,7 +99,7 @@
           </div>
         </div>
         <div class="top-actions">
-          <button class="btn btn-outline" id="refreshBtn" type="button">↻ Обновить список</button>
+          <button class="btn btn-outline hidden" id="refreshBtn" type="button" disabled>↻ Обновить список</button>
         </div>
       </header>
 
@@ -117,7 +117,7 @@
             <p>Иерархия клиент → ЮЛ → договор → поставка. Это ERP-сальдовка: счета, оплаты, возмещаемые и невозмещаемые суммы.</p>
           </div>
           <div class="button-row">
-            <button class="btn btn-outline" id="matrixExportBtn" type="button" disabled>Скачать матрицу XLSX</button>
+            <button class="btn btn-outline" id="matrixExportBtn" type="button" disabled>Скачать видимые строки XLSX</button>
             <button class="btn btn-outline" id="matrixToReconBtn" type="button" disabled>Сверить с 1С</button>
           </div>
         </div>
@@ -163,6 +163,7 @@
           </div>
         </section>
         <div class="message" id="matrixMessage" role="status" aria-live="polite"></div>
+        <div class="matrix-hint hidden" id="matrixHint">Отметьте поставку слева в таблице, чтобы сверить ее с 1С.</div>
 
         <div class="kpi-grid" id="matrixSummaryCards">
           <div class="kpi"><span>Поставки</span><b data-key="deliveries">0</b></div>
@@ -187,14 +188,14 @@
             <thead>
               <tr>
                 <th class="sticky-col">Иерархия</th>
-                <th>№ спецификации</th>
+                <th>Поставка / заявка</th>
                 <th>Счет</th>
                 <th class="num">Сумма по счету</th>
                 <th class="num">Сумма оплаты</th>
                 <th class="num">Возмещаемые расходы</th>
                 <th class="num">Невозмещаемые расходы</th>
                 <th>№ счф</th>
-                <th class="num sticky-right-balance">(+/-)</th>
+                <th class="num sticky-right-balance">Сальдо</th>
                 <th class="sticky-right-status">Статус</th>
               </tr>
             </thead>
