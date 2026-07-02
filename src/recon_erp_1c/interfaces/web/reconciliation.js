@@ -1,0 +1,989 @@
+(function () {
+  'use strict';
+
+  const feedbackReasons = [
+    ['', 'Не выбрано'],
+    ['mapping_error', 'Ошибка маппинга'],
+    ['not_exported_to_1c', 'Не выгружено в 1С'],
+    ['manual_1c_document', 'Ручной документ 1С'],
+    ['erp_duplicate', 'Дубль ERP'],
+    ['business_exception', 'Бизнес-исключение'],
+    ['new_case', 'Новый кейс для развития'],
+  ];
+
+  const steps = [
+    ['erp_context', 'Читаем контекст поставки из ERP'],
+    ['erp_docs', 'Собираем документы ERP'],
+    ['onec', 'Запрашиваем документы 1С'],
+    ['match', 'Сопоставляем по кодам 1С'],
+    ['log', 'Пишем журнал сверки'],
+  ];
+
+  const state = {
+    token: localStorage.getItem('recon_session') || '',
+    profile: JSON.parse(localStorage.getItem('recon_profile') || 'null'),
+    view: localStorage.getItem('recon_view') || 'matrix',
+    matrix: [],
+    matrixPayload: null,
+    matrixMode: '',
+    matrixExpanded: JSON.parse(localStorage.getItem('recon_matrix_expanded_v1') || '{}'),
+    selectedSpecId: Number(localStorage.getItem('recon_selected_spec') || 0) || null,
+    run: null,
+    feedback: JSON.parse(localStorage.getItem('recon_feedback_v1') || '{}'),
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    loginPanel: $('loginPanel'),
+    workArea: $('workArea'),
+    loginInput: $('loginInput'),
+    passwordInput: $('passwordInput'),
+    loginBtn: $('loginBtn'),
+    loginMessage: $('loginMessage'),
+    userName: $('userName'),
+    userLogin: $('userLogin'),
+    userAvatar: $('userAvatar'),
+    logoutBtn: $('logoutBtn'),
+    navMatrixBtn: $('navMatrixBtn'),
+    navReconBtn: $('navReconBtn'),
+    tabMatrixBtn: $('tabMatrixBtn'),
+    tabReconBtn: $('tabReconBtn'),
+    matrixScreen: $('matrixScreen'),
+    reconScreen: $('reconScreen'),
+    reconBadge: $('reconBadge'),
+    erpStatusChip: $('erpStatusChip'),
+    onecStatusChip: $('onecStatusChip'),
+    modeStatusChip: $('modeStatusChip'),
+    refreshBtn: $('refreshBtn'),
+    topExportBtn: $('topExportBtn'),
+    clientIdInput: $('clientIdInput'),
+    clientSuggestions: $('clientSuggestions'),
+    dogIdInput: $('dogIdInput'),
+    dateFromInput: $('dateFromInput'),
+    dateToInput: $('dateToInput'),
+    limitInput: $('limitInput'),
+    loadMatrixBtn: $('loadMatrixBtn'),
+    presetYearBtn: $('presetYearBtn'),
+    preset90Btn: $('preset90Btn'),
+    resetFiltersBtn: $('resetFiltersBtn'),
+    matrixMessage: $('matrixMessage'),
+    matrixRows: $('matrixRows'),
+    matrixSummaryCards: $('matrixSummaryCards'),
+    matrixToReconBtn: $('matrixToReconBtn'),
+    selectedContext: $('selectedContext'),
+    loadingOverlay: $('loadingOverlay'),
+    loadingStepText: $('loadingStepText'),
+    runBtn: $('runBtn'),
+    exportBtn: $('exportBtn'),
+    progressBox: $('progressBox'),
+    runMessage: $('runMessage'),
+    summaryCards: $('summaryCards'),
+    resultSearchInput: $('resultSearchInput'),
+    statusFilter: $('statusFilter'),
+    resultRows: $('resultRows'),
+  };
+
+  let clientSearchTimer = 0;
+
+  function api(path, options = {}) {
+    const headers = Object.assign({ Accept: 'application/json' }, options.headers || {});
+    if (state.token) headers['X-Recon-Session'] = state.token;
+    return fetch(path, Object.assign({}, options, { headers }));
+  }
+
+  function setMessage(node, text, isError) {
+    if (!node) return;
+    node.textContent = text || '';
+    node.classList.toggle('error', Boolean(isError));
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function fmtMoneyValue(value, currency = 'RUB') {
+    const amount = Number(value || 0);
+    if (!Number.isFinite(amount)) return '—';
+    return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount) + ' ' + currency;
+  }
+
+  function fmtDocMoney(doc) {
+    const amount = doc && doc.amount ? doc.amount.amount : 0;
+    const currency = doc && doc.amount ? doc.amount.currency || 'RUB' : 'RUB';
+    return fmtMoneyValue(amount, currency);
+  }
+
+  function fmtDate(value) {
+    if (!value) return '—';
+    const text = String(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(text)) return `${text.slice(8, 10)}.${text.slice(5, 7)}.${text.slice(0, 4)}`;
+    return text;
+  }
+
+  function inputDateValue(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  function normalizeErrorMessage(err) {
+    const text = err && err.message ? err.message : String(err || '');
+    if (/ERP MariaDB is not configured/i.test(text)) {
+      return 'Сервис не подключен к ERP MariaDB. Для локального UI-теста сервер можно запустить с RECON_UI_DEMO=1.';
+    }
+    if (/Invalid ERP login or password/i.test(text)) return 'Неверный логин или пароль ERP.';
+    return text.replace(/1C/g, '1С');
+  }
+
+  function validateDateRange(messageNode) {
+    const from = els.dateFromInput.value;
+    const to = els.dateToInput.value;
+    if (from && to && from > to) {
+      setMessage(messageNode, 'Дата начала не может быть позже даты окончания.', true);
+      return false;
+    }
+    return true;
+  }
+
+  function setView(view) {
+    state.view = view;
+    localStorage.setItem('recon_view', view);
+    const isMatrix = view === 'matrix';
+    els.matrixScreen.classList.toggle('hidden', !isMatrix);
+    els.reconScreen.classList.toggle('hidden', isMatrix);
+    [els.navMatrixBtn, els.tabMatrixBtn].forEach((node) => node.classList.toggle('active', isMatrix));
+    [els.navReconBtn, els.tabReconBtn].forEach((node) => node.classList.toggle('active', !isMatrix));
+    els.tabMatrixBtn.setAttribute('aria-selected', String(isMatrix));
+    els.tabReconBtn.setAttribute('aria-selected', String(!isMatrix));
+    updateActionState();
+  }
+
+  function applyAuthState() {
+    const logged = Boolean(state.token);
+    els.loginPanel.classList.toggle('hidden', logged);
+    els.workArea.classList.toggle('hidden', !logged);
+    const name = state.profile && state.profile.name ? state.profile.name : 'Не авторизован';
+    const login = state.profile && state.profile.login ? state.profile.login : '—';
+    els.userName.textContent = name;
+    els.userLogin.textContent = login;
+    els.userAvatar.textContent = name && name !== 'Не авторизован' ? name.slice(0, 1).toUpperCase() : '?';
+  }
+
+  async function validateSession() {
+    if (!state.token) return;
+    try {
+      const resp = await api('/api/auth/me');
+      if (!resp.ok) throw new Error('session expired');
+      const payload = await resp.json();
+      if (payload.profile) {
+        state.profile = payload.profile;
+        localStorage.setItem('recon_profile', JSON.stringify(state.profile));
+      }
+    } catch (_) {
+      logout(false);
+    }
+    applyAuthState();
+  }
+
+  async function login() {
+    const loginValue = els.loginInput.value.trim();
+    const password = els.passwordInput.value;
+    setMessage(els.loginMessage, 'Проверяем логин в ERP...');
+    try {
+      const resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ login: loginValue, password }),
+      });
+      const payload = await resp.json();
+      if (!resp.ok || payload.ok !== true) throw new Error(payload.message || 'Ошибка входа');
+      state.token = payload.token;
+      state.profile = payload.profile;
+      localStorage.setItem('recon_session', state.token);
+      localStorage.setItem('recon_profile', JSON.stringify(state.profile));
+      setMessage(els.loginMessage, '');
+      applyAuthState();
+      setView('matrix');
+    } catch (err) {
+      setMessage(els.loginMessage, normalizeErrorMessage(err), true);
+    }
+  }
+
+  function logout(resetMessage = true) {
+    state.token = '';
+    state.profile = null;
+    state.matrix = [];
+    state.selectedSpecId = null;
+    state.run = null;
+    localStorage.removeItem('recon_session');
+    localStorage.removeItem('recon_profile');
+    localStorage.removeItem('recon_selected_spec');
+    applyAuthState();
+    renderMatrix();
+    renderSelectedContext();
+    renderResults();
+    if (resetMessage) setMessage(els.loginMessage, '');
+  }
+
+  function queryParams() {
+    const params = new URLSearchParams();
+    const clientId = selectedClientId();
+    [
+      ['client_id', clientId],
+      ['dog_id', els.dogIdInput.value],
+      ['date_from', els.dateFromInput.value],
+      ['date_to', els.dateToInput.value],
+      ['limit', els.limitInput.value || '20'],
+    ].forEach(([key, value]) => {
+      if (String(value || '').trim()) params.set(key, value);
+    });
+    return params;
+  }
+
+  function selectedClientId() {
+    const explicit = els.clientIdInput.dataset.clientId || '';
+    if (explicit) return explicit;
+    const text = (els.clientIdInput.value || '').trim();
+    return /^\d+$/.test(text) ? text : '';
+  }
+
+  async function loadMatrix() {
+    if (!validateDateRange(els.matrixMessage)) return;
+    if (!validateClientFilter(els.matrixMessage)) return;
+    els.loadMatrixBtn.disabled = true;
+    els.matrixRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Загружаем ERP-матрицу...</td></tr>';
+    setMessage(els.matrixMessage, 'Получаем поставки и агрегаты из ERP...');
+    try {
+      const resp = await api('/api/reconciliation/matrix?' + queryParams().toString());
+      const payload = await resp.json();
+      if (!resp.ok || payload.ok !== true) throw new Error(payload.message || 'Не удалось получить матрицу');
+      state.matrix = payload.items || [];
+      state.matrixPayload = payload;
+      state.matrixMode = payload.mode || 'erp_live';
+      if (!state.matrix.some((row) => Number(row.spec_id) === Number(state.selectedSpecId))) {
+        state.selectedSpecId = state.matrix.length ? Number(state.matrix[0].spec_id) : null;
+      }
+      renderMatrix(payload.summary || buildMatrixSummary(state.matrix));
+      renderSelectedContext();
+      updateActionState();
+      const modeText = state.matrixMode === 'ui_demo' ? 'Локальный UI-пример, не боевые данные.' : 'Данные ERP загружены.';
+      setMessage(els.matrixMessage, `${modeText} Поставок: ${state.matrix.length}.`);
+      els.erpStatusChip.textContent = state.matrixMode === 'ui_demo' ? 'ERP: UI demo' : 'ERP: live matrix';
+    } catch (err) {
+      state.matrix = [];
+      renderMatrix();
+      setMessage(els.matrixMessage, normalizeErrorMessage(err), true);
+      els.erpStatusChip.textContent = 'ERP: ошибка';
+    } finally {
+      els.loadMatrixBtn.disabled = false;
+    }
+  }
+
+  function scheduleClientSearch() {
+    const text = (els.clientIdInput.value || '').trim();
+    if (els.clientIdInput.dataset.clientLabel && text !== els.clientIdInput.dataset.clientLabel) {
+      delete els.clientIdInput.dataset.clientId;
+      delete els.clientIdInput.dataset.clientLabel;
+    }
+    clearTimeout(clientSearchTimer);
+    if (text.length < 3) {
+      renderClientSuggestions([]);
+      return;
+    }
+    clientSearchTimer = setTimeout(() => searchClients(text), 250);
+  }
+
+  async function searchClients(text) {
+    try {
+      const params = new URLSearchParams({ q: text, limit: '12' });
+      const resp = await api('/api/reconciliation/clients?' + params.toString());
+      const payload = await resp.json();
+      if (!resp.ok || payload.ok !== true) throw new Error(payload.message || 'Не удалось найти клиентов');
+      renderClientSuggestions(payload.items || [], text);
+    } catch (err) {
+      els.clientSuggestions.innerHTML = `<div class="suggestion-empty">${escapeHtml(normalizeErrorMessage(err))}</div>`;
+      els.clientSuggestions.classList.remove('hidden');
+    }
+  }
+
+  function renderClientSuggestions(items, searchText = '') {
+    if (!searchText || searchText.length < 3) {
+      els.clientSuggestions.classList.add('hidden');
+      els.clientSuggestions.innerHTML = '';
+      return;
+    }
+    if (!items.length) {
+      els.clientSuggestions.innerHTML = '<div class="suggestion-empty">Клиенты не найдены.</div>';
+      els.clientSuggestions.classList.remove('hidden');
+      return;
+    }
+    els.clientSuggestions.innerHTML = items.map((item) => {
+      const label = clientLabel(item);
+      return `<button class="suggestion-item" type="button" data-client-id="${escapeHtml(item.client_id)}" data-client-label="${escapeHtml(label)}">
+        <span class="suggestion-title">${escapeHtml(item.client_name || 'Без названия')}</span>
+        <span class="suggestion-meta">ИНН ${escapeHtml(item.client_inn || '—')}</span>
+      </button>`;
+    }).join('');
+    els.clientSuggestions.classList.remove('hidden');
+    els.clientSuggestions.querySelectorAll('[data-client-id]').forEach((node) => {
+      node.addEventListener('click', () => selectClientSuggestion(node));
+    });
+  }
+
+  function clientLabel(item) {
+    const name = item.client_name || `Клиент ${item.client_id || ''}`;
+    const inn = item.client_inn ? ` · ИНН ${item.client_inn}` : '';
+    return `${name}${inn}`;
+  }
+
+  function selectClientSuggestion(node) {
+    const id = node.getAttribute('data-client-id') || '';
+    const label = node.getAttribute('data-client-label') || id;
+    els.clientIdInput.value = label;
+    els.clientIdInput.dataset.clientId = id;
+    els.clientIdInput.dataset.clientLabel = label;
+    els.clientSuggestions.classList.add('hidden');
+    els.clientSuggestions.innerHTML = '';
+  }
+
+  function buildMatrixSummary(items) {
+    return {
+      deliveries: items.length,
+      invoice_sum: sumField(items, 'invoice_sum'),
+      payment_sum: sumField(items, 'payment_sum'),
+      reimbursable_sum: sumField(items, 'reimbursable_sum'),
+      non_reimbursable_sum: sumField(items, 'non_reimbursable_sum'),
+      balance: sumField(items, 'balance'),
+    };
+  }
+
+  function sumField(items, field) {
+    return items.reduce((sum, row) => sum + Number(row[field] || 0), 0).toFixed(2);
+  }
+
+  function aggregateItems(items) {
+    return {
+      invoice_sum: sumField(items, 'invoice_sum'),
+      payment_sum: sumField(items, 'payment_sum'),
+      reimbursable_sum: sumField(items, 'reimbursable_sum'),
+      non_reimbursable_sum: sumField(items, 'non_reimbursable_sum'),
+      balance: sumField(items, 'balance'),
+    };
+  }
+
+  function unique(values) {
+    return [...new Set(values.filter(Boolean))];
+  }
+
+  function renderMatrix(summary) {
+    const items = state.matrix || [];
+    renderMatrixSummary(summary || buildMatrixSummary(items));
+    if (!items.length) {
+      els.matrixRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Поставки не загружены.</td></tr>';
+      return;
+    }
+    const byClient = groupBy(items, (row) => `${row.client_id || 0}|${row.client_name || ''}`);
+    const html = [];
+    for (const [clientGroupKey, clientItems] of byClient.entries()) {
+      const client = clientItems[0];
+      const clientKey = `client:${clientGroupKey}`;
+      const clientOpen = isMatrixExpanded(clientKey);
+      html.push(matrixRowHtml({
+        level: 0,
+        label: `Клиент: ${client.client_name || '—'}`,
+        subtext: `ИНН ${client.client_inn || '—'}`,
+        aggregate: aggregateItems(clientItems),
+        specText: `${clientItems.length} поставок`,
+        toggleKey: clientKey,
+        expanded: clientOpen,
+      }));
+      if (!clientOpen) continue;
+      const legalKey = `${clientKey}:legal:${client.client_id || client.client_name || 'main'}`;
+      const legalOpen = isMatrixExpanded(legalKey);
+      html.push(matrixRowHtml({
+        level: 1,
+        label: `ЮЛ: ${client.client_name || '—'}`,
+        subtext: `ИНН ${client.client_inn || '—'}`,
+        aggregate: aggregateItems(clientItems),
+        specText: `${clientItems.length} поставок`,
+        toggleKey: legalKey,
+        expanded: legalOpen,
+      }));
+      if (!legalOpen) continue;
+      const byDog = groupBy(clientItems, (row) => `${row.dog_id || 0}|${row.base_contract_number || ''}`);
+      for (const [dogGroupKey, dogItems] of byDog.entries()) {
+        const dog = dogItems[0];
+        const dogKey = `${legalKey}:contract:${dogGroupKey}`;
+        const dogOpen = isMatrixExpanded(dogKey);
+        html.push(matrixRowHtml({
+          level: 2,
+          label: `Договор: ${dog.base_contract_number || '—'}`,
+          subtext: 'Основной договор поставки',
+          aggregate: aggregateItems(dogItems),
+          specText: `${dogItems.length} поставок`,
+          toggleKey: dogKey,
+          expanded: dogOpen,
+        }));
+        if (!dogOpen) continue;
+        for (const row of dogItems) {
+          html.push(matrixRowHtml({
+            level: 3,
+            label: deliveryLabel(row),
+            subtext: fmtDate(row.spec_date),
+            aggregate: row,
+            specText: row.spec_number || '—',
+            specId: row.spec_id,
+          }));
+        }
+      }
+    }
+    els.matrixRows.innerHTML = html.join('');
+    els.matrixRows.querySelectorAll('tr[data-toggle-key]').forEach((tr) => {
+      tr.addEventListener('click', () => {
+        const key = tr.getAttribute('data-toggle-key') || '';
+        state.matrixExpanded[key] = !isMatrixExpanded(key);
+        localStorage.setItem('recon_matrix_expanded_v1', JSON.stringify(state.matrixExpanded));
+        renderMatrix(summary || buildMatrixSummary(state.matrix));
+      });
+    });
+    els.matrixRows.querySelectorAll('tr[data-spec-id]').forEach((tr) => {
+      tr.addEventListener('click', () => {
+        state.selectedSpecId = Number(tr.getAttribute('data-spec-id'));
+        localStorage.setItem('recon_selected_spec', String(state.selectedSpecId));
+        state.run = null;
+        renderMatrix(summary || buildMatrixSummary(state.matrix));
+        renderSelectedContext();
+        renderResults();
+        updateActionState();
+      });
+    });
+  }
+
+  function isMatrixExpanded(key) {
+    return state.matrixExpanded[key] !== false;
+  }
+
+  function groupBy(items, getKey) {
+    const map = new Map();
+    for (const item of items) {
+      const key = getKey(item);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(item);
+    }
+    return map;
+  }
+
+  function matrixRowHtml({ level, label, subtext, aggregate, specText, specId, toggleKey, expanded }) {
+    const balance = Number(aggregate.balance || 0);
+    const kind = aggregate.balance_kind || (balance > 0 ? 'overpayment' : balance < 0 ? 'debt' : 'closed');
+    const status = aggregate.balance_label || (balance > 0 ? 'Переплата' : balance < 0 ? 'Долг' : 'Закрыто');
+    const selected = specId && Number(specId) === Number(state.selectedSpecId);
+    const rowClass = specId ? `matrix-spec ${selected ? 'selected' : ''}` : 'matrix-aggregate matrix-toggle-row';
+    const invoiceText = specId ? joinList(aggregate.invoice_numbers) : '—';
+    const sfText = specId ? joinList(aggregate.sf_numbers) : '—';
+    const rowAttrs = specId
+      ? `data-spec-id="${escapeHtml(specId)}"`
+      : `data-toggle-key="${escapeHtml(toggleKey || '')}"`;
+    const marker = toggleKey
+      ? `<span class="level-toggle" aria-hidden="true">${expanded ? '⌄' : '›'}</span>`
+      : '<span class="level-marker">•</span>';
+    return `<tr class="${rowClass}" ${rowAttrs}>
+      <td class="sticky-col">
+        <div class="hierarchy-cell level-${level}">
+          <div class="hierarchy-title">${marker}<span>${escapeHtml(label)}</span></div>
+          <div class="subtext">${escapeHtml(subtext || '')}</div>
+        </div>
+      </td>
+      <td class="mono">${escapeHtml(specText || '—')}</td>
+      <td class="wrap-list mono">${escapeHtml(invoiceText)}</td>
+      <td class="num">${escapeHtml(fmtMoneyValue(aggregate.invoice_sum))}</td>
+      <td class="num">${escapeHtml(fmtMoneyValue(aggregate.payment_sum))}</td>
+      <td class="num">${escapeHtml(fmtMoneyValue(aggregate.reimbursable_sum))}</td>
+      <td class="num">${escapeHtml(fmtMoneyValue(aggregate.non_reimbursable_sum))}</td>
+      <td class="wrap-list mono">${escapeHtml(sfText)}</td>
+      <td class="num">${escapeHtml(fmtMoneyValue(aggregate.balance))}</td>
+      <td><span class="badge ${kind}">${escapeHtml(status)}</span></td>
+    </tr>`;
+  }
+
+  function joinList(values) {
+    if (!Array.isArray(values) || !values.length) return '—';
+    return values.join('\n');
+  }
+
+  function deliveryLabel(row) {
+    const type = row.spec_type_name || row.type_name || row.delivery_type || 'Поставка';
+    const number = row.spec_number || '—';
+    return `${type}: ${number}`;
+  }
+
+  function renderMatrixSummary(summary) {
+    const map = {
+      deliveries: summary.deliveries || 0,
+      invoice_sum: fmtMoneyValue(summary.invoice_sum),
+      payment_sum: fmtMoneyValue(summary.payment_sum),
+      reimbursable_sum: fmtMoneyValue(summary.reimbursable_sum),
+      non_reimbursable_sum: fmtMoneyValue(summary.non_reimbursable_sum),
+      balance: fmtMoneyValue(summary.balance),
+    };
+    for (const [key, value] of Object.entries(map)) {
+      const node = els.matrixSummaryCards.querySelector(`[data-key="${key}"]`);
+      if (node) node.textContent = value;
+    }
+  }
+
+  function selectedSpec() {
+    return state.matrix.find((row) => Number(row.spec_id) === Number(state.selectedSpecId)) || null;
+  }
+
+  function renderSelectedContext() {
+    const row = selectedSpec();
+    if (!row) {
+      els.selectedContext.innerHTML = 'Выберите поставку на экране матрицы.';
+      return;
+    }
+    els.selectedContext.innerHTML = `<strong>${escapeHtml(row.client_name || 'Клиент')} · ${escapeHtml(deliveryLabel(row))}</strong>
+      <div class="kv">
+        <span>дата: <span class="mono">${escapeHtml(fmtDate(row.spec_date))}</span></span>
+        <span>договор: ${escapeHtml(row.base_contract_number || '—')}</span>
+        <span>договор покупателя 1С: <span class="mono">${escapeHtml(row.buyer_contract_code || '—')}</span></span>
+        <span>договор комитента 1С: <span class="mono">${escapeHtml(row.committent_contract_code || '—')}</span></span>
+      </div>`;
+  }
+
+  function renderProgress(activeKey, errorKey) {
+    if (!activeKey) {
+      els.loadingOverlay.classList.add('hidden');
+      els.progressBox.innerHTML = '';
+      els.loadingStepText.textContent = 'Готовим запрос...';
+      return;
+    }
+    els.loadingOverlay.classList.remove('hidden');
+    if (activeKey === 'done') {
+      els.loadingStepText.textContent = 'Сверка завершена.';
+      els.progressBox.innerHTML = steps.map(([, label]) => `<div class="step done"><span class="dot"></span><span>${escapeHtml(label)}</span></div>`).join('');
+      return;
+    }
+    const activeStep = steps.find(([key]) => key === activeKey);
+    els.loadingStepText.textContent = activeStep ? activeStep[1] : 'Выполняем сверку...';
+    els.progressBox.innerHTML = steps.map(([key, label]) => {
+      const activeIndex = steps.findIndex((step) => step[0] === activeKey);
+      const currentIndex = steps.findIndex((step) => step[0] === key);
+      let cls = '';
+      if (errorKey === key) cls = 'error';
+      else if (activeIndex >= 0 && currentIndex < activeIndex) cls = 'done';
+      else if (key === activeKey) cls = 'active';
+      return `<div class="step ${cls}"><span class="dot"></span><span>${escapeHtml(label)}</span></div>`;
+    }).join('');
+  }
+
+  async function runReconciliation() {
+    if (!state.selectedSpecId) return;
+    if (!validateDateRange(els.runMessage)) return;
+    els.runBtn.disabled = true;
+    els.exportBtn.disabled = true;
+    els.topExportBtn.disabled = true;
+    setMessage(els.runMessage, 'Запускаем сверку...');
+    renderProgress('erp_context');
+    const timer = stagedProgress();
+    try {
+      if (state.matrixMode === 'ui_demo') {
+        await wait(1200);
+        state.run = demoRun();
+      } else {
+        const from = els.dateFromInput.value || '2025-01-01';
+        const to = els.dateToInput.value || new Date().toISOString().slice(0, 10);
+        const params = new URLSearchParams({ spec_id: state.selectedSpecId, date_from: from, date_to: to, persist_log: '1' });
+        const resp = await api('/api/reconciliation/run?' + params.toString());
+        const payload = await resp.json();
+        if (!resp.ok || payload.ok !== true) throw new Error(payload.message || 'Сверка не выполнена');
+        state.run = payload.run;
+      }
+      renderProgress('done');
+      renderResults();
+      renderSummary();
+      setMessage(els.runMessage, `Сверка завершена. Номер запуска: ${state.run.run_id}`);
+      els.onecStatusChip.textContent = state.matrixMode === 'ui_demo' ? '1С REST: UI demo' : '1С REST: ответ получен';
+    } catch (err) {
+      renderProgress('onec', 'onec');
+      setMessage(els.runMessage, normalizeErrorMessage(err), true);
+      els.onecStatusChip.textContent = '1С REST: ошибка';
+    } finally {
+      clearInterval(timer);
+      renderProgress(null);
+      updateActionState();
+    }
+  }
+
+  function stagedProgress() {
+    let idx = 1;
+    return setInterval(() => {
+      if (idx < steps.length - 1) {
+        renderProgress(steps[idx][0]);
+        idx += 1;
+      }
+    }, 550);
+  }
+
+  function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function demoRun() {
+    const row = selectedSpec() || {};
+    return {
+      run_id: 'ui-demo-' + Date.now(),
+      created_at: new Date().toISOString(),
+      matched: false,
+      delivery: {
+        erp_spec_id: row.spec_id,
+        spec_number: row.spec_number,
+        base_contract_number: row.base_contract_number,
+        contract_codes: {
+          buyer_contract_code: row.buyer_contract_code,
+          committent_contract_code: row.committent_contract_code,
+        },
+      },
+      summary: {
+        issues_total: 5,
+        by_status: { match: 2, amount_mismatch: 1, not_found_in_1c: 1, contract_mismatch: 1 },
+      },
+      issues: [
+        issue('match', 'customer_invoice', 'ВА-015695', 'ВА-015695', row.buyer_contract_code, '2025-07-09', '21000.00', 'Документ совпал'),
+        issue('match', 'payment', '00БП-010299', '00БП-010299', row.buyer_contract_code, '2025-07-30', '442296.92', 'Документ совпал'),
+        issue('amount_mismatch', 'sale', '00БП-000198', '00БП-000198', row.buyer_contract_code, '2025-08-09', '67055.99', 'Расходятся: сумма', ['amount']),
+        issue('not_found_in_1c', 'sale', '00БП-003300', '', row.committent_contract_code, '2025-08-12', '445565.75', 'ERP документ не найден в 1С'),
+        issue('contract_mismatch', 'sale', '00БП-003301', '00БП-003301', row.committent_contract_code, '2025-08-14', '36648.04', 'Расходятся: договор 1С', ['contract_code1c']),
+      ],
+    };
+  }
+
+  function issue(status, kind, erpCode, onecCode, contractCode, date, amount, message, fields = []) {
+    return {
+      status,
+      message,
+      fields,
+      erp_document: {
+        kind,
+        code1c: erpCode,
+        number: erpCode,
+        date,
+        amount: { amount, currency: 'RUB' },
+        contract_code1c: contractCode || '',
+      },
+      onec_document: onecCode ? {
+        kind,
+        code1c: onecCode,
+        number: onecCode,
+        date,
+        amount: { amount: status === 'amount_mismatch' ? '64000.00' : amount, currency: 'RUB' },
+        contract_code1c: status === 'contract_mismatch' ? 'Другой договор' : contractCode || '',
+      } : null,
+    };
+  }
+
+  function renderSummary() {
+    const by = state.run && state.run.summary ? state.run.summary.by_status || {} : {};
+    const total = state.run && state.run.summary ? state.run.summary.issues_total || 0 : 0;
+    els.summaryCards.querySelector('[data-key="issues_total"]').textContent = total;
+    els.summaryCards.querySelector('[data-status="match"]').textContent = by.match || 0;
+    els.summaryCards.querySelector('[data-status="not_found_in_1c"]').textContent = by.not_found_in_1c || 0;
+    els.summaryCards.querySelector('[data-status="not_found_in_erp"]').textContent = by.not_found_in_erp || 0;
+    const mismatches = ['amount_mismatch', 'date_mismatch', 'contract_mismatch', 'vat_mismatch'].reduce((sum, key) => sum + Number(by[key] || 0), 0);
+    els.summaryCards.querySelector('[data-role="mismatches"]').textContent = mismatches;
+    els.reconBadge.textContent = String(total);
+  }
+
+  function renderResults() {
+    const issues = state.run && Array.isArray(state.run.issues) ? state.run.issues : [];
+    const filter = els.statusFilter.value || 'all';
+    const search = (els.resultSearchInput.value || '').trim().toLowerCase();
+    syncResultFilterTiles(filter);
+    let rows = issues;
+    if (filter === 'problems') rows = rows.filter((row) => row.status !== 'match');
+    else if (filter === 'mismatches') rows = rows.filter((row) => ['amount_mismatch', 'date_mismatch', 'contract_mismatch', 'vat_mismatch'].includes(row.status));
+    else if (filter !== 'all') rows = rows.filter((row) => row.status === filter);
+    if (search) rows = rows.filter((row) => JSON.stringify(row).toLowerCase().includes(search));
+    if (!rows.length) {
+      els.resultRows.innerHTML = `<tr><td colspan="9" class="empty-cell">${issues.length ? 'По выбранному фильтру строк нет.' : 'Сверка еще не запускалась.'}</td></tr>`;
+      renderSummary();
+      return;
+    }
+    els.resultRows.innerHTML = rows.map((row) => resultRowHtml(row)).join('');
+    bindFeedbackControls();
+    renderSummary();
+  }
+
+  function syncResultFilterTiles(filter) {
+    els.summaryCards.querySelectorAll('[data-result-filter]').forEach((node) => {
+      node.classList.toggle('active', (node.getAttribute('data-result-filter') || 'all') === filter);
+    });
+  }
+
+  function resultRowHtml(issueRow) {
+    const erp = issueRow.erp_document || {};
+    const onec = issueRow.onec_document || {};
+    const key = feedbackKey(issueRow);
+    const feedback = state.feedback[key] || {};
+    return `<tr>
+      <td>${statusBadge(issueRow.status)}</td>
+      <td>${escapeHtml(issueType(issueRow))}</td>
+      <td class="mono">${escapeHtml(documentTitle(erp))}</td>
+      <td class="mono">${escapeHtml(documentTitle(onec))}</td>
+      <td class="mono">${escapeHtml(fmtDate(erp.date || onec.date))}</td>
+      <td class="num">${escapeHtml(fmtDocMoney(erp))}</td>
+      <td class="num">${escapeHtml(fmtDocMoney(onec))}</td>
+      <td>${escapeHtml(issueReason(issueRow))}</td>
+      <td class="feedback-cell">
+        <select data-feedback-reason="${escapeHtml(key)}">${feedbackReasons.map(([value, label]) => `<option value="${escapeHtml(value)}" ${feedback.reason === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>
+        <textarea data-feedback-comment="${escapeHtml(key)}" placeholder="Комментарий для разбора">${escapeHtml(feedback.comment || '')}</textarea>
+      </td>
+    </tr>`;
+  }
+
+  function bindFeedbackControls() {
+    els.resultRows.querySelectorAll('[data-feedback-reason]').forEach((node) => {
+      node.addEventListener('change', () => saveFeedback(node.getAttribute('data-feedback-reason'), { reason: node.value }));
+    });
+    els.resultRows.querySelectorAll('[data-feedback-comment]').forEach((node) => {
+      node.addEventListener('input', () => saveFeedback(node.getAttribute('data-feedback-comment'), { comment: node.value }));
+    });
+  }
+
+  function saveFeedback(key, patch) {
+    state.feedback[key] = Object.assign({}, state.feedback[key] || {}, patch);
+    localStorage.setItem('recon_feedback_v1', JSON.stringify(state.feedback));
+  }
+
+  function feedbackKey(row) {
+    const erp = row.erp_document || {};
+    const onec = row.onec_document || {};
+    return [row.status, erp.kind || onec.kind, erp.code1c || erp.number || '', onec.code1c || onec.number || ''].join('|');
+  }
+
+  function issueType(row) {
+    const doc = row.erp_document || row.onec_document || {};
+    const map = {
+      customer_invoice: 'Счет покупателю',
+      payment: 'Оплата покупателя',
+      sale: 'Акт / реализация',
+      purchase: 'Поступление поставщика',
+      closing_document: 'Закрывающий документ',
+      account_movement: 'Движение по счету',
+    };
+    return map[doc.kind] || doc.kind || 'Документ';
+  }
+
+  function documentTitle(doc) {
+    if (!doc || Object.keys(doc).length === 0) return '—';
+    return [doc.code1c || doc.number, doc.contract_code1c].filter(Boolean).join('\n') || '—';
+  }
+
+  function issueReason(row) {
+    const labels = {
+      code1c: 'код 1С',
+      date: 'дата',
+      currency: 'валюта',
+      amount: 'сумма',
+      contract_code1c: 'договор 1С',
+      vat_rate: 'ставка НДС',
+    };
+    const fields = (row.fields || []).map((field) => labels[field] || field);
+    if (fields.length) return `Расходятся: ${fields.join(', ')}`;
+    return row.message || 'Без расхождений';
+  }
+
+  function statusBadge(status) {
+    const map = {
+      match: ['match', 'ОК'],
+      not_found_in_1c: ['bad', 'Нет в 1С'],
+      not_found_in_erp: ['warn', 'Нет в ERP'],
+      amount_mismatch: ['bad', 'Сумма/валюта'],
+      date_mismatch: ['warn', 'Дата'],
+      contract_mismatch: ['warn', 'Договор'],
+      vat_mismatch: ['warn', 'НДС'],
+      not_comparable: ['warn', 'Не сверяется'],
+    };
+    const value = map[status] || ['warn', status || 'unknown'];
+    return `<span class="badge ${value[0]}">${escapeHtml(value[1])}</span>`;
+  }
+
+  async function exportXlsx() {
+    if (state.view === 'matrix') {
+      await exportMatrixXlsx();
+      return;
+    }
+    if (!state.run) return;
+    setMessage(els.runMessage, 'Формируем XLSX по результату сверки...');
+    try {
+      const resp = await api('/api/reconciliation/run.xlsx', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ run: state.run }),
+      });
+      if (!resp.ok) {
+        let message = `HTTP ${resp.status}`;
+        try { message = (await resp.json()).message || message; } catch (_) {}
+        throw new Error(message);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const row = selectedSpec();
+      const suffix = row ? String(row.spec_number || row.spec_id).replace(/[^\wа-яА-Я-]+/g, '_') : 'run';
+      link.href = url;
+      link.download = `sverka-erp-1c-${suffix}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setMessage(els.runMessage, 'XLSX сформирован.');
+    } catch (err) {
+      setMessage(els.runMessage, normalizeErrorMessage(err), true);
+    }
+  }
+
+  async function exportMatrixXlsx() {
+    if (!state.matrix.length) return;
+    if (!validateClientFilter(els.matrixMessage)) return;
+    setMessage(els.matrixMessage, 'Формируем XLSX по текущей матрице...');
+    try {
+      const resp = await api('/api/reconciliation/matrix.xlsx?' + queryParams().toString(), {
+        headers: { Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      });
+      if (!resp.ok) {
+        let message = `HTTP ${resp.status}`;
+        try { message = (await resp.json()).message || message; } catch (_) {}
+        throw new Error(message);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `akt-sverki-matrix-${els.clientIdInput.value || 'client'}-${els.dateFromInput.value || 'from'}-${els.dateToInput.value || 'to'}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage(els.matrixMessage, 'XLSX матрицы сформирован.');
+    } catch (err) {
+      setMessage(els.matrixMessage, normalizeErrorMessage(err), true);
+    }
+  }
+
+  function updateActionState() {
+    const hasSpec = Boolean(state.selectedSpecId);
+    const hasRun = Boolean(state.run);
+    const hasMatrix = state.matrix.length > 0;
+    els.matrixToReconBtn.disabled = !hasSpec;
+    els.runBtn.disabled = !hasSpec;
+    els.exportBtn.disabled = !hasRun;
+    els.topExportBtn.disabled = state.view === 'matrix' ? !hasMatrix : !hasRun;
+  }
+
+  function validateClientFilter(messageNode) {
+    const text = (els.clientIdInput.value || '').trim();
+    if (text && !selectedClientId()) {
+      setMessage(messageNode, 'Выберите клиента из выпадающего списка или введите ID клиента.', true);
+      return false;
+    }
+    return true;
+  }
+
+  function initDefaults() {
+    const now = new Date();
+    els.dateToInput.value = inputDateValue(now);
+    els.dateFromInput.value = inputDateValue(new Date(now.getFullYear(), 0, 1));
+    const params = new URLSearchParams(location.search);
+    if (params.get('client_id')) els.clientIdInput.value = params.get('client_id');
+    if (params.get('client_id')) els.clientIdInput.dataset.clientId = params.get('client_id');
+    if (params.get('dog_id')) els.dogIdInput.value = params.get('dog_id');
+    if (params.get('limit')) els.limitInput.value = params.get('limit');
+  }
+
+  function setCurrentYear() {
+    const now = new Date();
+    els.dateToInput.value = inputDateValue(now);
+    els.dateFromInput.value = inputDateValue(new Date(now.getFullYear(), 0, 1));
+  }
+
+  function setLast90Days() {
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(start.getDate() - 90);
+    els.dateToInput.value = inputDateValue(now);
+    els.dateFromInput.value = inputDateValue(start);
+  }
+
+  function resetFilters() {
+    els.clientIdInput.value = '';
+    delete els.clientIdInput.dataset.clientId;
+    delete els.clientIdInput.dataset.clientLabel;
+    renderClientSuggestions([]);
+    els.dogIdInput.value = '';
+    els.limitInput.value = '20';
+    setCurrentYear();
+    state.matrix = [];
+    state.matrixPayload = null;
+    state.selectedSpecId = null;
+    state.run = null;
+    localStorage.removeItem('recon_selected_spec');
+    renderMatrix();
+    renderSelectedContext();
+    renderResults();
+    updateActionState();
+    setMessage(els.matrixMessage, 'Фильтры сброшены.');
+    setMessage(els.runMessage, '');
+  }
+
+  function bind() {
+    els.loginBtn.addEventListener('click', login);
+    els.passwordInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') login(); });
+    els.logoutBtn.addEventListener('click', logout);
+    els.navMatrixBtn.addEventListener('click', () => setView('matrix'));
+    els.navReconBtn.addEventListener('click', () => setView('recon'));
+    els.tabMatrixBtn.addEventListener('click', () => setView('matrix'));
+    els.tabReconBtn.addEventListener('click', () => setView('recon'));
+    els.matrixToReconBtn.addEventListener('click', () => setView('recon'));
+    els.refreshBtn.addEventListener('click', () => state.view === 'matrix' ? loadMatrix() : runReconciliation());
+    els.loadMatrixBtn.addEventListener('click', loadMatrix);
+    els.clientIdInput.addEventListener('input', scheduleClientSearch);
+    els.clientIdInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') renderClientSuggestions([]);
+    });
+    document.addEventListener('click', (event) => {
+      if (!els.clientIdInput.contains(event.target) && !els.clientSuggestions.contains(event.target)) {
+        els.clientSuggestions.classList.add('hidden');
+      }
+    });
+    els.presetYearBtn.addEventListener('click', setCurrentYear);
+    els.preset90Btn.addEventListener('click', setLast90Days);
+    els.resetFiltersBtn.addEventListener('click', resetFilters);
+    els.runBtn.addEventListener('click', runReconciliation);
+    els.exportBtn.addEventListener('click', exportXlsx);
+    els.topExportBtn.addEventListener('click', exportXlsx);
+    els.statusFilter.addEventListener('change', renderResults);
+    els.resultSearchInput.addEventListener('input', renderResults);
+    els.summaryCards.querySelectorAll('[data-result-filter]').forEach((node) => {
+      node.addEventListener('click', () => {
+        els.statusFilter.value = node.getAttribute('data-result-filter') || 'all';
+        renderResults();
+      });
+    });
+  }
+
+  initDefaults();
+  bind();
+  applyAuthState();
+  setView(state.view === 'recon' ? 'recon' : 'matrix');
+  renderMatrix();
+  renderSelectedContext();
+  renderProgress(null);
+  validateSession();
+})();

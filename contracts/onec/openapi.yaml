@@ -1,0 +1,2212 @@
+openapi: "3.0.3"
+info:
+  title: "1C Reconciliation Read-only GET API"
+  version: "1.1.0"
+  description: "GET-only REST API 1C для Python-сервиса сверки ERP vs 1C. API отдает нормализованные DTO и не публикует сырые OData-объекты 1C."
+servers:
+  -
+    url: "https://1c.example.local"
+    description: "Production 1C base URL"
+  -
+    url: "https://1c-test.example.local"
+    description: "Test 1C base URL"
+security:
+  -
+    bearerAuth:
+  -
+    basicAuth:
+tags:
+  -
+    name: "Health"
+    description: "Проверка доступности 1C REST API."
+  -
+    name: "Snapshot"
+    description: "Интерактивный GET-снимок 1C для сверки поставки/договора/клиента."
+  -
+    name: "Collections"
+    description: "GET-коллекции для фонового runner-а и инкрементальной сверки."
+paths:
+  /reconciliation/v1/health:
+    get:
+      tags:
+        - "Health"
+      operationId: "getReconciliationHealth"
+      summary: "Проверить доступность read-only API 1C"
+      responses:
+        200:
+          description: "Сервис доступен"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalError"
+  /reconciliation/v1/snapshot:
+    get:
+      tags:
+        - "Snapshot"
+      operationId: "getReconciliationSnapshot"
+      summary: "Получить GET-снимок 1C для сверки"
+      description: "Основной endpoint интерактивной сверки. Все входные данные передаются query-параметрами. Для поставки основной ключ поиска в 1C — buyer_contract_code/committent_contract_code или повторяемый contract_code по Справочник.ДоговорыКонтрагентов.Код. Минимально нужны date_from/date_to и один бизнес-фильтр: buyer_contract_code, committent_contract_code, contract_code, counterparty_code, counterparty_inn или document_code."
+      parameters:
+        -
+          name: "request_id"
+          in: "query"
+          required: false
+          description: "Технический id запроса Python backend. 1C не использует его для поиска, а возвращает в ответе для трассировки."
+          schema:
+            type: "string"
+        -
+          name: "mode"
+          in: "query"
+          required: false
+          description: "Режим сверки"
+          schema:
+            type: "string"
+            enum:
+              - "delivery_reconciliation"
+              - "contract_reconciliation"
+              - "client_reconciliation"
+            default: "delivery_reconciliation"
+        -
+          name: "contract_version"
+          in: "query"
+          required: false
+          description: "Версия контракта DTO"
+          schema:
+            type: "string"
+            default: "reconciliation.v1"
+        -
+          name: "date_from"
+          in: "query"
+          required: true
+          description: "Начало периода поиска документов 1C. Обязательно."
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "date_to"
+          in: "query"
+          required: true
+          description: "Конец периода поиска документов 1C. Обязательно."
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "organization_code"
+          in: "query"
+          required: false
+          description: "Код организации в 1C. Передается, если известен."
+          schema:
+            type: "string"
+        -
+          name: "organization_inn"
+          in: "query"
+          required: false
+          description: "ИНН организации. Используется, если код 1C неизвестен."
+          schema:
+            type: "string"
+        -
+          name: "organization_name"
+          in: "query"
+          required: false
+          description: "Наименование организации для резервного поиска."
+          schema:
+            type: "string"
+        -
+          name: "counterparty_code"
+          in: "query"
+          required: false
+          description: "Код контрагента в 1C. Передается, если известен."
+          schema:
+            type: "string"
+        -
+          name: "counterparty_inn"
+          in: "query"
+          required: false
+          description: "ИНН ЮЛ клиента/контрагента. Основной резервный признак для поиска контрагента."
+          schema:
+            type: "string"
+        -
+          name: "counterparty_name"
+          in: "query"
+          required: false
+          description: "Наименование ЮЛ клиента/контрагента для резервного поиска."
+          schema:
+            type: "string"
+        -
+          name: "buyer_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с покупателем из ERP veda_specs.f_kod1cb. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "committent_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с комитентом / агентского договора из ERP veda_specs.f_kod1cp. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "contract_code"
+          in: "query"
+          required: false
+          description: "Повторяемый список кодов договоров 1C для фильтра по Справочник.ДоговорыКонтрагентов.Код. Для поставки включает f_kod1cb/f_kod1cp; это основной ключ связи ERP с 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "contract_number"
+          in: "query"
+          required: false
+          description: "Номер договора. Контрольный или резервный признак; не основной ключ поставки, если переданы коды договоров 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "contract_role"
+          in: "query"
+          required: false
+          description: "Роль договора в ERP-контексте. Повторяемый query-параметр, порядок не используется как связь."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+              enum:
+                - "buyer"
+                - "committent"
+                - "supplier"
+                - "agent"
+                - "related"
+          style: "form"
+          explode: true
+        -
+          name: "base_contract"
+          in: "query"
+          required: false
+          description: "Номер базового договора. Только контрольная подсказка; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "spec_number"
+          in: "query"
+          required: false
+          description: "Бизнес-номер заявки/спецификации из ERP. Контрольное поле; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "document_code"
+          in: "query"
+          required: false
+          description: "Коды/номера 1C документов для точного ограничения выборки. Передаются только если ERP уже знает код 1C документа."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "document_number"
+          in: "query"
+          required: false
+          description: "Номера документов для резервного поиска. Повторяемый query-параметр."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "document_type"
+          in: "query"
+          required: false
+          description: "Типы документов, которые нужно вернуть. Повторяемый query-параметр."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+              enum:
+                - "customer_invoice"
+                - "payment"
+                - "sale"
+                - "purchase"
+                - "closing_document"
+                - "account_movement"
+          style: "form"
+          explode: true
+        -
+          name: "include"
+          in: "query"
+          required: false
+          description: "Состав блоков ответа snapshot. Это не фильтр поиска документов; параметр только ограничивает, какие массивы вернуть: contracts, customer_invoices, payments, sales, purchases, document_lines, account_movements, balances."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+              enum:
+                - "counterparties"
+                - "contracts"
+                - "customer_invoices"
+                - "payments"
+                - "sales"
+                - "purchases"
+                - "document_lines"
+                - "account_movements"
+                - "balances"
+          style: "form"
+          explode: true
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          description: "Курсор следующей страницы, если ответ слишком большой."
+          schema:
+            type: "string"
+        -
+          name: "limit"
+          in: "query"
+          required: false
+          description: "Максимум элементов на блок/страницу. По умолчанию 500, максимум 2000."
+          schema:
+            type: "integer"
+            default: 500
+            minimum: 1
+            maximum: 2000
+      responses:
+        200:
+          description: "Снимок сформирован"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        422:
+          $ref: "#/components/responses/ValidationError"
+        500:
+          $ref: "#/components/responses/InternalError"
+  /reconciliation/v1/counterparties:
+    get:
+      tags:
+        - "Collections"
+      operationId: "listCounterparties"
+      summary: "Получить counterparties"
+      parameters:
+        -
+          name: "changed_since"
+          in: "query"
+          required: false
+          description: "Вернуть объекты, измененные после указанного времени"
+          schema:
+            type: "string"
+            format: "date-time"
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          description: "Курсор следующей страницы"
+          schema:
+            type: "string"
+        -
+          name: "limit"
+          in: "query"
+          required: false
+          description: "Размер страницы. По умолчанию 500, максимум 2000."
+          schema:
+            type: "integer"
+            default: 500
+            minimum: 1
+            maximum: 2000
+      responses:
+        200:
+          description: "Страница данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CounterpartiesResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalError"
+  /reconciliation/v1/contracts:
+    get:
+      tags:
+        - "Collections"
+      operationId: "listContracts"
+      summary: "Получить contracts"
+      parameters:
+        -
+          name: "counterparty_code"
+          in: "query"
+          required: false
+          description: "Код контрагента 1C"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_inn"
+          in: "query"
+          required: false
+          description: "ИНН контрагента"
+          schema:
+            type: "string"
+        -
+          name: "contract_number"
+          in: "query"
+          required: false
+          description: "Номер договора. Контрольный или резервный признак; не основной ключ поставки, если переданы коды договоров 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "base_contract"
+          in: "query"
+          required: false
+          description: "Номер базового договора. Только контрольная подсказка; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "spec_number"
+          in: "query"
+          required: false
+          description: "Бизнес-номер заявки/спецификации из ERP. Контрольное поле; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "changed_since"
+          in: "query"
+          required: false
+          description: "Вернуть объекты, измененные после указанного времени"
+          schema:
+            type: "string"
+            format: "date-time"
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          description: "Курсор следующей страницы"
+          schema:
+            type: "string"
+        -
+          name: "limit"
+          in: "query"
+          required: false
+          description: "Размер страницы. По умолчанию 500, максимум 2000."
+          schema:
+            type: "integer"
+            default: 500
+            minimum: 1
+            maximum: 2000
+      responses:
+        200:
+          description: "Страница данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractsResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalError"
+  /reconciliation/v1/invoices:
+    get:
+      tags:
+        - "Collections"
+      operationId: "listInvoices"
+      summary: "Получить invoices"
+      parameters:
+        -
+          name: "date_from"
+          in: "query"
+          required: false
+          description: "Начало периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "date_to"
+          in: "query"
+          required: false
+          description: "Конец периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "organization_code"
+          in: "query"
+          required: false
+          description: "Код организации 1C"
+          schema:
+            type: "string"
+        -
+          name: "organization_inn"
+          in: "query"
+          required: false
+          description: "ИНН организации"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_code"
+          in: "query"
+          required: false
+          description: "Код контрагента 1C"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_inn"
+          in: "query"
+          required: false
+          description: "ИНН контрагента"
+          schema:
+            type: "string"
+        -
+          name: "buyer_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с покупателем из ERP veda_specs.f_kod1cb. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "committent_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с комитентом / агентского договора из ERP veda_specs.f_kod1cp. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "contract_code"
+          in: "query"
+          required: false
+          description: "Повторяемый список кодов договоров 1C для фильтра по Справочник.ДоговорыКонтрагентов.Код. Для поставки включает f_kod1cb/f_kod1cp; это основной ключ связи ERP с 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "contract_number"
+          in: "query"
+          required: false
+          description: "Номер договора. Контрольный или резервный признак; не основной ключ поставки, если переданы коды договоров 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "base_contract"
+          in: "query"
+          required: false
+          description: "Номер базового договора. Только контрольная подсказка; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "spec_number"
+          in: "query"
+          required: false
+          description: "Бизнес-номер заявки/спецификации из ERP. Контрольное поле; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "changed_since"
+          in: "query"
+          required: false
+          description: "Вернуть объекты, измененные после указанного времени"
+          schema:
+            type: "string"
+            format: "date-time"
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          description: "Курсор следующей страницы"
+          schema:
+            type: "string"
+        -
+          name: "limit"
+          in: "query"
+          required: false
+          description: "Размер страницы. По умолчанию 500, максимум 2000."
+          schema:
+            type: "integer"
+            default: 500
+            minimum: 1
+            maximum: 2000
+      responses:
+        200:
+          description: "Страница данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoicesResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalError"
+  /reconciliation/v1/payments:
+    get:
+      tags:
+        - "Collections"
+      operationId: "listPayments"
+      summary: "Получить payments"
+      parameters:
+        -
+          name: "date_from"
+          in: "query"
+          required: false
+          description: "Начало периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "date_to"
+          in: "query"
+          required: false
+          description: "Конец периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "organization_code"
+          in: "query"
+          required: false
+          description: "Код организации 1C"
+          schema:
+            type: "string"
+        -
+          name: "organization_inn"
+          in: "query"
+          required: false
+          description: "ИНН организации"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_code"
+          in: "query"
+          required: false
+          description: "Код контрагента 1C"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_inn"
+          in: "query"
+          required: false
+          description: "ИНН контрагента"
+          schema:
+            type: "string"
+        -
+          name: "buyer_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с покупателем из ERP veda_specs.f_kod1cb. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "committent_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с комитентом / агентского договора из ERP veda_specs.f_kod1cp. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "contract_code"
+          in: "query"
+          required: false
+          description: "Повторяемый список кодов договоров 1C для фильтра по Справочник.ДоговорыКонтрагентов.Код. Для поставки включает f_kod1cb/f_kod1cp; это основной ключ связи ERP с 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "contract_number"
+          in: "query"
+          required: false
+          description: "Номер договора. Контрольный или резервный признак; не основной ключ поставки, если переданы коды договоров 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "base_contract"
+          in: "query"
+          required: false
+          description: "Номер базового договора. Только контрольная подсказка; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "spec_number"
+          in: "query"
+          required: false
+          description: "Бизнес-номер заявки/спецификации из ERP. Контрольное поле; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "changed_since"
+          in: "query"
+          required: false
+          description: "Вернуть объекты, измененные после указанного времени"
+          schema:
+            type: "string"
+            format: "date-time"
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          description: "Курсор следующей страницы"
+          schema:
+            type: "string"
+        -
+          name: "limit"
+          in: "query"
+          required: false
+          description: "Размер страницы. По умолчанию 500, максимум 2000."
+          schema:
+            type: "integer"
+            default: 500
+            minimum: 1
+            maximum: 2000
+      responses:
+        200:
+          description: "Страница данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentsResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalError"
+  /reconciliation/v1/sales:
+    get:
+      tags:
+        - "Collections"
+      operationId: "listSales"
+      summary: "Получить sales"
+      parameters:
+        -
+          name: "date_from"
+          in: "query"
+          required: false
+          description: "Начало периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "date_to"
+          in: "query"
+          required: false
+          description: "Конец периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "organization_code"
+          in: "query"
+          required: false
+          description: "Код организации 1C"
+          schema:
+            type: "string"
+        -
+          name: "organization_inn"
+          in: "query"
+          required: false
+          description: "ИНН организации"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_code"
+          in: "query"
+          required: false
+          description: "Код контрагента 1C"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_inn"
+          in: "query"
+          required: false
+          description: "ИНН контрагента"
+          schema:
+            type: "string"
+        -
+          name: "buyer_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с покупателем из ERP veda_specs.f_kod1cb. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "committent_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с комитентом / агентского договора из ERP veda_specs.f_kod1cp. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "contract_code"
+          in: "query"
+          required: false
+          description: "Повторяемый список кодов договоров 1C для фильтра по Справочник.ДоговорыКонтрагентов.Код. Для поставки включает f_kod1cb/f_kod1cp; это основной ключ связи ERP с 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "contract_number"
+          in: "query"
+          required: false
+          description: "Номер договора. Контрольный или резервный признак; не основной ключ поставки, если переданы коды договоров 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "base_contract"
+          in: "query"
+          required: false
+          description: "Номер базового договора. Только контрольная подсказка; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "spec_number"
+          in: "query"
+          required: false
+          description: "Бизнес-номер заявки/спецификации из ERP. Контрольное поле; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "changed_since"
+          in: "query"
+          required: false
+          description: "Вернуть объекты, измененные после указанного времени"
+          schema:
+            type: "string"
+            format: "date-time"
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          description: "Курсор следующей страницы"
+          schema:
+            type: "string"
+        -
+          name: "limit"
+          in: "query"
+          required: false
+          description: "Размер страницы. По умолчанию 500, максимум 2000."
+          schema:
+            type: "integer"
+            default: 500
+            minimum: 1
+            maximum: 2000
+      responses:
+        200:
+          description: "Страница данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalError"
+  /reconciliation/v1/purchases:
+    get:
+      tags:
+        - "Collections"
+      operationId: "listPurchases"
+      summary: "Получить purchases"
+      parameters:
+        -
+          name: "date_from"
+          in: "query"
+          required: false
+          description: "Начало периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "date_to"
+          in: "query"
+          required: false
+          description: "Конец периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "organization_code"
+          in: "query"
+          required: false
+          description: "Код организации 1C"
+          schema:
+            type: "string"
+        -
+          name: "organization_inn"
+          in: "query"
+          required: false
+          description: "ИНН организации"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_code"
+          in: "query"
+          required: false
+          description: "Код контрагента 1C"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_inn"
+          in: "query"
+          required: false
+          description: "ИНН контрагента"
+          schema:
+            type: "string"
+        -
+          name: "buyer_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с покупателем из ERP veda_specs.f_kod1cb. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "committent_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с комитентом / агентского договора из ERP veda_specs.f_kod1cp. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "contract_code"
+          in: "query"
+          required: false
+          description: "Повторяемый список кодов договоров 1C для фильтра по Справочник.ДоговорыКонтрагентов.Код. Для поставки включает f_kod1cb/f_kod1cp; это основной ключ связи ERP с 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "contract_number"
+          in: "query"
+          required: false
+          description: "Номер договора. Контрольный или резервный признак; не основной ключ поставки, если переданы коды договоров 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "base_contract"
+          in: "query"
+          required: false
+          description: "Номер базового договора. Только контрольная подсказка; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "spec_number"
+          in: "query"
+          required: false
+          description: "Бизнес-номер заявки/спецификации из ERP. Контрольное поле; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "changed_since"
+          in: "query"
+          required: false
+          description: "Вернуть объекты, измененные после указанного времени"
+          schema:
+            type: "string"
+            format: "date-time"
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          description: "Курсор следующей страницы"
+          schema:
+            type: "string"
+        -
+          name: "limit"
+          in: "query"
+          required: false
+          description: "Размер страницы. По умолчанию 500, максимум 2000."
+          schema:
+            type: "integer"
+            default: 500
+            minimum: 1
+            maximum: 2000
+      responses:
+        200:
+          description: "Страница данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchasesResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalError"
+  "/reconciliation/v1/document-lines":
+    get:
+      tags:
+        - "Collections"
+      operationId: "listDocumentLines"
+      summary: "Получить document-lines"
+      parameters:
+        -
+          name: "date_from"
+          in: "query"
+          required: false
+          description: "Начало периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "date_to"
+          in: "query"
+          required: false
+          description: "Конец периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "organization_code"
+          in: "query"
+          required: false
+          description: "Код организации 1C"
+          schema:
+            type: "string"
+        -
+          name: "organization_inn"
+          in: "query"
+          required: false
+          description: "ИНН организации"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_code"
+          in: "query"
+          required: false
+          description: "Код контрагента 1C"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_inn"
+          in: "query"
+          required: false
+          description: "ИНН контрагента"
+          schema:
+            type: "string"
+        -
+          name: "buyer_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с покупателем из ERP veda_specs.f_kod1cb. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "committent_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с комитентом / агентского договора из ERP veda_specs.f_kod1cp. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "contract_code"
+          in: "query"
+          required: false
+          description: "Повторяемый список кодов договоров 1C для фильтра по Справочник.ДоговорыКонтрагентов.Код. Для поставки включает f_kod1cb/f_kod1cp; это основной ключ связи ERP с 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "contract_number"
+          in: "query"
+          required: false
+          description: "Номер договора. Контрольный или резервный признак; не основной ключ поставки, если переданы коды договоров 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "base_contract"
+          in: "query"
+          required: false
+          description: "Номер базового договора. Только контрольная подсказка; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "spec_number"
+          in: "query"
+          required: false
+          description: "Бизнес-номер заявки/спецификации из ERP. Контрольное поле; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "changed_since"
+          in: "query"
+          required: false
+          description: "Вернуть объекты, измененные после указанного времени"
+          schema:
+            type: "string"
+            format: "date-time"
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          description: "Курсор следующей страницы"
+          schema:
+            type: "string"
+        -
+          name: "limit"
+          in: "query"
+          required: false
+          description: "Размер страницы. По умолчанию 500, максимум 2000."
+          schema:
+            type: "integer"
+            default: 500
+            minimum: 1
+            maximum: 2000
+      responses:
+        200:
+          description: "Страница данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentLinesResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalError"
+  "/reconciliation/v1/account-movements":
+    get:
+      tags:
+        - "Collections"
+      operationId: "listAccountMovements"
+      summary: "Получить account-movements"
+      parameters:
+        -
+          name: "date_from"
+          in: "query"
+          required: false
+          description: "Начало периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "date_to"
+          in: "query"
+          required: false
+          description: "Конец периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "organization_code"
+          in: "query"
+          required: false
+          description: "Код организации 1C"
+          schema:
+            type: "string"
+        -
+          name: "organization_inn"
+          in: "query"
+          required: false
+          description: "ИНН организации"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_code"
+          in: "query"
+          required: false
+          description: "Код контрагента 1C"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_inn"
+          in: "query"
+          required: false
+          description: "ИНН контрагента"
+          schema:
+            type: "string"
+        -
+          name: "buyer_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с покупателем из ERP veda_specs.f_kod1cb. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "committent_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с комитентом / агентского договора из ERP veda_specs.f_kod1cp. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "contract_code"
+          in: "query"
+          required: false
+          description: "Повторяемый список кодов договоров 1C для фильтра по Справочник.ДоговорыКонтрагентов.Код. Для поставки включает f_kod1cb/f_kod1cp; это основной ключ связи ERP с 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "contract_number"
+          in: "query"
+          required: false
+          description: "Номер договора. Контрольный или резервный признак; не основной ключ поставки, если переданы коды договоров 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "base_contract"
+          in: "query"
+          required: false
+          description: "Номер базового договора. Только контрольная подсказка; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "spec_number"
+          in: "query"
+          required: false
+          description: "Бизнес-номер заявки/спецификации из ERP. Контрольное поле; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "changed_since"
+          in: "query"
+          required: false
+          description: "Вернуть объекты, измененные после указанного времени"
+          schema:
+            type: "string"
+            format: "date-time"
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          description: "Курсор следующей страницы"
+          schema:
+            type: "string"
+        -
+          name: "limit"
+          in: "query"
+          required: false
+          description: "Размер страницы. По умолчанию 500, максимум 2000."
+          schema:
+            type: "integer"
+            default: 500
+            minimum: 1
+            maximum: 2000
+      responses:
+        200:
+          description: "Страница данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountMovementsResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalError"
+  /reconciliation/v1/balances:
+    get:
+      tags:
+        - "Collections"
+      operationId: "listBalances"
+      summary: "Получить balances"
+      parameters:
+        -
+          name: "date_from"
+          in: "query"
+          required: false
+          description: "Начало периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "date_to"
+          in: "query"
+          required: false
+          description: "Конец периода документа"
+          schema:
+            type: "string"
+            format: "date"
+        -
+          name: "organization_code"
+          in: "query"
+          required: false
+          description: "Код организации 1C"
+          schema:
+            type: "string"
+        -
+          name: "organization_inn"
+          in: "query"
+          required: false
+          description: "ИНН организации"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_code"
+          in: "query"
+          required: false
+          description: "Код контрагента 1C"
+          schema:
+            type: "string"
+        -
+          name: "counterparty_inn"
+          in: "query"
+          required: false
+          description: "ИНН контрагента"
+          schema:
+            type: "string"
+        -
+          name: "buyer_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с покупателем из ERP veda_specs.f_kod1cb. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "committent_contract_code"
+          in: "query"
+          required: false
+          description: "Код договора 1C с комитентом / агентского договора из ERP veda_specs.f_kod1cp. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
+          schema:
+            type: "string"
+        -
+          name: "contract_code"
+          in: "query"
+          required: false
+          description: "Повторяемый список кодов договоров 1C для фильтра по Справочник.ДоговорыКонтрагентов.Код. Для поставки включает f_kod1cb/f_kod1cp; это основной ключ связи ERP с 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "contract_number"
+          in: "query"
+          required: false
+          description: "Номер договора. Контрольный или резервный признак; не основной ключ поставки, если переданы коды договоров 1C."
+          schema:
+            type: "array"
+            items:
+              type: "string"
+          style: "form"
+          explode: true
+        -
+          name: "base_contract"
+          in: "query"
+          required: false
+          description: "Номер базового договора. Только контрольная подсказка; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "spec_number"
+          in: "query"
+          required: false
+          description: "Бизнес-номер заявки/спецификации из ERP. Контрольное поле; не заменяет поиск по коду договора 1C."
+          schema:
+            type: "string"
+        -
+          name: "changed_since"
+          in: "query"
+          required: false
+          description: "Вернуть объекты, измененные после указанного времени"
+          schema:
+            type: "string"
+            format: "date-time"
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          description: "Курсор следующей страницы"
+          schema:
+            type: "string"
+        -
+          name: "limit"
+          in: "query"
+          required: false
+          description: "Размер страницы. По умолчанию 500, максимум 2000."
+          schema:
+            type: "integer"
+            default: 500
+            minimum: 1
+            maximum: 2000
+      responses:
+        200:
+          description: "Страница данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BalancesResponse"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: "http"
+      scheme: "bearer"
+      bearerFormat: "opaque-token"
+    basicAuth:
+      type: "http"
+      scheme: "basic"
+  responses:
+    BadRequest:
+      description: "Некорректный запрос"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: "Нет доступа или неверный токен"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ValidationError:
+      description: "Запрос корректен синтаксически, но не может быть обработан бизнес-логикой"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: "Ошибка 1C-сервиса"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ErrorResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "error"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - false
+        error:
+          type: "string"
+          example: "validation_error"
+        message:
+          type: "string"
+          example: "Не указан date_from"
+        request_id:
+          type: "string"
+        details:
+          type: "object"
+          additionalProperties: true
+      additionalProperties: true
+    HealthResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "service"
+        - "version"
+        - "server_time"
+        - "read_only"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - true
+        service:
+          type: "string"
+          example: "1c-reconciliation"
+        version:
+          type: "string"
+          example: "1.0.0"
+        configuration:
+          type: "string"
+          description: "Название конфигурации/базы 1C"
+        contract_version:
+          type: "string"
+          example: "reconciliation.v1"
+        timezone:
+          type: "string"
+          example: "Asia/Novosibirsk"
+        server_time:
+          type: "string"
+          format: "date-time"
+        read_only:
+          type: "boolean"
+          enum:
+            - true
+      additionalProperties: true
+    BaseEntity:
+      type: "object"
+      required:
+        - "source_system"
+        - "source_id"
+      properties:
+        source_system:
+          type: "string"
+          enum:
+            - "1c"
+        source_id:
+          type: "string"
+          description: "Уникальный идентификатор объекта 1C, желательно GUID ссылки"
+        source_ref:
+          type: "string"
+          description: "Представление ссылки/кода 1C"
+        source_version:
+          type: "string"
+          description: "Версия DTO или конфигурации 1C"
+        posted:
+          type: "boolean"
+        deleted:
+          type: "boolean"
+        status:
+          type: "string"
+          enum:
+            - "posted"
+            - "draft"
+            - "deleted"
+            - "unposted"
+            - "unknown"
+        updated_at:
+          type: "string"
+          format: "date-time"
+        hash:
+          type: "string"
+          description: "Хэш бизнес-полей DTO"
+      additionalProperties: true
+    CounterpartyDto:
+      allOf:
+        -
+          $ref: "#/components/schemas/BaseEntity"
+        -
+          type: "object"
+          properties:
+            code:
+              type: "string"
+            name:
+              type: "string"
+            full_name:
+              type: "string"
+            inn:
+              type: "string"
+            kpp:
+              type: "string"
+            legal_type:
+              type: "string"
+              enum:
+                - "legal_entity"
+                - "individual"
+                - "separate_division"
+                - "government"
+                - "unknown"
+            parent_counterparty_id:
+              type: "string"
+              nullable: true
+    ContractDto:
+      allOf:
+        -
+          $ref: "#/components/schemas/BaseEntity"
+        -
+          type: "object"
+          properties:
+            code:
+              type: "string"
+              description: "Код договора 1C: Справочник.ДоговорыКонтрагентов.Код. Для поставки должен совпадать с ERP veda_specs.f_kod1cb или veda_specs.f_kod1cp."
+            number:
+              type: "string"
+              description: "Номер договора 1C. Контрольное поле, не основной ключ при наличии code."
+            date:
+              type: "string"
+              format: "date"
+              description: "Дата договора 1C. Для договора-заявки сверяется с ERP veda_specs.f_dt."
+            name:
+              type: "string"
+            counterparty_id:
+              type: "string"
+            organization_id:
+              type: "string"
+            contract_type:
+              type: "string"
+            role:
+              type: "string"
+              enum:
+                - "buyer"
+                - "committent"
+                - "supplier"
+                - "agent"
+                - "related"
+                - "unknown"
+            parent_contract_id:
+              type: "string"
+              nullable: true
+            base_contract:
+              type: "string"
+              description: "Базовый договор, если может быть выведен; контрольное поле."
+            spec_number:
+              type: "string"
+              description: "Бизнес-номер заявки/спецификации; контрольное поле."
+            currency:
+              type: "string"
+    DocumentBase:
+      allOf:
+        -
+          $ref: "#/components/schemas/BaseEntity"
+        -
+          type: "object"
+          required:
+            - "document_type"
+            - "number"
+            - "date"
+          properties:
+            document_type:
+              type: "string"
+            number:
+              type: "string"
+            date:
+              type: "string"
+              format: "date"
+            organization_id:
+              type: "string"
+            organization_code:
+              type: "string"
+            counterparty_id:
+              type: "string"
+            counterparty_code:
+              type: "string"
+            contract_id:
+              type: "string"
+            contract_code:
+              type: "string"
+            contract_number:
+              type: "string"
+            base_contract:
+              type: "string"
+            spec_number:
+              type: "string"
+            amount_without_vat:
+              type: "number"
+              format: "double"
+            vat_amount:
+              type: "number"
+              format: "double"
+            amount_total:
+              type: "number"
+              format: "double"
+            currency:
+              type: "string"
+              example: "RUB"
+            comment:
+              type: "string"
+    CustomerInvoiceDto:
+      allOf:
+        -
+          $ref: "#/components/schemas/DocumentBase"
+        -
+          type: "object"
+          properties:
+            document_type:
+              type: "string"
+              enum:
+                - "customer_invoice"
+            payment_status:
+              type: "string"
+            due_date:
+              type: "string"
+              format: "date"
+              nullable: true
+    PaymentAllocationDto:
+      type: "object"
+      properties:
+        contract_id:
+          type: "string"
+        invoice_id:
+          type: "string"
+        amount:
+          type: "number"
+          format: "double"
+        currency:
+          type: "string"
+        base_contract:
+          type: "string"
+          description: "Базовый договор, если может быть выведен; контрольное поле."
+        spec_number:
+          type: "string"
+          description: "Бизнес-номер заявки/спецификации; контрольное поле."
+      additionalProperties: false
+    PaymentDto:
+      allOf:
+        -
+          $ref: "#/components/schemas/DocumentBase"
+        -
+          type: "object"
+          properties:
+            document_type:
+              type: "string"
+              enum:
+                - "incoming_payment"
+                - "outgoing_payment"
+            bank_account_id:
+              type: "string"
+            counterparty_bank_account_id:
+              type: "string"
+            payment_purpose:
+              type: "string"
+            invoice_number:
+              type: "string"
+            allocations:
+              type: "array"
+              items:
+                $ref: "#/components/schemas/PaymentAllocationDto"
+    SaleDto:
+      allOf:
+        -
+          $ref: "#/components/schemas/DocumentBase"
+        -
+          type: "object"
+          properties:
+            document_type:
+              type: "string"
+              enum:
+                - "sale_act"
+                - "sale_upd"
+                - "sale_invoice"
+            invoice_number:
+              type: "string"
+            invoice_date:
+              type: "string"
+              format: "date"
+    PurchaseDto:
+      allOf:
+        -
+          $ref: "#/components/schemas/DocumentBase"
+        -
+          type: "object"
+          properties:
+            document_type:
+              type: "string"
+              enum:
+                - "purchase_act"
+                - "purchase_upd"
+                - "supplier_invoice"
+            expense_kind:
+              type: "string"
+            reimbursement_type:
+              type: "string"
+              enum:
+                - "reimbursable"
+                - "non_reimbursable"
+                - "unknown"
+    DocumentLineDto:
+      allOf:
+        -
+          $ref: "#/components/schemas/BaseEntity"
+        -
+          type: "object"
+          properties:
+            document_id:
+              type: "string"
+            document_type:
+              type: "string"
+            document_number:
+              type: "string"
+            document_date:
+              type: "string"
+              format: "date"
+            line_id:
+              type: "string"
+            line_number:
+              type: "string"
+            line_kind:
+              type: "string"
+              enum:
+                - "goods"
+                - "services"
+                - "agent_services"
+                - "other"
+            nomenclature:
+              type: "string"
+            content:
+              type: "string"
+            amount:
+              type: "number"
+              format: "double"
+            vat_rate:
+              type: "string"
+              example: "0%"
+            vat_amount:
+              type: "number"
+              format: "double"
+            settlement_account:
+              type: "string"
+            cost_account:
+              type: "string"
+            commissioner:
+              type: "string"
+            commissioner_contract:
+              type: "string"
+            contract_id:
+              type: "string"
+            base_contract:
+              type: "string"
+            spec_number:
+              type: "string"
+            reimbursement_type:
+              type: "string"
+              enum:
+                - "reimbursable"
+                - "non_reimbursable"
+                - "unknown"
+    AccountMovementDto:
+      type: "object"
+      properties:
+        source_system:
+          type: "string"
+          enum:
+            - "1c"
+        source_id:
+          type: "string"
+        period:
+          type: "string"
+          format: "date"
+        registrar_id:
+          type: "string"
+        registrar_type:
+          type: "string"
+        registrar_number:
+          type: "string"
+        registrar_date:
+          type: "string"
+          format: "date"
+        organization_id:
+          type: "string"
+        debit_account:
+          type: "string"
+        debit_amount:
+          type: "number"
+          format: "double"
+        debit_counterparty_id:
+          type: "string"
+        debit_contract_id:
+          type: "string"
+        debit_base_contract:
+          type: "string"
+        debit_spec_number:
+          type: "string"
+        credit_account:
+          type: "string"
+        credit_amount:
+          type: "number"
+          format: "double"
+        credit_counterparty_id:
+          type: "string"
+        credit_contract_id:
+          type: "string"
+        credit_base_contract:
+          type: "string"
+        credit_spec_number:
+          type: "string"
+        currency:
+          type: "string"
+        updated_at:
+          type: "string"
+          format: "date-time"
+        hash:
+          type: "string"
+      additionalProperties: false
+    BalanceDto:
+      type: "object"
+      properties:
+        source_system:
+          type: "string"
+          enum:
+            - "1c"
+        organization_id:
+          type: "string"
+        counterparty_id:
+          type: "string"
+        contract_id:
+          type: "string"
+        base_contract:
+          type: "string"
+          description: "Базовый договор, если может быть выведен; контрольное поле."
+        spec_number:
+          type: "string"
+          description: "Бизнес-номер заявки/спецификации; контрольное поле."
+        date_from:
+          type: "string"
+          format: "date"
+        date_to:
+          type: "string"
+          format: "date"
+        opening_debit:
+          type: "number"
+          format: "double"
+        opening_credit:
+          type: "number"
+          format: "double"
+        turnover_debit:
+          type: "number"
+          format: "double"
+        turnover_credit:
+          type: "number"
+          format: "double"
+        closing_debit:
+          type: "number"
+          format: "double"
+        closing_credit:
+          type: "number"
+          format: "double"
+        currency:
+          type: "string"
+        hash:
+          type: "string"
+      additionalProperties: false
+    WarningDto:
+      type: "object"
+      properties:
+        code:
+          type: "string"
+        message:
+          type: "string"
+        entity_type:
+          type: "string"
+        source_id:
+          type: "string"
+      additionalProperties: true
+    SnapshotMetadata:
+      type: "object"
+      properties:
+        source_system:
+          type: "string"
+          enum:
+            - "1c"
+        generated_at:
+          type: "string"
+          format: "date-time"
+        timezone:
+          type: "string"
+        date_from:
+          type: "string"
+          format: "date"
+        date_to:
+          type: "string"
+          format: "date"
+        total_before_filter:
+          type: "integer"
+        returned_count:
+          type: "integer"
+        elapsed_ms:
+          type: "integer"
+        next_cursor:
+          type: "string"
+          nullable: true
+      additionalProperties: true
+    ReconciliationSnapshot:
+      type: "object"
+      required:
+        - "metadata"
+      properties:
+        metadata:
+          $ref: "#/components/schemas/SnapshotMetadata"
+        counterparties:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/CounterpartyDto"
+        contracts:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/ContractDto"
+        customer_invoices:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/CustomerInvoiceDto"
+        payments:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/PaymentDto"
+        sales:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SaleDto"
+        purchases:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/PurchaseDto"
+        document_lines:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/DocumentLineDto"
+        account_movements:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AccountMovementDto"
+        balances:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/BalanceDto"
+        warnings:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/WarningDto"
+      additionalProperties: false
+    SnapshotResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "snapshot"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - true
+        request_id:
+          type: "string"
+        snapshot:
+          $ref: "#/components/schemas/ReconciliationSnapshot"
+      additionalProperties: false
+    CollectionMeta:
+      type: "object"
+      properties:
+        returned_count:
+          type: "integer"
+        elapsed_ms:
+          type: "integer"
+        next_cursor:
+          type: "string"
+          nullable: true
+      additionalProperties: true
+    CounterpartiesResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "items"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - true
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/CounterpartyDto"
+        next_cursor:
+          type: "string"
+          nullable: true
+        meta:
+          $ref: "#/components/schemas/CollectionMeta"
+      additionalProperties: false
+    ContractsResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "items"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - true
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/ContractDto"
+        next_cursor:
+          type: "string"
+          nullable: true
+        meta:
+          $ref: "#/components/schemas/CollectionMeta"
+      additionalProperties: false
+    InvoicesResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "items"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - true
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/CustomerInvoiceDto"
+        next_cursor:
+          type: "string"
+          nullable: true
+        meta:
+          $ref: "#/components/schemas/CollectionMeta"
+      additionalProperties: false
+    PaymentsResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "items"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - true
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/PaymentDto"
+        next_cursor:
+          type: "string"
+          nullable: true
+        meta:
+          $ref: "#/components/schemas/CollectionMeta"
+      additionalProperties: false
+    SalesResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "items"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - true
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SaleDto"
+        next_cursor:
+          type: "string"
+          nullable: true
+        meta:
+          $ref: "#/components/schemas/CollectionMeta"
+      additionalProperties: false
+    PurchasesResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "items"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - true
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/PurchaseDto"
+        next_cursor:
+          type: "string"
+          nullable: true
+        meta:
+          $ref: "#/components/schemas/CollectionMeta"
+      additionalProperties: false
+    DocumentLinesResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "items"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - true
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/DocumentLineDto"
+        next_cursor:
+          type: "string"
+          nullable: true
+        meta:
+          $ref: "#/components/schemas/CollectionMeta"
+      additionalProperties: false
+    AccountMovementsResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "items"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - true
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AccountMovementDto"
+        next_cursor:
+          type: "string"
+          nullable: true
+        meta:
+          $ref: "#/components/schemas/CollectionMeta"
+      additionalProperties: false
+    BalancesResponse:
+      type: "object"
+      required:
+        - "ok"
+        - "items"
+      properties:
+        ok:
+          type: "boolean"
+          enum:
+            - true
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/BalanceDto"
+        next_cursor:
+          type: "string"
+          nullable: true
+        meta:
+          $ref: "#/components/schemas/CollectionMeta"
+      additionalProperties: false

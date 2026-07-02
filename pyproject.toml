@@ -1,0 +1,17 @@
+[project]
+name = "recon-erp-1c"
+version = "0.1.0"
+description = "ERP and 1C reconciliation service"
+requires-python = ">=3.11"
+dependencies = [
+  "openpyxl>=3.1,<4",
+  "pymysql>=1.1,<2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"

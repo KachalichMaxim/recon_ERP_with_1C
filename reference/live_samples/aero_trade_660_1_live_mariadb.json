@@ -1,0 +1,359 @@
+{
+  "source": "live_mariadb",
+  "sourceState": "loaded",
+  "sourceLabel": "Live MariaDB ERP · договор 660/1 · 8 поставок",
+  "delivery": {
+    "spec_id": "dog-660-1-live-mariadb",
+    "spec_number": "660/1",
+    "request_label": "Договор 660/1 · live MariaDB",
+    "client_name": "АЭРО-ТРЕЙД",
+    "client_inn": "7811451960",
+    "contact_name": "АЭРО-ТРЕЙД",
+    "contact_inn": "7811451960",
+    "main_dog_number": "660/1",
+    "main_dog_code1c": "БП-003453",
+    "goods_name": "Контрольные поставки: 1063, 1064, 1065, 1068, 1072, 1073, 1074, 1076"
+  },
+  "matrix_model": {
+    "clients": [
+      {
+        "id": "live-contact-115",
+        "name": "АЭРО-ТРЕЙД",
+        "inn": "7811451960",
+        "root": {
+          "id": "live-contact-115",
+          "kind": "client",
+          "level": 0,
+          "name": "Клиент: АЭРО-ТРЕЙД",
+          "note": "contact_id 115 · ИНН 7811451960",
+          "specNo": "1 ЮЛ",
+          "isParent": true,
+          "defaultExpanded": true,
+          "children": [
+            {
+              "id": "live-legal-221",
+              "kind": "legal",
+              "level": 1,
+              "name": "ЮЛ: АЭРО-ТРЕЙД",
+              "note": "client_id 221 · ИНН 7811451960",
+              "specNo": "1 договор",
+              "isParent": true,
+              "defaultExpanded": true,
+              "children": [
+                {
+                  "id": "live-contract-88",
+                  "kind": "contract",
+                  "level": 2,
+                  "name": "Договор: 660/1",
+                  "note": "dog_id 88 · код 1С БП-003453 · поставки 1063, 1064, 1065, 1068, 1072, 1073, 1074, 1076",
+                  "specNo": "8 поставок",
+                  "isParent": true,
+                  "defaultExpanded": true,
+                  "children": [
+                    {
+                      "id": "live-spec-20351",
+                      "kind": "spec",
+                      "level": 3,
+                      "name": "Заявка №1063",
+                      "note": "spec_id 20351 · 2025-05-12 · ATV-827-S сборный 827 Gushi",
+                      "specNo": "1063",
+                      "isParent": false,
+                      "defaultExpanded": false,
+                      "detailDocs": [],
+                      "invoiceLabel": "ВА-007482\nВА-007483\nВА-007484",
+                      "invoiceSum": null,
+                      "invoiceSumLabel": "9 781,63\n1 925,00 USD\n12 282,00",
+                      "paymentSum": 199375.04,
+                      "reimbursableSum": 185181.88,
+                      "nonReimbursableSum": 41275.82,
+                      "sfLabel": "00БП-011326 от 04.07.2025 · 1 461,63 руб.\n00БП-013342 от 04.07.2025 · 153 174,04 руб.\n00БП-012435 от 24.07.2025 · 17 715,00 руб.\n00БП-013350 от 05.08.2025 · 5 000,00 руб.\nВА-009718/0 от 06.08.2025 · 8 320,00 руб.\nВА-009719/1 от 06.08.2025 · 3 566,00 руб.\nВА-009720/2 от 06.08.2025 · 396,00 руб.\nВА-009721/3 от 06.08.2025 · 2 618,65 руб.\nВА-009722/0 от 06.08.2025 · 24 789,47 руб.\nВА-009723/1 от 06.08.2025 · 1 585,70 руб.\nВА-009724/0 от 06.08.2025 · 24 789,47 руб.\nВА-009725/1 от 06.08.2025 · 1 585,70 руб.\n00БП-013275 от 06.08.2025 · 30 584,00 руб.\n00БП-013358 от 06.08.2025 · 21 000,00 руб.\n00БП-013645 от 14.08.2025 · 7 802,00 руб.",
+                      "delta": -27082.66,
+                      "badges": [
+                        {
+                          "key": "sum",
+                          "label": "Есть остаток"
+                        }
+                      ],
+                      "showAmounts": true
+                    },
+                    {
+                      "id": "live-spec-20352",
+                      "kind": "spec",
+                      "level": 3,
+                      "name": "Заявка №1064",
+                      "note": "spec_id 20352 · 2025-05-12 · ATV-827-S сборный 827 SEKO",
+                      "specNo": "1064",
+                      "isParent": false,
+                      "defaultExpanded": false,
+                      "detailDocs": [],
+                      "invoiceLabel": "ВА-007509\nВА-007510\nВА-007511",
+                      "invoiceSum": null,
+                      "invoiceSumLabel": "6 574,94\n1 295,00 USD\n8 266,00",
+                      "paymentSum": 134234.42,
+                      "reimbursableSum": 124577.67,
+                      "nonReimbursableSum": 27882.63,
+                      "sfLabel": "00БП-011332 от 04.07.2025 · 975,94 руб.\n00БП-013338 от 04.07.2025 · 103 044,36 руб.\n00БП-012435 от 24.07.2025 · 17 715,00 руб.\n00БП-013350 от 05.08.2025 · 5 000,00 руб.\nВА-009736/0 от 06.08.2025 · 16 787,81 руб.\nВА-009737/1 от 06.08.2025 · 1 067,18 руб.\nВА-009738/0 от 06.08.2025 · 5 599,00 руб.\nВА-009739/1 от 06.08.2025 · 2 400,00 руб.\nВА-009740/2 от 06.08.2025 · 267,00 руб.\nВА-009741/3 от 06.08.2025 · 1 761,64 руб.\n00БП-013275 от 06.08.2025 · 30 584,00 руб.\n00БП-013358 от 06.08.2025 · 21 000,00 руб.\n00БП-013645 от 14.08.2025 · 7 802,00 руб.",
+                      "delta": -18225.88,
+                      "badges": [
+                        {
+                          "key": "sum",
+                          "label": "Есть остаток"
+                        }
+                      ],
+                      "showAmounts": true
+                    },
+                    {
+                      "id": "live-spec-20353",
+                      "kind": "spec",
+                      "level": 3,
+                      "name": "Заявка №1065",
+                      "note": "spec_id 20353 · 2025-05-12 · ATV-827-S сборный 827 Tinyang ",
+                      "specNo": "1065",
+                      "isParent": false,
+                      "defaultExpanded": false,
+                      "detailDocs": [],
+                      "invoiceLabel": "ВА-007505\nВА-007506\nВА-007507",
+                      "invoiceSum": null,
+                      "invoiceSumLabel": "9 100,85\n1 638,00 USD\n10 453,00",
+                      "paymentSum": 170517.04,
+                      "reimbursableSum": 158354.45,
+                      "nonReimbursableSum": 35211.68,
+                      "sfLabel": "00БП-011333 от 04.07.2025 · 2 019,85 руб.\n00БП-013341 от 04.07.2025 · 130 337,18 руб.\n00БП-012435 от 24.07.2025 · 17 715,00 руб.\n00БП-013350 от 05.08.2025 · 5 000,00 руб.\nВА-009752/0 от 06.08.2025 · 21 180,88 руб.\nВА-009753/1 от 06.08.2025 · 1 349,57 руб.\nВА-009754/0 от 06.08.2025 · 7 081,00 руб.\nВА-009755/1 от 06.08.2025 · 3 035,00 руб.\nВА-009756/2 от 06.08.2025 · 337,00 руб.\nВА-009757/3 от 06.08.2025 · 2 228,23 руб.\n00БП-013275 от 06.08.2025 · 30 584,00 руб.\n00БП-013358 от 06.08.2025 · 21 000,00 руб.\n00БП-013645 от 14.08.2025 · 7 802,00 руб.",
+                      "delta": -23049.09,
+                      "badges": [
+                        {
+                          "key": "sum",
+                          "label": "Есть остаток"
+                        }
+                      ],
+                      "showAmounts": true
+                    },
+                    {
+                      "id": "live-spec-20818",
+                      "kind": "spec",
+                      "level": 3,
+                      "name": "Заявка №1068",
+                      "note": "spec_id 20818 · 2025-05-26 · ATV-840-S море 840 Кофемолка, Хлебопечь, Кофеварка",
+                      "specNo": "1068",
+                      "isParent": false,
+                      "defaultExpanded": false,
+                      "detailDocs": [],
+                      "invoiceLabel": "ВА-007712\nВА-007713\nВА-007714",
+                      "invoiceSum": null,
+                      "invoiceSumLabel": "21 000,00\n4 700,00 USD\n31 000,00",
+                      "paymentSum": 442296.92,
+                      "reimbursableSum": 416239.47,
+                      "nonReimbursableSum": 36640.04,
+                      "sfLabel": "00БП-013543 от 12.07.2025 · 369 722,47 руб.\n00БП-013113 от 04.08.2025 · 17 715,00 руб.\nВА-009834/0 от 14.08.2025 · 21 000,00 руб.\nВА-009835/1 от 14.08.2025 · 9 000,00 руб.\nВА-009836/2 от 14.08.2025 · 1 000,00 руб.\nВА-009837/3 от 14.08.2025 · 5 640,04 руб.\n00БП-013643 от 14.08.2025 · 21 000,00 руб.\n00БП-013646 от 14.08.2025 · 5 000,00 руб.\n00БП-013953 от 18.08.2025 · 7 802,00 руб.",
+                      "delta": -10582.59,
+                      "badges": [
+                        {
+                          "key": "sum",
+                          "label": "Есть остаток"
+                        }
+                      ],
+                      "showAmounts": true
+                    },
+                    {
+                      "id": "live-spec-20824",
+                      "kind": "spec",
+                      "level": 3,
+                      "name": "Заявка №1072",
+                      "note": "spec_id 20824 · 2025-05-26 · ATV-846-S сборный 846 Hengxiang Вертикальный пылесос",
+                      "specNo": "1072",
+                      "isParent": false,
+                      "defaultExpanded": false,
+                      "detailDocs": [],
+                      "invoiceLabel": "ВА-007691\nВА-007692\nВА-007693",
+                      "invoiceSum": null,
+                      "invoiceSumLabel": "14 882,00\n3 400,00 USD\n21 969,00",
+                      "paymentSum": 319193.45,
+                      "reimbursableSum": 287869.95,
+                      "nonReimbursableSum": 26049.03,
+                      "sfLabel": "00БП-013344 от 12.07.2025 · 267 458,81 руб.\nВА-009776/0 от 07.08.2025 · 6 378,00 руб.\nВА-009777/1 от 07.08.2025 · 709,00 руб.\nВА-009778/2 от 07.08.2025 · 14 882,00 руб.\nВА-009779/3 от 07.08.2025 · 4 080,03 руб.\n00БП-013353 от 07.08.2025 · 5 000,00 руб.\n00БП-013355 от 08.08.2025 · 21 000,00 руб.\n00БП-013361 от 08.08.2025 · 7 802,00 руб.",
+                      "delta": 5274.47,
+                      "badges": [
+                        {
+                          "key": "sum",
+                          "label": "Есть остаток"
+                        }
+                      ],
+                      "showAmounts": true
+                    },
+                    {
+                      "id": "live-spec-20825",
+                      "kind": "spec",
+                      "level": 3,
+                      "name": "Заявка №1073",
+                      "note": "spec_id 20825 · 2025-05-26 · ATV-846-S сборный 846 Weitek Вертикальный пылесос",
+                      "specNo": "1073",
+                      "isParent": false,
+                      "defaultExpanded": false,
+                      "detailDocs": [],
+                      "invoiceLabel": "ВА-007699\nВА-007700\nВА-007701",
+                      "invoiceSum": null,
+                      "invoiceSumLabel": "6 118,00\n1 398,00 USD\n9 031,00",
+                      "paymentSum": 131241.57,
+                      "reimbursableSum": 118363.63,
+                      "nonReimbursableSum": 10708.61,
+                      "sfLabel": "00БП-013343 от 12.07.2025 · 109 972,77 руб.\nВА-009788/0 от 07.08.2025 · 2 622,00 руб.\nВА-009789/1 от 07.08.2025 · 291,00 руб.\nВА-009790/2 от 07.08.2025 · 6 118,00 руб.\nВА-009791/3 от 07.08.2025 · 1 677,61 руб.\n00БП-013353 от 07.08.2025 · 5 000,00 руб.\n00БП-013355 от 08.08.2025 · 21 000,00 руб.\n00БП-013361 от 08.08.2025 · 7 802,00 руб.",
+                      "delta": 2169.33,
+                      "badges": [
+                        {
+                          "key": "sum",
+                          "label": "Есть остаток"
+                        }
+                      ],
+                      "showAmounts": true
+                    },
+                    {
+                      "id": "live-spec-20822",
+                      "kind": "spec",
+                      "level": 3,
+                      "name": "Заявка №1074",
+                      "note": "spec_id 20822 · 2025-05-26 · ATV-836-S море 836 Фритюрница, Кофеварка, Чайник, Кофемолка",
+                      "specNo": "1074",
+                      "isParent": false,
+                      "defaultExpanded": false,
+                      "detailDocs": [],
+                      "invoiceLabel": "ВА-007696\nВА-007697\nВА-007698",
+                      "invoiceSum": null,
+                      "invoiceSumLabel": "21 000,00\n4 700,00 USD\n31 000,00",
+                      "paymentSum": 442296.92,
+                      "reimbursableSum": 416239.47,
+                      "nonReimbursableSum": 36640.04,
+                      "sfLabel": "00БП-013599 от 12.07.2025 · 369 722,47 руб.\n00БП-013109 от 04.08.2025 · 17 715,00 руб.\nВА-009784/0 от 05.08.2025 · 1 000,00 руб.\nВА-009785/1 от 05.08.2025 · 9 000,00 руб.\nВА-009786/2 от 05.08.2025 · 21 000,00 руб.\nВА-009787/3 от 05.08.2025 · 5 640,04 руб.\n00БП-013112 от 05.08.2025 · 5 000,00 руб.\n00БП-013115 от 05.08.2025 · 21 000,00 руб.\n00БП-013644 от 14.08.2025 · 7 802,00 руб.",
+                      "delta": -10582.59,
+                      "badges": [
+                        {
+                          "key": "sum",
+                          "label": "Есть остаток"
+                        }
+                      ],
+                      "showAmounts": true
+                    },
+                    {
+                      "id": "live-spec-20858",
+                      "kind": "spec",
+                      "level": 3,
+                      "name": "Заявка №1076",
+                      "note": "spec_id 20858 · 2025-05-26 · ATV-842-S море 842",
+                      "specNo": "1076",
+                      "isParent": false,
+                      "defaultExpanded": false,
+                      "detailDocs": [],
+                      "invoiceLabel": "ВА-007688\nВА-007689\nВА-007690",
+                      "invoiceSum": null,
+                      "invoiceSumLabel": "21 000,00\n5 298,00 USD\n31 000,00",
+                      "paymentSum": 491955.97,
+                      "reimbursableSum": 445565.75,
+                      "nonReimbursableSum": 48725.61,
+                      "sfLabel": "00БП-013545 от 12.07.2025 · 416 763,75 руб.\n00БП-013491 от 11.08.2025 · 5 000,00 руб.\nВА-009830/0 от 12.08.2025 · 1 000,00 руб.\nВА-009831/1 от 12.08.2025 · 9 000,00 руб.\nВА-009832/2 от 12.08.2025 · 21 000,00 руб.\nВА-009833/3 от 12.08.2025 · 17 725,61 руб.\n00БП-013492 от 12.08.2025 · 21 000,00 руб.\n00БП-013592 от 12.08.2025 · 7 802,00 руб.",
+                      "delta": -2335.39,
+                      "badges": [
+                        {
+                          "key": "sum",
+                          "label": "Есть остаток"
+                        }
+                      ],
+                      "showAmounts": true
+                    }
+                  ],
+                  "invoiceLabel": "—",
+                  "invoiceSum": 288812.42,
+                  "paymentSum": 2331111.33,
+                  "reimbursableSum": 2152392.27,
+                  "nonReimbursableSum": 263133.46,
+                  "sfLabel": "—",
+                  "delta": -84414.4,
+                  "badges": [
+                    {
+                      "key": "sum",
+                      "label": "Есть остаток: 8"
+                    }
+                  ],
+                  "showAmounts": true
+                }
+              ],
+              "invoiceLabel": "—",
+              "invoiceSum": 288812.42,
+              "paymentSum": 2331111.33,
+              "reimbursableSum": 2152392.27,
+              "nonReimbursableSum": 263133.46,
+              "sfLabel": "—",
+              "delta": -84414.4,
+              "badges": [
+                {
+                  "key": "sum",
+                  "label": "Есть остаток: 8"
+                }
+              ],
+              "showAmounts": true
+            }
+          ],
+          "invoiceLabel": "—",
+          "invoiceSum": 288812.42,
+          "paymentSum": 2331111.33,
+          "reimbursableSum": 2152392.27,
+          "nonReimbursableSum": 263133.46,
+          "sfLabel": "—",
+          "delta": -84414.4,
+          "badges": [
+            {
+              "key": "sum",
+              "label": "Есть остаток: 8"
+            }
+          ],
+          "showAmounts": true
+        }
+      }
+    ],
+    "totals": {
+      "invoiceLabel": "—",
+      "invoiceSum": 288812.42,
+      "paymentSum": 2331111.33,
+      "reimbursableSum": 2152392.27,
+      "nonReimbursableSum": 263133.46,
+      "sfLabel": "—",
+      "delta": -84414.4,
+      "badges": [
+        {
+          "key": "sum",
+          "label": "Есть остаток: 8"
+        }
+      ],
+      "showAmounts": true
+    },
+    "rowsCount": 8,
+    "sourceLabel": "Live MariaDB ERP · server SQL · без внешней таблицы"
+  },
+  "live_parameters": {
+    "contact_id": 115,
+    "legal_id": 221,
+    "dog_id": 88,
+    "dog_name": "660/1",
+    "spec_nums": [
+      "1063",
+      "1064",
+      "1065",
+      "1068",
+      "1072",
+      "1073",
+      "1074",
+      "1076"
+    ]
+  },
+  "live_summary": {
+    "specs": 8,
+    "customer_invoice_total": 288812.42,
+    "paid_total_get_paidsum": 2331111.33,
+    "paid_total_acchist_docs": 2331111.33,
+    "reimbursable_realization_get_realizsum": 2152392.27,
+    "non_reimbursable_realization_get_realizsum": 263133.46,
+    "realization_total_get_realizsum": 2415525.73,
+    "settlement_delta_paid_minus_realization": -84414.4,
+    "issues": {
+      "SETTLEMENT_BALANCE_NONZERO": 8
+    }
+  }
+}

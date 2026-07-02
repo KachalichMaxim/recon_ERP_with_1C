@@ -1,0 +1,3264 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1440, initial-scale=1" />
+<title>Акт сверки — ЕРП ↔ 1С</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: oklch(0.985 0.004 85);
+    --bg-sunken: oklch(0.97 0.005 85);
+    --surface: #ffffff;
+    --surface-2: oklch(0.98 0.004 85);
+    --border: oklch(0.92 0.005 85);
+    --border-strong: oklch(0.86 0.007 80);
+    --ink: oklch(0.22 0.01 70);
+    --ink-2: oklch(0.38 0.01 70);
+    --muted: oklch(0.55 0.01 70);
+    --muted-2: oklch(0.68 0.008 70);
+
+    --match: oklch(0.68 0.14 155);
+    --match-bg: oklch(0.96 0.04 155);
+    --match-border: oklch(0.87 0.07 155);
+
+    --miss-erp: oklch(0.74 0.15 75);
+    --miss-erp-bg: oklch(0.97 0.04 80);
+    --miss-erp-border: oklch(0.88 0.1 78);
+
+    --miss-1c: oklch(0.66 0.16 45);
+    --miss-1c-bg: oklch(0.97 0.035 50);
+    --miss-1c-border: oklch(0.86 0.1 48);
+
+    --sum-mismatch: oklch(0.6 0.19 25);
+    --sum-mismatch-bg: oklch(0.96 0.04 25);
+    --sum-mismatch-border: oklch(0.84 0.11 25);
+
+    --vat: oklch(0.58 0.15 290);
+    --vat-bg: oklch(0.96 0.035 290);
+    --vat-border: oklch(0.85 0.09 290);
+
+    --brand: oklch(0.52 0.13 235);
+    --brand-2: oklch(0.45 0.14 235);
+    --brand-bg: oklch(0.96 0.03 235);
+
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-lg: 14px;
+    --shadow-sm: 0 1px 0 oklch(0.9 0.005 80 / 0.8), 0 1px 2px oklch(0.2 0.01 70 / 0.04);
+    --shadow-md: 0 1px 0 oklch(0.9 0.005 80 / 0.8), 0 4px 10px oklch(0.2 0.01 70 / 0.06), 0 12px 28px oklch(0.2 0.01 70 / 0.06);
+    --shadow-lg: 0 20px 50px oklch(0.2 0.01 70 / 0.15), 0 6px 16px oklch(0.2 0.01 70 / 0.08);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: 'Inter', system-ui, sans-serif; font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+  body { min-height: 100vh; }
+  button { font-family: inherit; color: inherit; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: 'zero' 1, 'ss01' 1; }
+  .tight { font-family: 'Inter Tight', 'Inter', sans-serif; letter-spacing: -0.01em; }
+
+  /* ================= App shell ================= */
+  .app-root { display: flex; min-height: 100vh; background: var(--bg); }
+  .sidebar { width: 240px; border-right: 1px solid var(--border); background: var(--surface); padding: 18px 14px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 18px; flex-shrink: 0; }
+  .sidebar .logo { display: flex; align-items: center; gap: 10px; padding: 4px 6px 12px; border-bottom: 1px solid var(--border); }
+  .logo-mark { width: 30px; height: 30px; border-radius: 8px; background: var(--ink); color: #fff; display: grid; place-items: center; font-family: 'Inter Tight'; font-weight: 700; font-size: 13px; letter-spacing: -0.02em; }
+  .logo-name { font-family: 'Inter Tight'; font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+  .logo-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .nav-section { display: flex; flex-direction: column; gap: 1px; }
+  .nav-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-2); padding: 8px 8px 4px; font-weight: 600; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; font-size: 13px; color: var(--ink-2); cursor: pointer; font-weight: 500; }
+  .nav-item:hover { background: var(--bg-sunken); color: var(--ink); }
+  .nav-item.active { background: var(--ink); color: #fff; }
+  .nav-item .count { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .nav-item.active .count { color: oklch(0.8 0.01 70); }
+
+  .content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .topbar { height: 52px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; padding: 0 22px; gap: 16px; position: sticky; top: 0; z-index: 5; }
+  .crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .crumbs .sep { color: var(--muted-2); }
+  .crumbs .current { color: var(--ink); font-weight: 500; }
+  .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .user-chip { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; color: var(--ink-2); }
+  .user-chip .avatar { width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, oklch(0.72 0.12 60), oklch(0.62 0.14 35)); color: #fff; display: grid; place-items: center; font-size: 10.5px; font-weight: 600; }
+  .user-chip .user-meta { display: grid; line-height: 1.05; }
+  .user-chip .user-name { font-weight: 600; color: var(--ink); }
+  .user-chip .user-email { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .user-chip .user-logout { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 10px; padding: 2px 0 0; cursor: pointer; text-align: left; }
+  .user-chip .user-logout:hover { color: var(--ink); }
+  .auth-shell { min-height: 100vh; display: grid; place-items: center; background: var(--bg); padding: 24px; }
+  .auth-panel { width: min(440px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: 26px; }
+  .auth-title { font-family: 'Inter Tight'; font-size: 24px; font-weight: 700; margin: 0 0 6px; }
+  .auth-sub { color: var(--muted); font-size: 13px; line-height: 1.45; margin-bottom: 20px; }
+  .auth-token-slot { min-height: 44px; display: flex; align-items: center; }
+  .auth-status { margin-top: 14px; padding: 10px 12px; border-radius: var(--radius); background: var(--bg-sunken); border: 1px solid var(--border); font-size: 12px; color: var(--ink-2); line-height: 1.45; }
+  .auth-error { border-color: oklch(0.78 0.13 25); background: oklch(0.97 0.025 25); color: oklch(0.42 0.15 25); }
+
+  .page { padding: 24px 28px 48px; max-width: 1600px; width: 100%; margin: 0 auto; flex: 1; }
+
+  /* ================= Buttons ================= */
+  .btn { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); padding: 7px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.12s, border-color 0.12s, transform 0.06s; }
+  a.btn { text-decoration: none; }
+  .btn:hover { background: var(--bg-sunken); border-color: var(--border-strong); }
+  .btn:active { transform: translateY(0.5px); }
+  .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .btn.primary:hover { background: oklch(0.3 0.01 70); }
+  .btn.brand { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .btn.brand:hover { background: var(--brand-2); }
+  .btn.ghost { background: transparent; border-color: transparent; }
+  .btn.ghost:hover { background: var(--bg-sunken); }
+  .btn.sm { padding: 4px 9px; font-size: 12px; gap: 5px; border-radius: 7px; }
+  .btn.xs { padding: 2px 7px; font-size: 11.5px; gap: 4px; border-radius: 6px; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ================= Status chips ================= */
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 500; border: 1px solid transparent; white-space: nowrap; }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .chip.match { background: var(--match-bg); color: oklch(0.35 0.1 155); border-color: var(--match-border); }
+  .chip.match .dot { background: var(--match); }
+  .chip.miss-erp { background: var(--miss-erp-bg); color: oklch(0.42 0.12 75); border-color: var(--miss-erp-border); }
+  .chip.miss-erp .dot { background: var(--miss-erp); }
+  .chip.miss-1c { background: var(--miss-1c-bg); color: oklch(0.4 0.14 45); border-color: var(--miss-1c-border); }
+  .chip.miss-1c .dot { background: var(--miss-1c); }
+  .chip.sum { background: var(--sum-mismatch-bg); color: oklch(0.4 0.15 25); border-color: var(--sum-mismatch-border); }
+  .chip.sum .dot { background: var(--sum-mismatch); }
+  .chip.vat { background: var(--vat-bg); color: oklch(0.38 0.13 290); border-color: var(--vat-border); }
+  .chip.vat .dot { background: var(--vat); }
+  .chip.fields, .chip.source-error { background: var(--miss-erp-bg); color: oklch(0.42 0.12 75); border-color: var(--miss-erp-border); }
+  .chip.fields .dot, .chip.source-error .dot { background: var(--miss-erp); }
+  .chip.neutral { background: var(--bg-sunken); color: var(--muted); border-color: var(--border); }
+  .chip.neutral .dot { background: var(--muted-2); }
+  .chip.pending { background: var(--brand-bg); color: var(--brand-2); border-color: oklch(0.85 0.08 235); }
+  .chip.pending .dot { background: var(--brand); }
+  .chip.no-kod1c { background: var(--panel); color: var(--muted); border-color: var(--border-strong); }
+  .chip.no-kod1c .dot { background: var(--muted); }
+
+  /* ================= Cards ================= */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+  .card-head { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .card-title { font-family: 'Inter Tight'; font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+  .card-sub { font-size: 12px; color: var(--muted); }
+
+  /* ================= KV ================= */
+  .kv { display: grid; grid-template-columns: 150px 1fr; row-gap: 10px; column-gap: 18px; font-size: 13px; }
+  .kv dt { color: var(--muted); font-weight: 500; }
+  .kv dd { margin: 0; color: var(--ink); }
+
+  /* ================= Delivery card (screen 1) ================= */
+  .delivery-head { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: flex-start; margin-bottom: 20px; }
+  .delivery-title { font-family: 'Inter Tight'; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+  .delivery-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .delivery-cta { display: flex; gap: 8px; }
+  .delivery-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 18px; }
+  .stat { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; background: var(--surface-2); }
+  .stat-val { font-family: 'Inter Tight'; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .stat-label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+  .last-sync { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--bg-sunken); border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+
+  /* ================= Doc table (delivery) ================= */
+  .doc-list { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .doc-list th { text-align: left; font-weight: 500; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--bg-sunken); }
+  .doc-list td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .doc-list tr:last-child td { border-bottom: none; }
+  .doc-list tr:hover td { background: var(--bg-sunken); }
+  .subline { color: var(--muted); font-size: 11.5px; margin-top: 2px; line-height: 1.35; }
+
+  .source-banner { display: flex; align-items: center; gap: 9px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--ink-2); font-size: 12.5px; margin-bottom: 14px; }
+  .source-banner.warn { background: var(--miss-1c-bg); border-color: var(--miss-1c-border); color: oklch(0.4 0.14 45); }
+  .source-banner.ok { background: var(--match-bg); border-color: var(--match-border); color: oklch(0.34 0.1 155); }
+  .source-banner .link { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+  .settlement-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 16px; }
+  .settlement-item { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 10px 12px; min-width: 0; }
+  .settlement-value { font-family: 'Inter Tight'; font-size: 18px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .settlement-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; line-height: 1.3; }
+
+  .balance-card { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-lg); margin-bottom: 18px; overflow: hidden; }
+  .balance-head { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: start; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  .balance-title { font-family: 'Inter Tight'; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .balance-sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .balance-status { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; border: 1px solid var(--border); padding: 4px 9px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .balance-status.closed { color: oklch(0.35 0.1 155); background: var(--match-bg); border-color: var(--match-border); }
+  .balance-status.money_closed { color: var(--brand-2); background: var(--brand-bg); border-color: oklch(0.85 0.08 235); }
+  .balance-status.open_balance { color: oklch(0.42 0.12 45); background: var(--miss-1c-bg); border-color: var(--miss-1c-border); }
+  .balance-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
+  .balance-metric { padding: 14px 18px; border-right: 1px solid var(--border); min-width: 0; }
+  .balance-metric:last-child { border-right: none; }
+  .balance-metric .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .balance-metric .value { font-family: 'Inter Tight'; font-size: 23px; font-weight: 600; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .balance-metric .detail { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .balance-foot { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 12px 18px; border-top: 1px solid var(--border); background: var(--surface-2); font-size: 12px; color: var(--ink-2); }
+  .balance-foot .warn { color: oklch(0.45 0.14 45); font-weight: 600; }
+  .balance-foot .ok { color: oklch(0.36 0.1 155); font-weight: 600; }
+
+  .contract-list { display: flex; flex-direction: column; gap: 8px; }
+  .contract-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--surface-2); }
+  .contract-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+  .contract-name { font-family: 'JetBrains Mono'; font-size: 12.5px; font-weight: 600; color: var(--ink); }
+  .contract-role { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+
+  /* ================= Reconciliation matrix ================= */
+  .matrix-page { max-width: none; padding: 14px 16px 32px; }
+  .matrix-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: start; margin-bottom: 10px; }
+  .matrix-title { font-family: 'Inter Tight'; font-size: 20px; font-weight: 600; letter-spacing: 0; }
+  .matrix-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .matrix-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .matrix-controls { display: grid; grid-template-columns: minmax(230px, 320px) minmax(260px, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .matrix-select, .matrix-search input {
+    width: 100%;
+    height: 32px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 8px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+  }
+  .matrix-select { padding: 0 34px 0 11px; }
+  .matrix-search { position: relative; }
+  .matrix-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+  .matrix-search input { padding: 0 12px 0 34px; }
+  .matrix-kpis { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 6px; margin-bottom: 8px; }
+  .matrix-kpi { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 8px 10px; min-width: 0; }
+  .matrix-kpi .v { font-family: 'Inter Tight'; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .matrix-kpi .l { color: var(--muted); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; line-height: 1.2; }
+  .matrix-shell { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; }
+  .matrix-scroll { overflow-y: auto; overflow-x: hidden; max-height: calc(100vh - 220px); min-height: 0; }
+  .matrix-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 11px; }
+  .matrix-table th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: oklch(0.9 0.006 85);
+    color: var(--ink-2);
+    text-align: left;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.045em;
+    padding: 7px 5px;
+    border-bottom: 1px solid var(--border-strong);
+    white-space: normal;
+    line-height: 1.15;
+    overflow-wrap: normal;
+  }
+  .matrix-table th .th-wrap { display: inline-block; min-width: 0; }
+  .matrix-table th:first-child { left: 0; z-index: 5; }
+  .matrix-table td { padding: 7px 6px; border-bottom: 1px solid var(--border); background: var(--surface); vertical-align: middle; }
+  .matrix-table tr:hover td { background: var(--surface-2); }
+  .matrix-table .sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .matrix-table .money, .matrix-table .delta { text-align: right; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; white-space: pre-line; }
+  .matrix-table td.mono { white-space: pre-line; }
+  .matrix-table .sf-cell { padding-top: 5px; padding-bottom: 5px; }
+  .matrix-table .sf-lines {
+    max-height: 74px;
+    overflow: auto;
+    white-space: pre-line;
+    line-height: 1.35;
+    padding-right: 2px;
+  }
+  .matrix-table .delta.pos, .matrix-table .delta.neg { color: oklch(0.42 0.15 25); }
+  .matrix-row.parent td { font-weight: 650; background: var(--surface-2); }
+  .matrix-row.level-0 td { background: oklch(0.965 0.006 85); }
+  .matrix-row.level-1 td { background: oklch(0.975 0.005 85); }
+  .matrix-row.level-2 td { background: oklch(0.985 0.004 85); }
+  .matrix-row.spec td { background: var(--surface); }
+  .matrix-row.detail-host td { background: var(--bg-sunken); padding: 0; }
+  .matrix-label { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .matrix-expander {
+    width: 20px;
+    height: 20px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    display: grid;
+    place-items: center;
+    color: var(--ink-2);
+    flex: 0 0 20px;
+    cursor: pointer;
+  }
+  .matrix-expander:hover { border-color: var(--border); background: var(--surface); }
+  .matrix-indent { width: calc(var(--level) * 12px); flex: 0 0 calc(var(--level) * 12px); }
+  .matrix-main { min-width: 0; }
+  .matrix-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; }
+  .matrix-meta-line { display: flex; align-items: center; gap: 5px; min-width: 0; margin-top: 2px; }
+  .matrix-note { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; min-width: 0; }
+  .matrix-badges { display: flex; flex-wrap: nowrap; gap: 3px; min-width: 0; overflow: hidden; }
+  .matrix-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    font-size: 9px;
+    font-weight: 650;
+    white-space: nowrap;
+    background: var(--surface);
+    color: var(--ink-2);
+  }
+  .matrix-badge.ok { background: var(--match-bg); color: oklch(0.34 0.1 155); border-color: var(--match-border); }
+  .matrix-badge.no1c { background: var(--miss-1c-bg); color: oklch(0.4 0.14 45); border-color: var(--miss-1c-border); }
+  .matrix-badge.noerp { background: var(--miss-erp-bg); color: oklch(0.42 0.12 75); border-color: var(--miss-erp-border); }
+  .matrix-badge.sum { background: var(--sum-mismatch-bg); color: oklch(0.4 0.15 25); border-color: var(--sum-mismatch-border); }
+  .matrix-badge.nosf { background: var(--vat-bg); color: oklch(0.38 0.13 290); border-color: var(--vat-border); }
+  .matrix-badge.no-sf { background: var(--vat-bg); color: oklch(0.38 0.13 290); border-color: var(--vat-border); }
+  .matrix-badge.nokey { background: var(--panel); color: var(--muted); border-color: var(--border-strong); }
+  .matrix-badge.fields, .matrix-badge.source-error { background: var(--miss-erp-bg); color: oklch(0.42 0.12 75); border-color: var(--miss-erp-border); }
+  .matrix-badge.pending { background: var(--brand-bg); color: var(--brand-2); border-color: oklch(0.85 0.08 235); }
+  .matrix-badge.limit { background: var(--bg-sunken); color: var(--ink-2); border-color: var(--border-strong); }
+  .matrix-status-cell .matrix-badges { flex-wrap: wrap; overflow: visible; }
+  .matrix-detail { margin: 0; padding: 9px 10px 10px; }
+  .matrix-detail-title { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; margin-bottom: 6px; }
+  .matrix-detail-grid { display: grid; grid-template-columns: 0.78fr 1.25fr 1.05fr 0.95fr 0.8fr 1fr; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+  .matrix-detail-grid > div { padding: 6px 8px; border-bottom: 1px solid var(--border); min-width: 0; }
+  .matrix-detail-grid > div:nth-child(6n) { text-align: right; }
+  .matrix-detail-grid > div:nth-last-child(-n+6) { border-bottom: none; }
+  .matrix-detail-head { background: var(--bg-sunken); color: var(--muted); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.045em; }
+  .matrix-empty { padding: 36px; text-align: center; color: var(--muted); font-size: 13px; }
+  @media (max-width: 1180px) {
+    .matrix-controls { grid-template-columns: 1fr; }
+    .matrix-kpis { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+    .matrix-detail { margin-left: 0; }
+  }
+
+  /* ================= Progress (screen 2) ================= */
+  .progress-wrap { max-width: 760px; margin: 48px auto; }
+  .progress-head { text-align: center; margin-bottom: 28px; }
+  .progress-title { font-family: 'Inter Tight'; font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+  .progress-sub { color: var(--muted); margin-top: 6px; }
+
+  .stages { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+  .stage { padding: 20px 18px; border-right: 1px solid var(--border); position: relative; }
+  .stage:last-child { border-right: none; }
+  .stage-num { font-family: 'JetBrains Mono'; font-size: 11px; color: var(--muted); letter-spacing: 0.05em; }
+  .stage-title { font-family: 'Inter Tight'; font-size: 15px; font-weight: 600; margin-top: 4px; }
+  .stage-desc { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+  .stage-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--bg-sunken); color: var(--muted); border: 1px solid var(--border); margin-bottom: 12px; }
+  .stage.done .stage-icon { background: var(--match-bg); color: oklch(0.3 0.1 155); border-color: var(--match-border); }
+  .stage.active .stage-icon { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .stage.active .stage-title { color: var(--brand-2); }
+  .stage-progress { height: 3px; background: var(--border); border-radius: 2px; margin-top: 14px; overflow: hidden; }
+  .stage-progress span { display: block; height: 100%; background: var(--brand); transition: width 0.3s ease; }
+  .stage.done .stage-progress span { background: var(--match); width: 100% !important; }
+
+  .progress-log { margin-top: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 14px 16px; font-family: 'JetBrains Mono'; font-size: 12px; line-height: 1.7; color: var(--ink-2); max-height: 220px; overflow-y: auto; }
+  .progress-log .line { display: flex; gap: 10px; }
+  .progress-log .ts { color: var(--muted-2); }
+  .progress-log .tag-ok { color: oklch(0.45 0.14 155); }
+  .progress-log .tag-info { color: var(--brand-2); }
+  .progress-log .tag-warn { color: oklch(0.5 0.16 45); }
+
+  /* ================= Report (screen 3) ================= */
+  .report-head { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; margin-bottom: 18px; }
+  .report-title { font-family: 'Inter Tight'; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .report-sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .report-actions { display: flex; gap: 8px; align-items: center; }
+
+  .summary-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 16px; }
+  .summary-tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; cursor: pointer; transition: border-color 0.12s, transform 0.06s; }
+  .summary-tile:hover { border-color: var(--border-strong); }
+  .summary-tile.active { border-color: var(--ink); box-shadow: 0 0 0 3px oklch(0.22 0.01 70 / 0.08); }
+  .summary-tile .val { font-family: 'Inter Tight'; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; }
+  .summary-tile .label { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.3; }
+  .summary-tile .swatch { width: 10px; height: 10px; border-radius: 3px; }
+
+  .filters-row { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; }
+  .search { display: flex; align-items: center; gap: 8px; flex: 1; color: var(--muted); }
+  .search input { border: none; outline: none; background: transparent; font: inherit; color: var(--ink); flex: 1; }
+  .seg { display: inline-flex; background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+  .seg button { border: none; background: transparent; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; }
+  .seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+  /* ================= Report: two-column layout ================= */
+  .rec-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+  .rec-header { display: grid; grid-template-columns: 1fr 72px 1fr 170px 120px; gap: 0; padding: 10px 14px; background: var(--bg-sunken); border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; align-items: center; }
+  .rec-header .col-erp { display: flex; align-items: center; gap: 7px; }
+  .rec-header .col-1c { display: flex; align-items: center; gap: 7px; }
+  .rec-header .badge-sys { display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border-radius: 5px; background: var(--surface); border: 1px solid var(--border); color: var(--ink-2); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; }
+
+  .rec-group-head { padding: 10px 14px 8px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-family: 'Inter Tight'; font-size: 12.5px; font-weight: 600; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
+  .rec-group-head .c { color: var(--muted); font-weight: 500; font-family: 'Inter'; font-size: 11.5px; }
+
+  .rec-row { display: grid; grid-template-columns: 1fr 72px 1fr 170px 120px; gap: 0; align-items: stretch; border-bottom: 1px solid var(--border); position: relative; }
+  .rec-row:last-child { border-bottom: none; }
+  .rec-row:hover { background: oklch(0.985 0.004 85 / 0.6); }
+  .rec-row.expanded { background: var(--bg-sunken); }
+
+  .rec-side { padding: 12px 14px; min-width: 0; }
+  .rec-side.left { border-right: 0; }
+  .rec-side.right { border-left: 0; }
+  .rec-side.empty { background: repeating-linear-gradient(135deg, transparent 0 8px, oklch(0.95 0.005 80 / 0.5) 8px 9px); display: flex; flex-direction: column; justify-content: center; align-items: flex-start; color: var(--muted); font-size: 12px; gap: 4px; min-height: 64px; }
+  .rec-side.empty .empty-msg { display: flex; align-items: center; gap: 6px; }
+
+  .rec-link { width: 72px; display: flex; align-items: center; justify-content: center; position: relative; }
+  .rec-link svg { display: block; }
+  .rec-status-cell { padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; justify-content: center; font-size: 12px; }
+  .rec-status-cell .detail { color: var(--muted); font-size: 11.5px; }
+  .rec-actions { padding: 10px 12px; display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
+  .icon-btn { width: 28px; height: 28px; border-radius: 7px; background: transparent; border: 1px solid transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+  .icon-btn:hover { background: var(--surface); border-color: var(--border); color: var(--ink); }
+
+  .doc-line-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .doc-num { font-family: 'JetBrains Mono'; font-weight: 600; font-size: 13px; color: var(--ink); }
+  .doc-type { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+  .doc-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); }
+  .doc-meta .k { color: var(--muted); margin-right: 4px; font-size: 11px; }
+  .doc-meta .v { font-family: 'JetBrains Mono'; font-size: 12px; }
+  .doc-meta .v.diff { color: oklch(0.42 0.17 25); font-weight: 600; text-decoration: line-through; text-decoration-color: oklch(0.65 0.15 25 / 0.5); }
+  .doc-meta .v.fix { color: oklch(0.42 0.12 155); font-weight: 600; }
+  .code1c { font-family: 'JetBrains Mono'; font-size: 11px; color: var(--muted); background: var(--bg-sunken); padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px; }
+  .code1c .copy { opacity: 0; transition: opacity 0.12s; color: var(--muted-2); cursor: pointer; }
+  .rec-side:hover .code1c .copy, .code1c:hover .copy { opacity: 1; }
+
+  /* Row expanded detail */
+  .rec-detail { grid-column: 1 / -1; background: var(--surface); border-top: 1px solid var(--border); padding: 18px 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .rec-detail h4 { margin: 0 0 10px; font-family: 'Inter Tight'; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; display: flex; align-items: center; gap: 8px; }
+  .rec-detail .kv { grid-template-columns: 110px 1fr; row-gap: 6px; font-size: 12.5px; }
+  .detail-actions { grid-column: 1 / -1; display: flex; gap: 8px; padding-top: 8px; border-top: 1px dashed var(--border); margin-top: 4px; }
+
+  /* ================= Modal ================= */
+  .modal-overlay { position: fixed; inset: 0; background: oklch(0.22 0.01 70 / 0.35); backdrop-filter: blur(2px); z-index: 100; display: grid; place-items: center; animation: fade 0.14s ease; }
+  @keyframes fade { from { opacity: 0; } }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); width: 600px; max-width: calc(100vw - 48px); max-height: calc(100vh - 80px); display: flex; flex-direction: column; }
+  .modal.wide { width: 820px; }
+  .modal-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .modal-title { font-family: 'Inter Tight'; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  .modal-close { margin-left: auto; }
+  .modal-body { padding: 18px 20px; overflow-y: auto; }
+  .modal-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; background: var(--bg-sunken); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+
+  /* ================= Export format tiles ================= */
+  .fmt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .fmt-tile { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; background: var(--surface); transition: border-color 0.12s; }
+  .fmt-tile:hover { border-color: var(--border-strong); }
+  .fmt-tile.selected { border-color: var(--ink); box-shadow: 0 0 0 3px oklch(0.22 0.01 70 / 0.08); }
+  .fmt-tile .fmt-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .fmt-tile .fmt-icon { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; background: var(--bg-sunken); border: 1px solid var(--border); }
+  .fmt-tile .fmt-name { font-family: 'Inter Tight'; font-weight: 600; font-size: 14px; }
+  .fmt-tile .fmt-sub { font-size: 11.5px; color: var(--muted); }
+
+  /* ================= Tweaks panel ================= */
+  .tweaks { position: fixed; bottom: 18px; right: 18px; width: 280px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); z-index: 60; overflow: hidden; font-size: 12.5px; }
+  .tweaks-head { padding: 10px 12px; background: var(--bg-sunken); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; font-family: 'Inter Tight'; font-weight: 600; font-size: 13px; }
+  .tweaks-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+  .tweak-row { display: flex; flex-direction: column; gap: 6px; }
+  .tweak-label { font-size: 11.5px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+  .tweak-seg { display: flex; border: 1px solid var(--border); border-radius: 8px; padding: 2px; background: var(--bg-sunken); }
+  .tweak-seg button { flex: 1; border: none; background: transparent; padding: 6px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 500; color: var(--muted); cursor: pointer; }
+  .tweak-seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+  /* ================= Drawer (doc detail) ================= */
+  .drawer-overlay { position: fixed; inset: 0; background: oklch(0.22 0.01 70 / 0.3); z-index: 90; animation: fade 0.14s ease; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 520px; max-width: 90vw; background: var(--surface); border-left: 1px solid var(--border); box-shadow: var(--shadow-lg); z-index: 95; display: flex; flex-direction: column; animation: slide 0.18s ease; }
+  @keyframes slide { from { transform: translateX(40px); opacity: 0; } }
+  .drawer-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 20px; }
+  .drawer-foot { padding: 14px 20px; border-top: 1px solid var(--border); background: var(--bg-sunken); display: flex; gap: 8px; }
+
+  /* ================= Bold variant (via Tweaks) ================= */
+  body[data-variant="bold"] { --bg: oklch(0.97 0.01 85); }
+  body[data-variant="bold"] .rec-wrap { border-radius: 20px; }
+  body[data-variant="bold"] .rec-row { grid-template-columns: 1fr 110px 1fr 180px 120px; }
+  body[data-variant="bold"] .rec-header { grid-template-columns: 1fr 110px 1fr 180px 120px; }
+  body[data-variant="bold"] .summary-tile { border-radius: 14px; padding: 14px 16px; }
+  body[data-variant="bold"] .summary-tile .val { font-size: 28px; }
+  body[data-variant="bold"] .doc-num { font-size: 14px; }
+  body[data-variant="bold"] .delivery-title { font-size: 32px; }
+  body[data-variant="bold"] .report-title { font-size: 28px; }
+  body[data-variant="bold"] .stat-val { font-size: 26px; }
+  body[data-variant="bold"] .chip { font-size: 12px; padding: 3px 10px; }
+  body[data-variant="bold"] .btn { border-radius: 10px; padding: 8px 14px; }
+  body[data-variant="bold"] .btn.primary { background: var(--brand); border-color: var(--brand); }
+
+  /* Density */
+  body[data-density="compact"] .rec-side { padding: 8px 14px; }
+  body[data-density="compact"] .doc-meta { gap: 10px; font-size: 11.5px; }
+  body[data-density="compact"] .summary-tile .val { font-size: 19px; }
+  body[data-density="compact"] .stage { padding: 14px 16px; }
+
+  body[data-density="roomy"] .rec-side { padding: 18px 18px; }
+  body[data-density="roomy"] .doc-meta { gap: 18px; font-size: 13px; }
+
+  /* Utilities */
+  .hr { height: 1px; background: var(--border); border: none; margin: 16px 0; }
+  .muted { color: var(--muted); }
+  .pill-sm { font-size: 10.5px; padding: 1px 6px; border-radius: 4px; background: var(--bg-sunken); color: var(--muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+  .link { color: var(--brand-2); cursor: pointer; text-decoration: none; font-weight: 500; }
+  .link:hover { text-decoration: underline; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 200; box-shadow: var(--shadow-lg); display: flex; align-items: center; gap: 8px; animation: pop 0.2s ease; }
+  @keyframes pop { from { transform: translate(-50%, 10px); opacity: 0; } }
+
+  /* Scrollbars */
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb { background: oklch(0.88 0.005 80); border-radius: 10px; border: 2px solid var(--surface); }
+  *::-webkit-scrollbar-thumb:hover { background: oklch(0.82 0.005 80); }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Tweakable defaults (persisted by host) -->
+  <script>
+    window.__TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "variant": "bold",
+      "density": "compact",
+      "autoExpandIssues": false,
+      "showLinkLines": false
+    }/*EDITMODE-END*/;
+  </script>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" data-presets="react">
+
+/* ===== src/icons.jsx ===== */
+// Minimal line icons — inline SVG, stroke-based, 1.75 weight
+const Icon = ({ d, size = 16, stroke = 'currentColor', fill = 'none', sw = 1.75, viewBox = '0 0 24 24', children }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox={viewBox} fill={fill} stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+    {d ? <path d={d} /> : children}
+  </svg>
+);
+
+const IconCheck = (p) => <Icon {...p} d="M4 12l5 5L20 6" />;
+const IconX = (p) => <Icon {...p} d="M6 6l12 12M18 6L6 18" />;
+const IconAlert = (p) => <Icon {...p}><path d="M12 9v4M12 17h0"/><path d="M10.3 3.9L2.4 17a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></Icon>;
+const IconInfo = (p) => <Icon {...p}><circle cx="12" cy="12" r="9"/><path d="M12 8h0M11 12h1v5h1"/></Icon>;
+const IconCopy = (p) => <Icon {...p}><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></Icon>;
+const IconExternal = (p) => <Icon {...p}><path d="M14 4h6v6"/><path d="M20 4L10 14"/><path d="M20 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1h5"/></Icon>;
+const IconLink = (p) => <Icon {...p}><path d="M10 14a5 5 0 007 0l3-3a5 5 0 00-7-7l-1 1"/><path d="M14 10a5 5 0 00-7 0l-3 3a5 5 0 007 7l1-1"/></Icon>;
+const IconDownload = (p) => <Icon {...p}><path d="M12 3v13M7 12l5 5 5-5"/><path d="M5 21h14"/></Icon>;
+const IconUpload = (p) => <Icon {...p}><path d="M12 21V8M7 13l5-5 5 5"/><path d="M5 3h14"/></Icon>;
+const IconSearch = (p) => <Icon {...p}><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></Icon>;
+const IconFilter = (p) => <Icon {...p}><path d="M3 5h18M6 12h12M10 19h4"/></Icon>;
+const IconRefresh = (p) => <Icon {...p}><path d="M3 12a9 9 0 0115-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/><path d="M3 21v-5h5"/></Icon>;
+const IconDoc = (p) => <Icon {...p}><path d="M7 3h8l5 5v11a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"/><path d="M14 3v5h5"/></Icon>;
+const IconReceipt = (p) => <Icon {...p}><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6M9 16h3"/></Icon>;
+const IconMoney = (p) => <Icon {...p}><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h0M18 12h0"/></Icon>;
+const IconPlay = (p) => <Icon {...p} d="M7 4v16l13-8z" fill="currentColor" stroke="none"/>;
+const IconPause = (p) => <Icon {...p}><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/></Icon>;
+const IconMore = (p) => <Icon {...p}><circle cx="6" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18" cy="12" r="1.3" fill="currentColor"/></Icon>;
+const IconPlus = (p) => <Icon {...p} d="M12 5v14M5 12h14"/>;
+const IconArrowRight = (p) => <Icon {...p}><path d="M5 12h14M13 6l6 6-6 6"/></Icon>;
+const IconArrowLeft = (p) => <Icon {...p}><path d="M19 12H5M11 6l-6 6 6 6"/></Icon>;
+const IconChevron = (p) => <Icon {...p} d="M6 9l6 6 6-6"/>;
+const IconSparkle = (p) => <Icon {...p}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/></Icon>;
+const IconBell = (p) => <Icon {...p}><path d="M6 9a6 6 0 0112 0v4l2 3H4l2-3V9z"/><path d="M10 19a2 2 0 004 0"/></Icon>;
+const IconSettings = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"/></Icon>;
+const IconBox = (p) => <Icon {...p}><path d="M3 7l9-4 9 4v10l-9 4-9-4V7z"/><path d="M3 7l9 4 9-4M12 11v10"/></Icon>;
+const IconList = (p) => <Icon {...p}><path d="M8 6h13M8 12h13M8 18h13M3 6h0M3 12h0M3 18h0"/></Icon>;
+const IconChart = (p) => <Icon {...p}><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></Icon>;
+const IconSpinner = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite' }}>
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeOpacity="0.2" strokeWidth="2.5"/>
+    <path d="M21 12a9 9 0 00-9-9" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+  </svg>
+);
+
+// Inject spinner keyframes once
+if (typeof document !== 'undefined' && !document.getElementById('__spin_kf')) {
+  const s = document.createElement('style');
+  s.id = '__spin_kf';
+  s.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
+  document.head.appendChild(s);
+}
+
+Object.assign(window, {
+  IconCheck, IconX, IconAlert, IconInfo, IconCopy, IconExternal, IconLink, IconDownload, IconUpload,
+  IconSearch, IconFilter, IconRefresh, IconDoc, IconReceipt, IconMoney,
+  IconPlay, IconPause, IconMore, IconPlus, IconArrowRight, IconArrowLeft, IconChevron,
+  IconSparkle, IconBell, IconSettings, IconBox, IconList, IconChart, IconSpinner,
+});
+
+
+/* ===== src/data.js ===== */
+// Mock data for reconciliation prototype
+
+const DELIVERY = {
+  id: 'SPEC-14994',
+  number: 'Заявка № 921 по договору 660/1 от 13.08.2020',
+  date: '21.08.2024',
+  principal: 'АО «ВЭД АГЕНТ»',
+  principalInn: '5404454954',
+  client: 'АЭРО-ТРЕЙД',
+  clientInn: '7811451960',
+  route: 'ATV-715-S море 715 · Льдогенератор, Пароварка',
+  container: '660/1',
+  incoterms: 'Код договора 1С БП-003453',
+  currency: 'RUB',
+  totalAmount: 166_901.52,
+  manager: 'Елецких Мария',
+  status: 'ERP snapshot spec_id 14994',
+};
+
+// Status keys: match, miss-erp, miss-1c, sum, vat, no-kod1c
+const DOCS = [
+  {
+    id: 'erp-invoice-14994',
+    type: 'bill',
+    typeLabel: 'Счет на оплату',
+    opId: 'ERP-SCHETS-14994',
+    opTitle: 'Счета покупателю из ERP veda_schets',
+    status: 'match',
+    erp: { num: 'ВА-015695, ВА-015696, ВА-015697', date: '26.12.2024', amount: 166_901.52, kod1c: 'ERP-SCHETS-14994', vat: '—', invoice: '3 счета', reimbursement: 'Счет покупателю', reimbursementId: 0, dog: '660/1', dogCode1c: 'БП-003453' },
+    rc:  { num: 'ВА-015695, ВА-015696, ВА-015697', date: '26.12.2024', amount: 166_901.52, kod1c: 'ERP-SCHETS-14994', vat: '—', doctype: 'Счет на оплату покупателю', invoice: '3 счета', dog: '660/1' },
+  },
+  {
+    id: 'erp-payment-14994',
+    type: 'payment',
+    typeLabel: 'Оплата покупателя',
+    opId: 'ERP-PAID-14994',
+    opTitle: 'ERP get_paidsum / veda_acchist_docs',
+    status: 'match',
+    erp: { num: 'ПП 1866', date: '10.02.2025', amount: 833_921.00, kod1c: '00БП-001559', vat: '—', reimbursement: 'Оплата покупателя', reimbursementId: 0, dog: '660/1', dogCode1c: 'БП-003453' },
+    rc:  { num: '00БП-001559', date: '10.02.2025', amount: 833_921.00, kod1c: '00БП-001559', vat: '—', doctype: 'Поступление на расчетный счет', dog: '660/1' },
+  },
+  {
+    id: 'erp-reimb-14994',
+    type: 'expense',
+    typeLabel: 'Возмещаемые расходы',
+    opId: 'ERP-REIMB-14994',
+    opTitle: 'ERP get_expensessum: возмещаемые операции',
+    status: 'match',
+    erp: { num: 'операции 9,10,12,13', date: '10.01.2025-23.01.2025', amount: 829_165.90, kod1c: 'ERP-REIMB-14994', vat: '—', reimbursement: 'Возмещаемые расходы', reimbursementId: 1, dog: '660/1', dogCode1c: 'БП-003453' },
+    rc:  { num: 'сумма строк 1С', date: '10.01.2025-23.01.2025', amount: 829_165.90, kod1c: 'ERP-REIMB-14994', vat: '—', doctype: 'Поступление/акты по возмещаемым', dog: '660/1' },
+  },
+  {
+    id: 'erp-nonreimb-14994',
+    type: 'act',
+    typeLabel: 'Невозмещаемые услуги',
+    opId: 'ERP-NONREIMB-14994',
+    opTitle: 'ERP realization/profit: невозмещаемые услуги агента',
+    status: 'match',
+    erp: { num: '00БП-000198', date: '21.01.2025', amount: 67_055.99, kod1c: '00БП-000198', vat: '20%', reimbursement: 'Невозмещаемые услуги Агента (Вознаграждение)', reimbursementId: 2, dog: '660/1', dogCode1c: 'БП-003453' },
+    rc:  { num: '00БП-000198', date: '21.01.2025', amount: 67_055.99, kod1c: '00БП-000198', vat: '20%', doctype: 'Реализация/УПД', dog: '660/1' },
+  },
+  {
+    id: 'erp-sf-14994',
+    type: 'sf',
+    typeLabel: 'Счет-фактура / УПД',
+    opId: 'ERP-SF-14994',
+    opTitle: 'УПД/СФ по данным ERP и 1С',
+    status: 'match',
+    erp: { num: '00БП-000198', date: '21.01.2025', amount: 0, kod1c: '00БП-000198', vat: '—', reimbursement: 'Счет-фактура / УПД', reimbursementId: 0 },
+    rc:  { num: '00БП-000198', date: '21.01.2025', amount: 0, kod1c: '00БП-000198', vat: '—', doctype: 'Счет-фактура / УПД' },
+  },
+];
+
+// Candidate 1С documents for "linking" modal (when ERP has no match)
+const CANDIDATES_1C = [
+  { num: 'АКТ-3510', date: '21.03.2026', amount: 1_085_000, kod1c: 'АК-000510-26', doctype: 'Акт', contractor: 'ООО «ТрансСибЭкспресс»', score: 0.98 },
+  { num: 'АКТ-3509', date: '20.03.2026', amount: 1_082_000, kod1c: 'АК-000509-26', doctype: 'Акт', contractor: 'ООО «ТрансСибЭкспресс»', score: 0.74 },
+  { num: 'АКТ-3515', date: '22.03.2026', amount: 985_000, kod1c: 'АК-000515-26', doctype: 'Акт', contractor: 'ООО «ТрансСибЭкспресс»', score: 0.61 },
+];
+
+// Progress-screen log sequence
+const PROGRESS_LOG = [
+  { tag: 'info', t: '0.00s', msg: 'Запуск сверки по поставке SPEC-2026/04-1187' },
+  { tag: 'info', t: '0.08s', msg: 'Собираем коды 1С: принципал ООО «Восточный Путь» (ИНН 7728123456)' },
+  { tag: 'info', t: '0.15s', msg: 'Собираем коды 1С: покупатель АО «Металлторг-Урал» (ИНН 6658987112)' },
+  { tag: 'ok',   t: '0.42s', msg: 'Найдено 12 привязанных операций, 19 фин.документов' },
+  { tag: 'info', t: '0.58s', msg: 'Формируем read-only REST-запрос к 1С' },
+  { tag: 'info', t: '1.12s', msg: 'Запрос отправлен в 1С: 19 кодов' },
+  { tag: 'info', t: '1.34s', msg: '1С подтвердила: получение кодов' },
+  { tag: 'info', t: '2.20s', msg: 'Ожидание ответа от 1С...' },
+  { tag: 'ok',   t: '3.42s', msg: '1С вернула 18 документов (1 не найден)' },
+  { tag: 'info', t: '3.60s', msg: 'Сопоставление по коду договора 1С' },
+  { tag: 'info', t: '3.78s', msg: 'Контроль номера и даты документа' },
+  { tag: 'warn', t: '4.02s', msg: '2 документа найдены только в 1С — не привязаны к ЕРП' },
+  { tag: 'warn', t: '4.04s', msg: '1 документ найден только в ЕРП — в 1С не проведён' },
+  { tag: 'warn', t: '4.06s', msg: '2 расхождения по сумме, 1 по возмещаемости НДС' },
+  { tag: 'ok',   t: '4.18s', msg: 'Отчёт сформирован и сохранён в акт_сверки.reports' },
+];
+
+Object.assign(window, { DELIVERY, DOCS, CANDIDATES_1C, PROGRESS_LOG });
+
+const currencyLabel = (cur = 'RUB') => {
+  const value = String(cur || 'RUB').trim();
+  const key = value.toLowerCase();
+  if (!value || key === 'rub' || key === 'rur' || key === 'руб' || key === 'руб.' || key.includes('рубл')) return '₽';
+  if (key === 'usd' || key.includes('доллар')) return '$';
+  if (key === 'eur' || key.includes('евро')) return '€';
+  if (key === 'cny' || key.includes('юан')) return '¥';
+  return value;
+};
+const fmtMoney = (n, cur = 'RUB') => {
+  if (n == null) return '—';
+  const value = Number(n);
+  if (!Number.isFinite(value)) return '—';
+  const s = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: 2 }).format(value);
+  return `${s}\u00a0${currencyLabel(cur)}`;
+};
+const formatCurrencyBreakdown = (items, defaultTotal = 0) => {
+  const rows = Array.isArray(items) ? items.filter(x => Number.isFinite(Number(x?.total))) : [];
+  if (!rows.length) return fmtMoney(defaultTotal);
+  return rows
+    .map(x => fmtMoney(Number(x.total || 0), x.currency || 'RUB'))
+    .join(' · ');
+};
+const groupBy = (arr, fn) => arr.reduce((m, x) => { const k = fn(x); (m[k] ||= []).push(x); return m; }, {});
+window.currencyLabel = currencyLabel;
+window.fmtMoney = fmtMoney;
+window.formatCurrencyBreakdown = formatCurrencyBreakdown;
+window.groupBy = groupBy;
+
+const STATUS_META = {
+  match:    { label: 'Совпадает',            color: 'match',    short: 'OK' },
+  'miss-erp': { label: 'Нет в ЕРП',           color: 'miss-erp', short: 'ERP' },
+  'miss-1c':  { label: 'Нет в 1С',            color: 'miss-1c',  short: '1C' },
+  sum:      { label: 'Расхождение по сумме', color: 'sum',      short: '≠' },
+  vat:      { label: 'Вопрос по НДС',        color: 'vat',      short: 'НДС' },
+  fields:   { label: 'Расходятся реквизиты', color: 'fields',   short: 'Поля' },
+  'no-sf':  { label: 'Нет СФ/УПД',            color: 'vat',      short: 'СФ' },
+  'source-error': { label: 'Ошибка источника 1С', color: 'source-error', short: '1C!' },
+  'no-kod1c': { label: 'Нет ключа 1С',        color: 'no-kod1c', short: 'Код' },
+  pending:  { label: 'Не сверено',            color: 'pending',  short: '?' },
+};
+window.STATUS_META = STATUS_META;
+
+window.ERP_SNAPSHOT = {
+  source: 'mock',
+  sourceState: 'mock',
+  contracts: [],
+  settlements: {
+    buyer_invoice_total: 0,
+    paid_total: 0,
+    reimbursable_total: 0,
+    non_reimbursable_total: 0,
+    control_reimbursable_total: 0,
+    control_non_reimbursable_total: 0,
+    customer_settlement_balance_rub: 0,
+    control_sheet_delta: 0,
+    add_nds_operations_count: 0,
+    add_nds_oper_total: 0,
+    add_nds_expenses_total: 0,
+    add_nds_profit_total: 0,
+    control_excluded_cost_operations_count: 0,
+    control_excluded_cost_oper_total: 0,
+    control_excluded_cost_expenses_total: 0,
+    control_excluded_cost_profit_total: 0,
+    balance_to_buyer: 0,
+    settlement_delta: 0,
+    realization_total: 0,
+    profit_total: 0,
+    realization_minus_expenses_total: 0,
+  },
+  delivery_balance: {
+    client_invoice_total: 0,
+    client_invoice_count: 0,
+    client_invoice_currency_breakdown: [],
+    client_invoice_mixed_currency: false,
+    client_payment_total: 0,
+    client_payment_count: 0,
+    closing_document_total: 0,
+    closing_document_count: 0,
+    money_balance: 0,
+    documents_balance: 0,
+    invoice_payment_balance: null,
+    balance_formula_label: 'оплаты - закрывающие документы',
+    status: 'open_balance',
+    status_label: 'Нет данных',
+    warnings: [],
+    next_action: 'Запустить сверку с 1С',
+    signature: '',
+  },
+  xlsx_url: null,
+};
+
+const params = new URLSearchParams(window.location.search);
+const getApiBase = () => (params.get('api') || '').replace(/\/$/, '');
+const getSpecId = () => params.get('spec_id') || params.get('specId') || params.get('id') || '';
+const getClientId = () => params.get('client_id') || params.get('clientId') || params.get('legal_id') || params.get('contact_id') || '';
+const getDogId = () => params.get('dog_id') || params.get('dogId') || '';
+const getMatrixLimit = () => params.get('limit') || '25';
+const getClientScope = () => params.get('scope') || params.get('client_scope') || 'auto';
+const getFixtureName = () => params.get('fixture') || params.get('reference') || '';
+const getLaunchToken = () => params.get('launch_token') || params.get('token') || '';
+const removeLaunchTokenFromUrl = () => {
+  const next = new URL(window.location.href);
+  next.searchParams.delete('launch_token');
+  next.searchParams.delete('token');
+  window.history.replaceState({}, document.title, `${next.pathname}${next.search}${next.hash}`);
+};
+const apiUrl = (path) => `${getApiBase()}${path}`;
+const AUTH_SESSION_KEY = 'akt_sverki_auth_session_v1';
+const getAuthSessionToken = () => localStorage.getItem(AUTH_SESSION_KEY) || '';
+const authHeaders = (headers = {}) => {
+  const token = getAuthSessionToken();
+  return token ? { ...headers, Authorization: `Bearer ${token}` } : headers;
+};
+const apiFetch = (path, options = {}) => fetch(apiUrl(path), {
+  ...options,
+  headers: authHeaders(options.headers || {}),
+});
+const apiJsonFetch = async (path, options = {}) => {
+  const resp = await apiFetch(path, options);
+  const text = await resp.text();
+  const payload = text ? JSON.parse(text) : {};
+  if (!resp.ok || payload.ok === false) {
+    throw new Error(payload.error || payload.message || `HTTP ${resp.status}`);
+  }
+  return payload;
+};
+const filenameFromContentDisposition = (header) => {
+  const text = String(header || '');
+  const utfMatch = text.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch) return decodeURIComponent(utfMatch[1]);
+  const match = text.match(/filename="?([^";]+)"?/i);
+  return match ? match[1] : '';
+};
+const downloadApiFile = async (path, defaultName) => {
+  const resp = await apiFetch(path);
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(text || `HTTP ${resp.status}`);
+  }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filenameFromContentDisposition(resp.headers.get('Content-Disposition')) || defaultName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+window.RECONCILIATION_REPORT = null;
+
+const normalizeDeliveryFromSnapshot = (snapshot) => {
+  const d = snapshot.delivery || {};
+  const snapshotClientId = d.client_id || snapshot.parameters?.client_id || '';
+  return {
+    id: d.spec_id ? `SPEC-${d.spec_id}` : (snapshotClientId ? `CLIENT-${snapshotClientId}` : window.DELIVERY.id),
+    number: d.request_label || (d.spec_number ? `Заявка № ${d.spec_number}` : window.DELIVERY.number),
+    date: d.spec_date || window.DELIVERY.date,
+    principal: d.org_name || window.DELIVERY.principal,
+    principalInn: d.org_inn || window.DELIVERY.principalInn,
+    client: d.client_name || window.DELIVERY.client,
+    clientInn: d.client_inn || window.DELIVERY.clientInn,
+    route: d.goods_name || window.DELIVERY.route,
+    container: d.main_dog_number || window.DELIVERY.container,
+    incoterms: d.main_dog_code1c ? `Код договора 1С ${d.main_dog_code1c}` : window.DELIVERY.incoterms,
+    currency: d.goods_currency || window.DELIVERY.currency,
+    totalAmount: d.goods_amount || 0,
+    manager: d.manager_name || window.DELIVERY.manager,
+    status: d.spec_id || snapshot.spec_id ? `spec_id ${d.spec_id || snapshot.spec_id}` : `client_id ${snapshotClientId}`,
+  };
+};
+
+const docTypeLabel = (doc) => {
+  if (doc.doc_kind === 'schet') return doc.type_name || 'Счет';
+  if (doc.doc_kind === 'act') return doc.type_name || 'Акт';
+  if (doc.doc_kind === 'payment') return doc.oper_type_name || 'Оплата';
+  return doc.type_name || 'Документ';
+};
+
+const normalizeDocFromSnapshot = (doc) => ({
+  id: `${doc.doc_kind}-${doc.erp_doc_id}-${doc.detail_id || 0}`,
+  type: doc.doc_kind || 'doc',
+  typeLabel: docTypeLabel(doc),
+  opId: doc.oper_id ? `OP-${doc.oper_id}` : 'Без операции',
+  opTitle: doc.operation_title || doc.oper_type_name || 'Операция не определена',
+  status: 'pending',
+  correctNum: doc.correct_num ?? doc.correct_f_num ?? doc.f_correct_num ?? doc.f_num_correct ?? doc.report_num ?? 0,
+  correctId: doc.correct_id ?? doc.correctid ?? doc.f_correctid ?? doc.report_id ?? 0,
+  erp: {
+    num: doc.number || `ID ${doc.erp_doc_id}`,
+    date: doc.date || doc.date_iso || '',
+    amount: Number(doc.detail_sum || doc.sum || 0),
+    currency: doc.currency || '',
+    kod1c: doc.code1c || doc.dog_code1c || '',
+    vat: doc.nds_name || '—',
+    vatId: Number(doc.nds_id || doc.f_nds || 0),
+    invoice: doc.invoice_number || '',
+    reimbursement: doc.reimbursement_name || (doc.invoice_number ? `Счет ${doc.invoice_number}` : '—'),
+    reimbursementId: Number(doc.reimbursement_id || doc.f_isvozm || 0),
+    dog: doc.dog_number || '',
+    dogCode1c: doc.dog_code1c || '',
+    isDetailLine: Boolean((!doc.code1c && doc.invoice_number) || doc.type_name === 'Строка агрегирующего счета'),
+  },
+  rc: null,
+  diffNote: 'ERP-данные подключены. Для сверки загрузите XLSX/выгрузку 1С.',
+});
+
+const normalizePaymentFromSnapshot = (payment) => ({
+  id: `payment-${payment.payment_id}-${payment.oper_id || 0}`,
+  type: 'payment',
+  typeLabel: payment.oper_type_name || 'Оплата',
+  opId: payment.oper_id ? `OP-${payment.oper_id}` : 'Без операции',
+  opTitle: payment.oper_type_name || 'Поступление оплаты',
+  status: 'pending',
+  correctNum: payment.correct_num ?? payment.correct_f_num ?? payment.f_correct_num ?? payment.f_num_correct ?? payment.report_num ?? 0,
+  correctId: payment.correct_id ?? payment.correctid ?? payment.f_correctid ?? payment.report_id ?? 0,
+  erp: {
+    num: payment.pp_number || payment.code1c || `ID ${payment.payment_id}`,
+    date: payment.payment_date || payment.payment_date_iso || '',
+    amount: Number(payment.classified_sum || payment.payment_sum || 0),
+    currency: payment.currency || 'RUB',
+    kod1c: payment.code1c || '',
+    vat: payment.reimbursement_name || '—',
+    vatId: Number(payment.nds_id || payment.f_nds || 0),
+    invoice: payment.invoice_number || '',
+    reimbursement: payment.reimbursement_name || (payment.invoice_number ? `Счет ${payment.invoice_number}` : '—'),
+    reimbursementId: Number(payment.reimbursement_id || payment.f_isvozm || 0),
+    dog: '',
+    dogCode1c: '',
+    isDetailLine: false,
+  },
+  rc: null,
+  diffNote: 'ERP-оплата подключена. Для сверки запустите REST-сверку с 1С.',
+});
+
+const applyErpSnapshot = (snapshot) => {
+  window.ERP_SNAPSHOT = {
+    ...snapshot,
+    source: 'erp',
+    sourceState: 'loaded',
+    settlements: snapshot.settlements || window.ERP_SNAPSHOT.settlements,
+    delivery_balance: snapshot.delivery_balance || window.ERP_SNAPSHOT.delivery_balance,
+    contracts: Array.isArray(snapshot.contracts) ? snapshot.contracts : [],
+  };
+  window.DELIVERY = normalizeDeliveryFromSnapshot(snapshot);
+  const erpDocs = [
+    ...(Array.isArray(snapshot.schets) ? snapshot.schets : []),
+    ...(Array.isArray(snapshot.akts) ? snapshot.akts : []),
+  ].map(normalizeDocFromSnapshot);
+  const paymentDocs = (Array.isArray(snapshot.payments) ? snapshot.payments : []).map(normalizePaymentFromSnapshot);
+  const docs = Array.isArray(snapshot.erp_docs) ? snapshot.erp_docs.map(normalizeDocFromSnapshot) : [...erpDocs, ...paymentDocs];
+  if (docs.length > 0) window.DOCS = docs;
+};
+
+const loadErpSnapshot = async () => {
+  const fixture = getFixtureName();
+  if (fixture) {
+    const resp = await fetch(`./reference/${encodeURIComponent(fixture)}.json`);
+    if (!resp.ok) throw new Error(`Не удалось загрузить fixture ${fixture}: HTTP ${resp.status}`);
+    const payload = await resp.json();
+    applyErpSnapshot(payload);
+    return { state: 'loaded', message: `Загружен контрольный набор ERP ${fixture}` };
+  }
+
+  const clientId = getClientId();
+  if (clientId) {
+    const query = new URLSearchParams({ client_id: clientId, limit: getMatrixLimit(), scope: getClientScope(), compare_1c: '0' });
+    const dogId = getDogId();
+    if (dogId) query.set('dog_id', dogId);
+    const resp = await apiFetch(`/api/reconciliation/client-matrix?${query.toString()}`);
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || `HTTP ${resp.status}`);
+    }
+    const payload = await resp.json();
+    if (!payload.ok) throw new Error(payload.error || 'ERP client matrix failed');
+    applyErpSnapshot(payload);
+    return { state: 'loaded', message: `ERP-матрица загружена по client_id ${clientId}` };
+  }
+
+  const specId = getSpecId();
+  if (!specId) return { state: 'mock', message: 'Откройте страницу с ?client_id=<ID клиента> или ?spec_id=<ID заявки>, чтобы подтянуть ERP-данные.' };
+  const resp = await apiFetch(`/api/reconciliation/erp-snapshot?spec_id=${encodeURIComponent(specId)}`);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text || `HTTP ${resp.status}`);
+  }
+  const payload = await resp.json();
+  if (!payload.ok) throw new Error(payload.error || 'ERP snapshot failed');
+  applyErpSnapshot(payload);
+  return { state: 'loaded', message: `ERP-данные загружены по spec_id ${specId}` };
+};
+
+const displayDateFromIso = (iso) => {
+  const text = String(iso || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const [y, m, d] = text.split('-');
+  return `${d}.${m}.${y}`;
+};
+
+const uiStatusFromApi = (status, fields = []) => {
+  if (status === 'MATCH') return 'match';
+  if (status === 'NOT_FOUND_IN_1C') return 'miss-1c';
+  if (status === 'NOT_FOUND_IN_ERP') return 'miss-erp';
+  if (status === 'SOURCE_ERROR_1C' || status === 'ONEC_SOURCE_ERROR') return 'source-error';
+  if (status === 'NO_SF_UPD' || status === 'NOT_FOUND_SF' || status === 'MISSING_SF') return 'no-sf';
+  if (status === 'FIELDS_MISMATCH') {
+    if (fields.includes('sum') || fields.includes('amount')) return 'sum';
+    if (fields.includes('vat') || fields.includes('nds') || fields.includes('vat_rate')) return 'vat';
+    return 'fields';
+  }
+  if (status === 'NOT_COMPARABLE') return 'no-kod1c';
+  return 'pending';
+};
+
+const normalizeReportRowForUi = (row, index) => {
+  const fields = Array.isArray(row.mismatch_fields) ? row.mismatch_fields : [];
+  const status = uiStatusFromApi(row.status, fields);
+  const isAggregated = !!row.erp_is_aggregated;
+  const erp = row.erp_number || row.erp_code1c || row.erp_doc_id ? {
+    doctype: row.erp_type || row.erp_doc_kind || 'ERP',
+    num: row.erp_number || row.erp_code1c || `ERP-${row.erp_doc_id}`,
+    date: displayDateFromIso(row.erp_date_iso),
+    amount: row.erp_sum,
+    currency: row.erp_currency || '',
+    kod1c: row.erp_code1c || '',
+    vat: row.erp_reimbursement || '—',
+    vatId: Number(row.erp_nds_id || row.erp_f_nds || 0),
+    invoice: row.erp_invoice_number || '',
+    reimbursement: row.erp_reimbursement || '',
+    reimbursementId: Number(row.erp_reimbursement_id || row.erp_f_isvozm || 0),
+    dog: row.erp_dog_number || '',
+    dogCode1c: row.erp_dog_code1c || '',
+    isAggregated,
+    aggregationNote: row.erp_aggregation_note || '',
+    docCount: row.erp_doc_count || 0,
+    detailCount: row.erp_detail_count || 0,
+    isDetailLine: false,
+  } : null;
+  const rc = row.onec_number || row.onec_code1c || row.onec_ref_id ? {
+    doctype: row.onec_type || row.onec_doc_kind || '1С',
+    num: row.onec_number || row.onec_code1c || row.onec_ref_id,
+    date: displayDateFromIso(row.onec_date_iso),
+    amount: row.onec_sum,
+    kod1c: row.onec_code1c || row.onec_ref_id || '',
+    vat: row.onec_invoice_number ? `Счет ${row.onec_invoice_number}` : '—',
+    invoice: row.onec_invoice_number || '',
+    reimbursement: row.onec_contract || '',
+    dog: row.onec_contract || '',
+    source: row.onec_source_file ? `${row.onec_source_file}:${row.onec_source_row}` : '',
+  } : null;
+
+  return {
+    id: `api-${index}`,
+    opId: row.oper_id || 0,
+    opTitle: row.operation_title || row.onec_contract || row.erp_doc_kind || row.onec_doc_kind || 'Документ сверки',
+    typeLabel: erp?.doctype || rc?.doctype || 'Документ',
+    status,
+    correctNum: row.correct_num ?? row.erp_correct_num ?? row.correct_f_num ?? row.f_correct_num ?? row.report_num ?? 0,
+    correctId: row.correct_id ?? row.erp_correct_id ?? row.correctid ?? row.f_correctid ?? row.report_id ?? 0,
+    diffFields: fields.map(x => x === 'sum' ? 'amount' : x === 'invoice_number' ? 'invoice' : x),
+    diffNote: [
+      row.erp_aggregation_note,
+      row.note,
+    ].filter(Boolean).join(' · '),
+    erp,
+    rc,
+  };
+};
+
+const getCurrentBalance = () => (window.ERP_SNAPSHOT && window.ERP_SNAPSHOT.delivery_balance) || {};
+const balanceSnapshot = () => {
+  const b = getCurrentBalance();
+  return {
+    signature: b.signature || [
+      b.client_invoice_total,
+      b.client_invoice_count,
+      b.client_payment_total,
+      b.client_payment_count,
+      b.closing_document_total,
+      b.closing_document_count,
+      b.money_balance,
+      b.documents_balance,
+    ].join('|'),
+    money_balance: Number(b.money_balance || 0),
+    documents_balance: Number(b.documents_balance || 0),
+  };
+};
+
+const loadOneCRestMatrix = async () => {
+  const clientId = getClientId();
+  if (!clientId) throw new Error('Откройте страницу с ?client_id=<ID клиента>');
+  const query = new URLSearchParams({
+    client_id: clientId,
+    limit: getMatrixLimit(),
+    scope: getClientScope(),
+    compare_1c: '1',
+    source: 'rest',
+  });
+  const dogId = getDogId();
+  if (dogId) query.set('dog_id', dogId);
+  const resp = await apiFetch(`/api/reconciliation/client-matrix?${query.toString()}`);
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || !payload.ok) throw new Error(payload.error || `HTTP ${resp.status}`);
+  applyErpSnapshot(payload);
+  return payload;
+};
+
+const moneyValue = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+const balanceLabel = (delta) => moneyValue(delta) > 0.01 ? 'Переплата' : moneyValue(delta) < -0.01 ? 'Долг' : '';
+const hasText = (value) => String(value || '').trim().length > 0;
+const meaningfulLabel = (value) => {
+  const text = String(value || '').trim();
+  return text && !['_', '-', '0'].includes(text) ? text : '';
+};
+const uniqueList = (items) => [...new Set(items.map(x => String(x || '').trim()).filter(Boolean))];
+const compactList = (items, empty = '—') => {
+  const values = uniqueList(items);
+  if (!values.length) return empty;
+  return values.length > 2 ? `${values.slice(0, 2).join(', ')} +${values.length - 2}` : values.join(', ');
+};
+const multiLineList = (items, empty = '—') => {
+  const values = uniqueList(items);
+  return values.length ? values.join('\n') : empty;
+};
+const docAmount = (doc) => moneyValue(doc?.erp?.amount ?? doc?.rc?.amount);
+const docDate = (doc) => doc?.erp?.date || doc?.rc?.date || '';
+const docNumber = (doc) => doc?.erp?.num || doc?.rc?.num || doc?.erp?.kod1c || doc?.rc?.kod1c || '';
+const isInvoiceDoc = (doc) => {
+  const label = `${doc?.type || ''} ${doc?.typeLabel || ''}`.toLowerCase();
+  return label.includes('schet') || label.includes('счет покупателю') || label.includes('счёт покупателю') || label.includes('счет на оплат') || label.includes('счёт на оплат') || label.includes('bill');
+};
+const isPaymentDoc = (doc) => {
+  if (isInvoiceDoc(doc)) return false;
+  const typeLabel = `${doc?.type || ''} ${doc?.typeLabel || ''}`.toLowerCase();
+  const opLabel = `${doc?.opTitle || ''}`.toLowerCase();
+  return doc?.type === 'payment'
+    || typeLabel.includes('payment')
+    || typeLabel.includes('платеж')
+    || typeLabel.includes('платёж')
+    || typeLabel.includes('поступление')
+    || opLabel.includes('поступление оплаты')
+    || opLabel.includes('оплата покупателя');
+};
+const isSfDoc = (doc) => {
+  const label = `${doc?.type || ''} ${doc?.typeLabel || ''} ${doc?.erp?.num || ''} ${doc?.rc?.num || ''}`.toLowerCase();
+  return label.includes('фактур') || label.includes('invoice') || /^сф[-\s]/i.test(doc?.erp?.num || '') || /^сф[-\s]/i.test(doc?.rc?.num || '');
+};
+const reimbursementKind = (doc) => {
+  const value = Number(doc?.erp?.reimbursementId ?? doc?.reimbursementId ?? 0);
+  if (value === 1) return 'reimb';
+  if (value === 2) return 'non';
+  return '';
+};
+const docStatusBadge = (status) => {
+  if (status === 'match') return { key: 'ok', label: 'Совпало' };
+  if (status === 'limited') return { key: 'limit', label: 'Строка 1С' };
+  if (status === 'source-error') return { key: 'source-error', label: 'Ошибка 1С' };
+  if (status === 'miss-1c') return { key: 'no1c', label: 'Нет в 1С' };
+  if (status === 'miss-erp') return { key: 'noerp', label: 'Нет в ERP' };
+  if (status === 'sum') return { key: 'sum', label: 'Сумма расходится' };
+  if (status === 'vat') return { key: 'nosf', label: 'Вопрос по НДС' };
+  if (status === 'no-sf') return { key: 'no-sf', label: 'Нет СФ/УПД' };
+  if (status === 'fields') return { key: 'fields', label: 'Поля документа расходятся' };
+  if (status === 'no-kod1c') return { key: 'nokey', label: 'Нет ключа 1С' };
+  return { key: 'pending', label: 'Не сверено' };
+};
+
+const buildMatrixModel = () => {
+  const snapshot = window.ERP_SNAPSHOT || {};
+  if (snapshot.matrix_model && Array.isArray(snapshot.matrix_model.clients)) {
+    return snapshot.matrix_model;
+  }
+  const deliveryRaw = snapshot.delivery || {};
+  const delivery = window.DELIVERY || {};
+  const docs = Array.isArray(window.DOCS) ? window.DOCS : [];
+  const balance = snapshot.delivery_balance || {};
+  const settlements = snapshot.settlements || {};
+  const contracts = Array.isArray(snapshot.contracts) ? snapshot.contracts : [];
+  const clientTree = snapshot.client_tree && typeof snapshot.client_tree === 'object' ? snapshot.client_tree : {};
+
+  const specNumber = hasText(deliveryRaw.spec_number)
+    ? deliveryRaw.spec_number
+    : String(delivery.number || '').replace(/^Заявка\s*№?\s*/i, '') || delivery.id || '—';
+  const mainDog = deliveryRaw.main_dog_number || delivery.container || compactList(contracts.map(c => c.dog_number), 'Без договора');
+  const mainDogCode = deliveryRaw.main_dog_code1c || compactList(contracts.map(c => c.dog_code1c), '');
+  const principalName = delivery.principal || deliveryRaw.org_name || compactList(contracts.map(c => c.org_name), 'Юридическое лицо');
+  const clientName = delivery.client || deliveryRaw.client_name || 'Клиент не выбран';
+  const clientInn = delivery.clientInn || deliveryRaw.client_inn || '';
+  const deliveryLabel = delivery.number || (specNumber !== '—' ? `Заявка № ${specNumber}` : delivery.id);
+
+  const badgesForDocs = (sourceDocs, delta, sfDocs) => {
+    const issueCounts = sourceDocs.reduce((acc, doc) => {
+      acc[doc.status] = (acc[doc.status] || 0) + 1;
+      return acc;
+    }, {});
+    const rowBadges = [];
+    if ((issueCounts['miss-1c'] || 0) > 0) rowBadges.push({ key: 'no1c', label: `Нет в 1С ${issueCounts['miss-1c']}` });
+    if ((issueCounts['miss-erp'] || 0) > 0) rowBadges.push({ key: 'noerp', label: `Нет в ERP ${issueCounts['miss-erp']}` });
+    if ((issueCounts.sum || 0) > 0) rowBadges.push({ key: 'sum', label: 'Сумма расходится' });
+    else if (balanceLabel(delta)) rowBadges.push({ key: 'sum', label: balanceLabel(delta) });
+    if ((issueCounts.vat || 0) > 0) rowBadges.push({ key: 'nosf', label: 'Вопрос по НДС' });
+    if ((issueCounts['no-sf'] || 0) > 0) rowBadges.push({ key: 'no-sf', label: `Нет СФ/УПД ${issueCounts['no-sf']}` });
+    if ((issueCounts.fields || 0) > 0) rowBadges.push({ key: 'fields', label: 'Расходятся реквизиты' });
+    if ((issueCounts['source-error'] || 0) > 0) rowBadges.push({ key: 'source-error', label: 'Ошибка источника 1С' });
+    if ((issueCounts.limited || 0) > 0) rowBadges.push({ key: 'limit', label: `Строка 1С ${issueCounts.limited}` });
+    if ((issueCounts['no-kod1c'] || 0) > 0) rowBadges.push({ key: 'nokey', label: `Нет ключа 1С ${issueCounts['no-kod1c']}` });
+    if ((issueCounts.pending || 0) > 0) rowBadges.push({ key: 'pending', label: `Не сверено ${issueCounts.pending}` });
+    if (!rowBadges.length) rowBadges.push({ key: 'ok', label: 'ОК' });
+    return rowBadges;
+  };
+  const totalsFromDocs = (sourceDocs, useSnapshotTotals = false) => {
+    const invoiceDocs = sourceDocs.filter(isInvoiceDoc);
+    const paymentDocs = sourceDocs.filter(isPaymentDoc);
+    const sfDocs = sourceDocs.filter(isSfDoc);
+    const reimbDocs = sourceDocs.filter(x => reimbursementKind(x) === 'reimb');
+    const nonReimbDocs = sourceDocs.filter(x => reimbursementKind(x) === 'non');
+    const pickMoney = (...values) => {
+      for (const value of values) {
+        if (value === undefined || value === null || String(value).trim() === '') continue;
+        const number = moneyValue(value);
+        if (Number.isFinite(number)) return number;
+      }
+      return null;
+    };
+    const invoiceSum = useSnapshotTotals
+      ? (pickMoney(balance.client_invoice_total, settlements.invoice_total, settlements.buyer_invoice_total) ?? invoiceDocs.reduce((s, x) => s + docAmount(x), 0))
+      : invoiceDocs.reduce((s, x) => s + docAmount(x), 0);
+    const paymentSum = useSnapshotTotals
+      ? (pickMoney(balance.client_payment_total, settlements.paid_total, settlements.classified_paid_total) ?? paymentDocs.reduce((s, x) => s + docAmount(x), 0))
+      : paymentDocs.reduce((s, x) => s + docAmount(x), 0);
+    const reimbursableSum = useSnapshotTotals
+      ? (pickMoney(settlements.control_reimbursable_total, settlements.reimbursable_total) ?? reimbDocs.reduce((s, x) => s + docAmount(x), 0))
+      : reimbDocs.reduce((s, x) => s + docAmount(x), 0);
+    const nonReimbursableSum = useSnapshotTotals
+      ? (pickMoney(settlements.control_non_reimbursable_total, settlements.non_reimbursable_total) ?? nonReimbDocs.reduce((s, x) => s + docAmount(x), 0))
+      : nonReimbDocs.reduce((s, x) => s + docAmount(x), 0);
+    const delta = useSnapshotTotals
+      ? (pickMoney(settlements.customer_settlement_balance_rub, settlements.control_sheet_delta, balance.money_balance) ?? moneyValue(paymentSum - reimbursableSum - nonReimbursableSum))
+      : moneyValue(paymentSum - reimbursableSum - nonReimbursableSum);
+    return {
+      invoiceLabel: multiLineList(invoiceDocs.map(docNumber), invoiceDocs.length ? `${invoiceDocs.length} счет(ов)` : '—'),
+      invoiceSum,
+      paymentSum,
+      reimbursableSum,
+      nonReimbursableSum,
+      sfLabel: multiLineList(sfDocs.map(docNumber), '—'),
+      delta,
+      badges: badgesForDocs(sourceDocs, delta, sfDocs),
+      showAmounts: true,
+    };
+  };
+  const useSnapshotTotals = snapshot.source !== 'mock' && snapshot.sourceState !== 'mock';
+  const totals = totalsFromDocs(docs, useSnapshotTotals);
+
+  const detailDocsFor = (sourceDocs) => sourceDocs
+    .slice()
+    .sort((a, b) => String(docDate(a)).localeCompare(String(docDate(b))) || String(docNumber(a)).localeCompare(String(docNumber(b))))
+    .map((doc, idx) => ({
+      id: doc.id || `detail-${idx}`,
+      type: doc.typeLabel || 'Документ',
+      erp: doc.erp?.num || doc.erp?.kod1c || '—',
+      onec: doc.rc?.num || doc.rc?.kod1c || '—',
+      date: docDate(doc) || '—',
+      amount: docAmount(doc),
+      status: docStatusBadge(doc.status),
+    }));
+
+  const blankTotals = {
+    invoiceLabel: '—',
+    invoiceSum: null,
+    paymentSum: null,
+    reimbursableSum: null,
+    nonReimbursableSum: null,
+    sfLabel: '—',
+    delta: null,
+    badges: [],
+    showAmounts: false,
+  };
+  const navigationTotals = (rowBadges = []) => ({ ...blankTotals, badges: rowBadges });
+  const totalsFor = (active) => active ? totals : blankTotals;
+  const correctionInfo = (doc) => {
+    const numCandidate = [doc.correctNum, doc.erp?.correctNum, doc.rc?.correctNum]
+      .find(v => v !== undefined && v !== null && String(v).trim() !== '');
+    const idCandidate = [doc.correctId, doc.erp?.correctId, doc.rc?.correctId]
+      .find(v => v !== undefined && v !== null && String(v).trim() !== '');
+    const num = Number(numCandidate);
+    const id = Number(idCandidate);
+    return {
+      num: Number.isFinite(num) && num > 0 ? num : 0,
+      id: Number.isFinite(id) && id > 0 ? id : 0,
+    };
+  };
+  const reportSlices = (() => {
+    const groups = new Map();
+    docs.forEach((doc) => {
+      const info = correctionInfo(doc);
+      const key = info.num > 0 ? `num-${info.num}` : info.id > 0 ? `id-${info.id}` : 'main';
+      if (!groups.has(key)) groups.set(key, { key, info, docs: [] });
+      groups.get(key).docs.push(doc);
+    });
+    if (!groups.size) groups.set('main', { key: 'main', info: { num: 0, id: 0 }, docs: [] });
+    const groupCount = groups.size;
+    return [...groups.values()]
+      .sort((a, b) => {
+        const av = a.key === 'main' ? -1 : (a.info.num || a.info.id || 0);
+        const bv = b.key === 'main' ? -1 : (b.info.num || b.info.id || 0);
+        return av - bv;
+      })
+      .map((slice) => {
+        const isMain = slice.key === 'main';
+        const label = isMain ? (groupCount > 1 ? 'Основной отчет' : `Спецификация ${specNumber}`) : (slice.info.num ? `Корректировка № ${slice.info.num}` : 'Корректировка');
+        return {
+          ...slice,
+          label,
+          note: isMain ? 'Основной отчет по поставке' : 'Дополнительный срез закрытия поставки',
+          totals: groupCount === 1 && isMain ? totals : totalsFromDocs(slice.docs, false),
+          detailDocs: detailDocsFor(slice.docs),
+        };
+      });
+  })();
+  const currentTree = clientTree.current || {};
+  const currentLegalId = Number(currentTree.legal_entity_id || deliveryRaw.client_id || 0);
+  const currentDogId = Number(currentTree.dog_id || deliveryRaw.main_dog_id || 0);
+  const currentContractCodes = new Set([
+    deliveryRaw.main_dog_code1c,
+    deliveryRaw.spec_buyer_code1c,
+    deliveryRaw.spec_principal_code1c,
+    ...contracts.map(c => c.dog_code1c),
+  ].map(x => String(x || '').trim()).filter(Boolean));
+  const contact = clientTree.contact || {};
+  const contactName = meaningfulLabel(contact.name) || meaningfulLabel(deliveryRaw.contact_name) || clientName;
+  const contactInn = contact.inn || deliveryRaw.contact_inn || clientInn;
+  const legalEntities = Array.isArray(clientTree.legal_entities) && clientTree.legal_entities.length
+    ? clientTree.legal_entities
+    : [{
+        id: currentLegalId || deliveryRaw.client_id || clientName,
+        name: clientName,
+        abbr: deliveryRaw.client_abbr || '',
+        inn: clientInn,
+        code1c: '',
+        is_current: true,
+        contracts: [],
+      }];
+  const sortedLegalEntities = legalEntities.slice().sort((a, b) => {
+    const aCurrent = Number(a.id || a.client_id || 0) === currentLegalId || a.is_current ? 0 : 1;
+    const bCurrent = Number(b.id || b.client_id || 0) === currentLegalId || b.is_current ? 0 : 1;
+    if (aCurrent !== bCurrent) return aCurrent - bCurrent;
+    return String(meaningfulLabel(a.abbr) || meaningfulLabel(a.name)).localeCompare(String(meaningfulLabel(b.abbr) || meaningfulLabel(b.name)), 'ru');
+  });
+
+  const makeSpecRow = (level, slice) => ({
+    id: `spec-${specNumber}-${slice.key}`,
+    kind: 'spec',
+    level,
+    name: reportSlices.length > 1 ? slice.label : `Спецификация ${specNumber}`,
+    note: reportSlices.length > 1
+      ? `Спецификация ${specNumber} · ${slice.note}`
+      : (delivery.route || deliveryRaw.goods_name || slice.note),
+    specNo: specNumber,
+    isParent: false,
+    detailDocs: slice.detailDocs,
+    defaultExpanded: false,
+    ...slice.totals,
+  });
+  const makeDeliveryRow = (level) => ({
+    id: `delivery-${specNumber}`,
+    kind: 'delivery',
+    level,
+    name: `Поставка: ${deliveryLabel}`,
+    note: [deliveryRaw.spec_date || delivery.date || '', delivery.route || deliveryRaw.goods_name || ''].filter(Boolean).join(' · '),
+    specNo: reportSlices.length > 1 ? `${reportSlices.length} среза` : '1 спецификация',
+    isParent: true,
+    defaultExpanded: true,
+    children: reportSlices.map(slice => makeSpecRow(level + 1, slice)),
+    ...(reportSlices.length > 1 ? { ...totals, badges: [...totals.badges, { key: 'limit', label: 'Есть корректировки' }] } : totals),
+  });
+  const makeCurrentContractFromCurrentSelection = () => ({
+    id: currentDogId || `contract-${mainDog}`,
+    number: mainDog,
+    code1c: mainDogCode,
+    date: deliveryRaw.main_dog_date || '',
+    type_name: 'Основной договор',
+    org_abbr: deliveryRaw.org_abbr || '',
+    org_name: principalName,
+    org_inn: deliveryRaw.org_inn || delivery.principalInn || '',
+    is_current: true,
+  });
+  const isCurrentContract = (contract, legalId) => {
+    const contractId = Number(contract?.id || contract?.dog_id || 0);
+    const numericLegalId = Number(legalId);
+    const number = String(contract?.number || contract?.dog_number || '').trim();
+    const code = String(contract?.code1c || contract?.dog_code1c || '').trim();
+    const legalMatches = !currentLegalId || numericLegalId === currentLegalId;
+    return legalMatches && (
+      (currentDogId && contractId === currentDogId) ||
+      (number && mainDog && number === mainDog) ||
+      (code && currentContractCodes.has(code))
+    );
+  };
+  const legalRows = sortedLegalEntities.map((legal, legalIdx) => {
+    const legalId = Number(legal.id || legal.client_id || 0);
+    const legalActive = legalId === currentLegalId || legal.is_current;
+    const rawContracts = Array.isArray(legal.contracts) ? legal.contracts.slice() : [];
+    if (legalActive && !rawContracts.some(c => isCurrentContract(c, legalId))) {
+      rawContracts.unshift(makeCurrentContractFromCurrentSelection());
+    }
+    rawContracts.sort((a, b) => {
+      const aCurrent = isCurrentContract(a, legalId) ? 0 : 1;
+      const bCurrent = isCurrentContract(b, legalId) ? 0 : 1;
+      if (aCurrent !== bCurrent) return aCurrent - bCurrent;
+      return String(b.date || '').localeCompare(String(a.date || '')) || String(b.id || '').localeCompare(String(a.id || ''));
+    });
+    const contractRows = rawContracts.map((contract, contractIdx) => {
+      const active = isCurrentContract(contract, legalId);
+      const number = contract.number || contract.dog_number || 'Договор без номера';
+      const code = contract.code1c || contract.dog_code1c || '';
+      const orgLabel = contract.org_abbr || contract.org_name || principalName;
+      const noteParts = [
+        contract.type_name || contract.dog_type_name || '',
+        contract.date ? `от ${contract.date}` : '',
+        code ? `код 1С ${code}` : '',
+        orgLabel ? `организация ${orgLabel}` : '',
+      ].filter(Boolean);
+      return {
+        id: `contract-${legalId}-${contract.id || contract.dog_id || contractIdx}`,
+        kind: 'contract',
+        level: 2,
+        name: `Договор: ${number}`,
+        note: noteParts.join(' · ') || 'Договор ERP',
+        specNo: active ? '1 поставка' : '—',
+        isParent: active,
+        defaultExpanded: active,
+        children: active ? [makeDeliveryRow(3)] : [],
+        ...(active ? totals : navigationTotals([])),
+      };
+    });
+    const active = contractRows.some(row => row.children?.length);
+    const legalName = meaningfulLabel(legal.abbr) || meaningfulLabel(legal.name) || `ЮЛ ${legalId || legalIdx + 1}`;
+    const legalFullName = meaningfulLabel(legal.name);
+    const legalNote = legal.inn ? `ИНН ${legal.inn}` : (legalFullName && legalFullName !== legalName ? legalFullName : '');
+    return {
+      id: `legal-${legalId || legalIdx}`,
+      kind: 'legal',
+      level: 1,
+      name: `ЮЛ: ${legalName}`,
+      note: legalNote,
+      specNo: active ? '1 договор' : `${contractRows.length} договор(ов)`,
+      isParent: contractRows.length > 0,
+      defaultExpanded: active,
+      children: contractRows,
+      ...(active ? totals : navigationTotals([])),
+    };
+  });
+  const clientRow = {
+    id: `client-${contact.id || contactName}`,
+    kind: 'client',
+    level: 0,
+    name: `Клиент: ${contactName}`,
+    note: contactInn ? `ИНН ${contactInn}` : '',
+    specNo: `${legalRows.length} ЮЛ`,
+    isParent: true,
+    defaultExpanded: true,
+    children: legalRows,
+    ...totals,
+  };
+
+  return {
+    clients: [{ id: clientRow.id, name: contactName, inn: contactInn, root: clientRow }],
+    totals,
+    rowsCount: docs.length,
+    sourceLabel: snapshot.sourceState === 'loaded' || snapshot.source === 'erp' ? 'ERP-данные' : 'Локальный пример',
+  };
+};
+
+/* ===== Matrix page ===== */
+const ReconciliationMatrixPage = ({ onBack, onOpenReport, lastReport, compareState, dataState }) => {
+  const expectsUrlData = Boolean(getClientId() || getSpecId() || getFixtureName());
+  const model = buildMatrixModel();
+  const [selectedClient, setSelectedClient] = React.useState(() => model.clients[0]?.id || '');
+  const [query, setQuery] = React.useState('');
+  const [onlyIssues, setOnlyIssues] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(() => new Set(['client-', 'org-', 'contract-', 'delivery-']));
+  const [copyState, setCopyState] = React.useState('');
+  const clients = model.clients;
+  const selected = clients.find(c => c.id === selectedClient) || clients[0];
+
+  React.useEffect(() => {
+    if (selected && selected.id !== selectedClient) setSelectedClient(selected.id);
+  }, [selected?.id]);
+
+  React.useEffect(() => {
+    if (!selected?.root) return;
+    const defaults = new Set();
+    const walk = (row) => {
+      if (row.isParent && row.defaultExpanded) defaults.add(row.id);
+      (row.children || []).forEach(walk);
+    };
+    walk(selected.root);
+    setExpanded(defaults);
+  }, [selectedClient, model.sourceLabel]);
+
+  if (expectsUrlData && dataState?.state === 'loading') {
+    const loadingTitle = getClientId()
+      ? `Загружаем live-матрицу по client_id ${getClientId()}`
+      : 'Загружаем данные матрицы';
+    const loadingHint = getClientId()
+      ? `Выборка может занимать несколько минут: считаем до ${getMatrixLimit()} поставок через ERP-процедуры и сверяем с 1С Postgre.`
+      : 'Ждем ответ ERP API.';
+    return (
+      <div className="page matrix-page">
+        <div className="matrix-head">
+          <div>
+            <button className="btn ghost sm" onClick={onBack}><IconArrowLeft size={13}/>К поставке</button>
+            <div className="matrix-title" style={{ marginTop: 12 }}>{loadingTitle}</div>
+            <div className="matrix-sub">{loadingHint}</div>
+          </div>
+        </div>
+        <div className="matrix-shell" style={{ padding: 24 }}>
+          <div className="source-banner">
+            <IconSearch size={15}/>
+            <span>{dataState.message || 'Проверяем контекст ERP...'}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (expectsUrlData && dataState?.state === 'error') {
+    return (
+      <div className="page matrix-page">
+        <div className="matrix-head">
+          <div>
+            <button className="btn ghost sm" onClick={onBack}><IconArrowLeft size={13}/>К поставке</button>
+            <div className="matrix-title" style={{ marginTop: 12 }}>Матрица не загрузилась</div>
+            <div className="matrix-sub">Live API не вернул данные. Для тяжелых договоров попробуйте меньший `limit`.</div>
+          </div>
+        </div>
+        <div className="matrix-shell" style={{ padding: 24 }}>
+          <div className="source-banner warn">
+            <IconAlert size={15}/>
+            <span>{dataState.message || 'Ошибка загрузки ERP API'}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const toggle = (id) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const visibleRows = [];
+  const addRows = (row) => {
+    const blob = [row.name, row.note, row.specNo, row.invoiceLabel, row.sfLabel].join(' ').toLowerCase();
+    const matchesQuery = !query || blob.includes(query.toLowerCase());
+    const hasIssue = row.badges?.some(b => b.key !== 'ok');
+    if (matchesQuery && (!onlyIssues || hasIssue || row.isParent)) visibleRows.push(row);
+    if (row.children?.length && expanded.has(row.id)) row.children.forEach(addRows);
+  };
+  if (selected?.root) addRows(selected.root);
+
+  const rowText = (row, value) => row.showAmounts === false ? '—' : (value || '—');
+  const rowMoneyText = (row, key) => {
+    if (row.showAmounts === false) return '—';
+    const label = row[`${key}Label`];
+    if (label !== undefined && label !== null && String(label).trim() !== '') return label;
+    return fmtMoney(row[key]);
+  };
+  const totalMoneyText = (key) => {
+    const label = model.totals?.[`${key}Label`];
+    if (label !== undefined && label !== null && String(label).trim() !== '') return label;
+    return fmtMoney(model.totals?.[key]);
+  };
+  const renderMoney = (row, key) => <span className="mono">{rowMoneyText(row, key)}</span>;
+  const renderBadges = (badges) => (
+    <div className="matrix-badges">
+      {(badges || []).map((b, idx) => <span className={`matrix-badge ${b.key}`} title={badgeHint(b)} key={`${b.key}-${idx}`}>{b.label}</span>)}
+    </div>
+  );
+  const badgeHint = (badge) => {
+    const label = String(badge?.label || '');
+    const key = String(badge?.key || '');
+    if (key === 'ok' && label.includes('1С:')) return 'Все строки сверки ERP ↔ 1С по этой поставке совпали: найден документ 1С и совпали контролируемые поля.';
+    if (key === 'ok') return 'По этой строке не найдено расхождений.';
+    if (key === 'sum' && (label.includes('Долг') || label.includes('Переплата'))) return 'Долг/переплата = сумма оплат - возмещаемые расходы - невозмещаемые расходы.';
+    if (key === 'fields') return 'Расходятся контролируемые поля документа: номер, дата, договор, код 1С или другая связка.';
+    if (key === 'no1c') return 'ERP-документ есть, но соответствующий документ 1С не найден в источнике сверки.';
+    if (key === 'noerp') return 'Документ 1С есть, но соответствующая ERP-строка не найдена.';
+    if (key === 'nosf' || key === 'no-sf') return 'Проверить закрывающий документ или ставку НДС.';
+    if (key === 'nokey') return 'Для автоматической сверки не хватает кода/ключа 1С.';
+    return label;
+  };
+  const reconciliationStatusText = (row) => {
+    const summary = row.reconciliation?.summary || {};
+    const total = Number(summary.total || 0);
+    if (!total) return 'Статус проверки: сверка с 1С не запускалась';
+    const match = Number(summary.MATCH || 0);
+    const problems =
+      Number(summary.NOT_FOUND_IN_1C || 0) +
+      Number(summary.NOT_FOUND_IN_ERP || 0) +
+      Number(summary.FIELDS_MISMATCH || 0) +
+      Number(summary.NOT_COMPARABLE || 0);
+    return problems
+      ? `Сверка с 1С: ${match} из ${total} совпало, отклонений ${problems}`
+      : `Сверка с 1С: ${match} из ${total} совпало`;
+  };
+  const deltaClass = (value) => moneyValue(value) > 0.01 ? 'pos' : moneyValue(value) < -0.01 ? 'neg' : '';
+  const matrixColumns = [
+    'Иерархия',
+    '№ спецификации',
+    'Счет',
+    'Сумма по счету',
+    'Сумма оплаты',
+    'Возмещаемые расходы',
+    'Невозмещаемые расходы',
+    '№ счф',
+    '(+/-)',
+    'Статус',
+  ];
+  const exportRows = visibleRows.map(row => ({
+    'Иерархия': `${'  '.repeat(row.level)}${row.name}${row.note ? ` (${row.note})` : ''}`,
+    '№ спецификации': row.specNo || '',
+    'Счет': rowText(row, row.invoiceLabel),
+    'Сумма по счету': rowMoneyText(row, 'invoiceSum'),
+    'Сумма оплаты': rowMoneyText(row, 'paymentSum'),
+    'Возмещаемые расходы': rowMoneyText(row, 'reimbursableSum'),
+    'Невозмещаемые расходы': rowMoneyText(row, 'nonReimbursableSum'),
+    '№ счф': rowText(row, row.sfLabel),
+    '(+/-)': rowMoneyText(row, 'delta'),
+    'Статус': (row.badges || []).map(b => b.label).join(', '),
+  }));
+  const serializeMatrix = (separator) => {
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const quote = (value) => {
+      const text = clean(value);
+      return separator === ';' ? `"${text.replace(/"/g, '""')}"` : text.replace(/\t/g, ' ');
+    };
+    return [
+      matrixColumns.join(separator),
+      ...exportRows.map(row => matrixColumns.map(col => quote(row[col])).join(separator)),
+    ].join('\n');
+  };
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(serializeMatrix('\t'));
+      setCopyState('Скопировано');
+    } catch (err) {
+      console.warn('Matrix copy failed', err);
+      setCopyState('Не скопировано');
+    }
+    window.setTimeout(() => setCopyState(''), 1800);
+  };
+  const handleExport = async () => {
+    const clientId = getClientId();
+    if (clientId) {
+      const query = new URLSearchParams({ client_id: clientId, limit: getMatrixLimit(), scope: getClientScope(), compare_1c: '0' });
+      const dogId = getDogId();
+      if (dogId) query.set('dog_id', dogId);
+      const currentParams = new URLSearchParams(window.location.search);
+      const sourceMode = currentParams.get('source') || currentParams.get('source_mode');
+      if (sourceMode) query.set('source', sourceMode);
+      try {
+        setCopyState('Готовим XLSX');
+        await downloadApiFile(`/api/reconciliation/client-matrix.xlsx?${query.toString()}`, `akt-sverki-client-${clientId}.xlsx`);
+        setCopyState('XLSX скачан');
+      } catch (err) {
+        console.error('XLSX export failed', err);
+        setCopyState('Ошибка XLSX');
+      }
+      window.setTimeout(() => setCopyState(''), 1800);
+      return;
+    }
+    const blob = new Blob(['\ufeff' + serializeMatrix(';')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `akt-sverki-matrix-${selected?.name || 'client'}.csv`.replace(/[\\/:*?"<>|]+/g, '_');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="page matrix-page">
+      <div className="matrix-head">
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
+            <button className="btn ghost sm" onClick={onBack}><IconArrowLeft size={13}/>К поставке</button>
+            <span className="pill-sm">Матрица</span>
+            <span className="mono muted" style={{ fontSize: 11.5 }}>{model.sourceLabel}</span>
+          </div>
+          <div className="matrix-title">Акт сверки по взаиморасчетам</div>
+          <div className="matrix-sub">{selected?.name || 'Клиент'} · {model.rowsCount} документальных строк</div>
+        </div>
+        <div className="matrix-actions">
+          <button className="btn sm" onClick={onOpenReport} disabled={compareState?.state === 'loading'}>
+            {compareState?.state === 'loading' ? <IconSpinner size={13}/> : <IconDoc size={13}/>}
+            {compareState?.state === 'loading' ? 'Сверяем...' : lastReport ? 'Пересверить с 1С' : 'Сверить с 1С'}
+          </button>
+          <button className="btn sm" onClick={handleCopy}><IconCopy size={13}/>{copyState || 'Скопировать'}</button>
+          <button className="btn brand" onClick={handleExport} title="Скачать бухгалтерскую форму .xlsx"><IconDownload size={14}/>Выгрузить XLSX</button>
+        </div>
+      </div>
+
+      <div className="matrix-controls">
+        <select className="matrix-select" value={selectedClient} onChange={e => setSelectedClient(e.target.value)}>
+          {clients.map(c => <option key={c.id} value={c.id}>{c.name}{c.inn ? ` · ИНН ${c.inn}` : ''}</option>)}
+        </select>
+        <div className="matrix-search">
+          <IconSearch size={14}/>
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Поиск по ЮЛ, ИНН, client_id, договору, заявке, счету, № 1С..." />
+        </div>
+        <div className="seg">
+          <button className={!onlyIssues ? 'on' : ''} onClick={() => setOnlyIssues(false)}>Все</button>
+          <button className={onlyIssues ? 'on' : ''} onClick={() => setOnlyIssues(true)}>Ошибки</button>
+        </div>
+      </div>
+
+      <div className="matrix-kpis">
+        <div className="matrix-kpi"><div className="v mono">{totalMoneyText('invoiceSum')}</div><div className="l">Сумма по счетам</div></div>
+        <div className="matrix-kpi"><div className="v mono">{totalMoneyText('paymentSum')}</div><div className="l">Сумма оплат</div></div>
+        <div className="matrix-kpi"><div className="v mono">{totalMoneyText('reimbursableSum')}</div><div className="l">Возмещаемые расходы</div></div>
+        <div className="matrix-kpi"><div className="v mono">{totalMoneyText('nonReimbursableSum')}</div><div className="l">Невозмещаемые расходы</div></div>
+        <div className="matrix-kpi"><div className={`v mono ${deltaClass(model.totals.delta)}`}>{totalMoneyText('delta')}</div><div className="l">(+/-) оплат-расходы</div></div>
+      </div>
+
+      <div className="matrix-shell">
+        <div className="matrix-scroll">
+          <table className="matrix-table">
+            <colgroup>
+              <col style={{ width: '20%' }}/>
+              <col style={{ width: '5.5%' }}/>
+              <col style={{ width: '9%' }}/>
+              <col style={{ width: '9%' }}/>
+              <col style={{ width: '9.5%' }}/>
+              <col style={{ width: '10%' }}/>
+              <col style={{ width: '10.5%' }}/>
+              <col style={{ width: '10%' }}/>
+              <col style={{ width: '7%' }}/>
+              <col style={{ width: '9.5%' }}/>
+            </colgroup>
+            <thead>
+              <tr>
+                <th className="sticky-col"><span className="th-wrap">Иерархия</span></th>
+                <th><span className="th-wrap">№<br/>спец.</span></th>
+                <th><span className="th-wrap">Счет</span></th>
+                <th style={{ textAlign: 'right' }}><span className="th-wrap">Сумма<br/>по счету</span></th>
+                <th style={{ textAlign: 'right' }}><span className="th-wrap">Сумма<br/>оплаты</span></th>
+                <th style={{ textAlign: 'right' }}><span className="th-wrap">Возм.<br/>расходы</span></th>
+                <th style={{ textAlign: 'right' }}><span className="th-wrap">Невозм.<br/>расходы</span></th>
+                <th><span className="th-wrap">№<br/>счф</span></th>
+                <th style={{ textAlign: 'right' }}><span className="th-wrap">(+/-)<br/>опл.-расх.</span></th>
+                <th><span className="th-wrap">Статус</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map(row => (
+                <React.Fragment key={row.id}>
+                  <tr className={`matrix-row level-${row.level} ${row.isParent ? 'parent' : 'spec'}`}>
+                    <td className="sticky-col">
+                      <div className="matrix-label" style={{ '--level': row.level }}>
+                        <span className="matrix-indent"/>
+                        {(row.children?.length || row.detailDocs?.length) ? (
+                          <button className="matrix-expander" onClick={() => toggle(row.id)} title={expanded.has(row.id) ? 'Свернуть' : 'Развернуть'}>
+                            <IconChevron size={13} style={{ transform: expanded.has(row.id) ? 'rotate(180deg)' : '', transition: 'transform 0.15s' }}/>
+                          </button>
+                        ) : <span className="matrix-expander"/>}
+                        <div className="matrix-main">
+                          <div className="matrix-name">{row.name}</div>
+                          <div className="matrix-meta-line">
+                            {row.note && <div className="matrix-note">{row.note}</div>}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="mono">{row.specNo || '—'}</td>
+                    <td className="mono">{rowText(row, row.invoiceLabel)}</td>
+                    <td className="money">{renderMoney(row, 'invoiceSum')}</td>
+                    <td className="money">{renderMoney(row, 'paymentSum')}</td>
+                    <td className="money">{renderMoney(row, 'reimbursableSum')}</td>
+                    <td className="money">{renderMoney(row, 'nonReimbursableSum')}</td>
+                    <td className="mono sf-cell"><div className="sf-lines">{rowText(row, row.sfLabel)}</div></td>
+                    <td className={`delta ${row.showAmounts === false ? '' : deltaClass(row.delta)}`}>{renderMoney(row, 'delta')}</td>
+                    <td className="matrix-status-cell">{renderBadges(row.badges)}</td>
+                  </tr>
+                  {row.kind === 'spec' && expanded.has(row.id) && (
+                    <tr className="matrix-row detail-host">
+                      <td colSpan="10">
+                        <div className="matrix-detail">
+                          <div className="matrix-detail-title">Документы внутри спецификации · {reconciliationStatusText(row)}</div>
+                          <div className="matrix-detail-grid">
+                            <div className="matrix-detail-head">Статус проверки</div>
+                            <div className="matrix-detail-head">Тип</div>
+                            <div className="matrix-detail-head">ERP</div>
+                            <div className="matrix-detail-head">1С</div>
+                            <div className="matrix-detail-head">Дата</div>
+                            <div className="matrix-detail-head">Сумма</div>
+                            {row.detailDocs.map(detail => (
+                              <React.Fragment key={detail.id}>
+                                <div><span className={`matrix-badge ${detail.status.key}`}>{detail.status.label}</span></div>
+                                <div>{detail.type}</div>
+                                <div className="mono">{detail.erp}</div>
+                                <div className="mono">{detail.onec}</div>
+                                <div className="mono">{detail.date}</div>
+                                <div className="mono">{fmtMoney(detail.amount)}</div>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+          {visibleRows.length === 0 && <div className="matrix-empty">Нет строк по выбранному фильтру</div>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+window.ReconciliationMatrixPage = ReconciliationMatrixPage;
+
+
+/* ===== src/DeliveryCard.jsx ===== */
+// Delivery card screen — entry point with "Сверить с 1С" CTA
+const DeliveryCard = ({ onStart, onOpenMatrix, lastReport, dataState, compareState }) => {
+  const d = window.DELIVERY;
+  const docs = window.DOCS;
+  const snapshot = window.ERP_SNAPSHOT || {};
+  const balance = snapshot.delivery_balance || {};
+  const contracts = Array.isArray(snapshot.contracts) ? snapshot.contracts : [];
+  const erpDocPriority = (x) => {
+    if (x.typeLabel === 'Счет покупателю' || (x.type === 'schet' && !x.erp?.invoice)) return 0;
+    if (x.type === 'payment' || /оплат/i.test(x.typeLabel || '')) return 1;
+    if (x.erp?.kod1c) return 2;
+    return 3;
+  };
+  const erpDocs = docs
+    .filter(x => x.erp && !x.erp.isDetailLine)
+    .sort((a, b) => erpDocPriority(a) - erpDocPriority(b) || String(a.erp?.date || '').localeCompare(String(b.erp?.date || '')));
+  const stats = {
+    ops: new Set(docs.map(x => x.opId)).size,
+    erpDocs: erpDocs.length,
+    expected1c: docs.filter(x => x.rc).length,
+    matched: lastReport ? docs.filter(x => x.status === 'match').length : null,
+  };
+  const xlsxUrl = snapshot.xlsx_url ? apiUrl(snapshot.xlsx_url) : null;
+  const comparing = compareState?.state === 'loading';
+  const currentBalanceSnapshot = balanceSnapshot();
+  const lastBalance = lastReport?.balanceSnapshot || null;
+  const balanceChangedAfterReport = !!(lastBalance && lastBalance.signature !== currentBalanceSnapshot.signature);
+  const balanceStatus = balanceChangedAfterReport ? 'open_balance' : (balance.status || 'open_balance');
+  const balanceStatusLabel = balanceChangedAfterReport ? 'Требуется пересверка' : (balance.status_label || 'Нет данных');
+  const moneyBalance = Number(balance.money_balance || 0);
+  const documentsBalance = balance.documents_balance == null ? null : Number(balance.documents_balance || 0);
+  const invoiceBreakdown = formatCurrencyBreakdown(balance.client_invoice_currency_breakdown, balance.client_invoice_total || 0);
+  const balanceWarnings = Array.isArray(balance.warnings) ? balance.warnings : [];
+
+  return (
+    <div className="page">
+      {dataState?.state && (
+        <div className={`source-banner ${dataState.state === 'loaded' ? 'ok' : dataState.state === 'error' ? 'warn' : ''}`}>
+          <IconInfo size={14}/>
+          <span>{dataState.message}</span>
+          {xlsxUrl && <a className="link" style={{ marginLeft: 'auto' }} href={xlsxUrl}><IconDownload size={12}/> ERP XLSX</a>}
+        </div>
+      )}
+
+      <div className="delivery-head">
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <span className="pill-sm">Заявка</span>
+            <span className="mono muted" style={{ fontSize: 12 }}>{d.id}</span>
+            <span className="chip neutral"><span className="dot"/>{d.status}</span>
+          </div>
+          <div className="delivery-title">{d.number}</div>
+          <div className="delivery-sub">{d.client} · основной договор <span className="mono">{d.container}</span> · {d.incoterms} · менеджер {d.manager}</div>
+        </div>
+        <div className="delivery-cta">
+          <button className="btn"><IconExternal size={14}/>Открыть в ЕРП</button>
+          <button className="btn primary" onClick={onOpenMatrix}><IconList size={14}/>Матрица</button>
+          {xlsxUrl && <a className="btn" href={xlsxUrl}><IconDownload size={14}/>ERP XLSX</a>}
+          <button className="btn brand" onClick={onStart} disabled={comparing}>
+            {comparing ? <IconSpinner size={15}/> : <IconRefresh size={15}/>}
+            {comparing ? 'Сверяем...' : 'Сверить с 1С'}
+          </button>
+        </div>
+      </div>
+
+      <div className="balance-card">
+        <div className="balance-head">
+          <div>
+            <div className="balance-title">Сальдо по поставке</div>
+            <div className="balance-sub">
+              {lastReport ? `Последняя сверка: ${lastReport.when}` : 'Последняя сверка: еще не проводилась'}
+            </div>
+          </div>
+          <span className={`balance-status ${balanceStatus}`}>
+            <span className="dot"/>
+            {balanceStatusLabel}
+          </span>
+        </div>
+        <div className="balance-grid">
+          <div className="balance-metric">
+            <div className="label">Счета клиенту</div>
+            <div className="value mono">{invoiceBreakdown}</div>
+            <div className="detail">{balance.client_invoice_count || 0} документ(ов)</div>
+          </div>
+          <div className="balance-metric">
+            <div className="label">Оплаты от клиента</div>
+            <div className="value mono">{fmtMoney(balance.client_payment_total || 0)}</div>
+            <div className="detail">{balance.client_payment_count || 0} документ(ов)</div>
+          </div>
+          <div className="balance-metric">
+            <div className="label">Закрывающие документы</div>
+            <div className="value mono">{fmtMoney(balance.closing_document_total || 0)}</div>
+            <div className="detail">{balance.closing_document_count || 0} документ(ов)</div>
+          </div>
+          <div className="balance-metric">
+            <div className="label">Сальдо</div>
+            <div className="value mono">{fmtMoney(moneyBalance)}</div>
+            <div className="detail">{balance.balance_formula_label || 'оплаты - закрывающие документы'}</div>
+          </div>
+        </div>
+        <div className="balance-foot">
+          <div>
+            {lastReport ? (
+              <>
+                <span>Сальдо на момент сверки: <span className="mono">{fmtMoney(lastBalance?.money_balance || 0)}</span></span>
+                <span style={{ marginLeft: 12 }}>Текущее: <span className="mono">{fmtMoney(moneyBalance)}</span></span>
+                <span style={{ marginLeft: 12 }} className={balanceChangedAfterReport ? 'warn' : 'ok'}>
+                  {balanceChangedAfterReport ? 'Изменения после сверки: есть' : 'Изменений после сверки: нет'}
+                </span>
+              </>
+            ) : (
+              <span>Следующее действие: запустить сверку с 1С</span>
+            )}
+            {balanceWarnings.length > 0 && (
+              <span className="warn" style={{ marginLeft: 12 }}>{balanceWarnings.join(' · ')}</span>
+            )}
+            {documentsBalance != null && Math.abs(documentsBalance) > 0.01 && (
+              <span style={{ marginLeft: 12 }}>Не закрыто документами: <span className="mono">{fmtMoney(documentsBalance)}</span></span>
+            )}
+          </div>
+          <button className="btn sm brand" onClick={onStart} disabled={comparing}>
+            {comparing ? <IconSpinner size={13}/> : <IconRefresh size={13}/>}
+            {lastReport ? 'Пересверить' : 'Сверить с 1С'}
+          </button>
+        </div>
+      </div>
+
+      <div className="delivery-grid">
+        <div className="card">
+          <div className="card-head">
+            <IconList size={16}/>
+            <div>
+              <div className="card-title">Финансовые документы поставки</div>
+              <div className="card-sub">Привязаны к операциям в ЕРП — {erpDocs.length} шт.</div>
+            </div>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              <button className="btn sm"><IconFilter size={13}/>Фильтр</button>
+              <button className="btn sm"><IconPlus size={13}/>Добавить документ</button>
+            </div>
+          </div>
+          <table className="doc-list">
+            <thead>
+              <tr>
+                <th>Документ</th>
+                <th>Операция</th>
+                <th>Счет / возмещаемость</th>
+                <th>Дата</th>
+                <th style={{ textAlign: 'right' }}>Сумма</th>
+                <th>Код 1С</th>
+                <th style={{ width: 40 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {erpDocs.slice(0, 9).map(x => (
+                <tr key={x.id}>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="pill-sm">{x.typeLabel}</span>
+                      <span className="mono" style={{ fontWeight: 600 }}>{x.erp.num}</span>
+                    </div>
+                    {x.erp.dog && <div className="subline">Договор {x.erp.dog}</div>}
+                  </td>
+                  <td className="muted" style={{ fontSize: 12 }}>{x.opTitle}</td>
+                  <td>
+                    <span className="mono" style={{ fontSize: 12 }}>{x.erp.invoice || '—'}</span>
+                    <div className="subline">{x.erp.reimbursement || '—'}</div>
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>{x.erp.date}</td>
+                  <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>{fmtMoney(x.erp.amount, x.erp.currency)}</td>
+                  <td><span className="code1c">{x.erp.kod1c}</span></td>
+                  <td><button className="icon-btn"><IconMore size={14}/></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="last-sync">
+            <IconInfo size={13}/>
+            Всего {erpDocs.length} документов · показано {Math.min(9, erpDocs.length)} · детализация доступна в ERP XLSX
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div className="card">
+            <div className="card-head">
+              <IconBox size={16}/>
+              <div className="card-title">Сводка</div>
+            </div>
+            <div className="stat-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <div className="stat">
+                <div className="stat-val">{stats.ops}</div>
+                <div className="stat-label">Операций</div>
+              </div>
+              <div className="stat">
+                <div className="stat-val">{stats.erpDocs}</div>
+                <div className="stat-label">Фин.документов в ЕРП</div>
+              </div>
+              <div className="stat">
+                <div className="stat-val mono" style={{ fontSize: 18, lineHeight: 1.7 }}>{fmtMoney(d.totalAmount, d.currency)}</div>
+                <div className="stat-label">Сумма товара</div>
+              </div>
+              <div className="stat">
+                <div className="stat-val">{contracts.length}</div>
+                <div className="stat-label">Договоров</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <IconRefresh size={16}/>
+              <div>
+                <div className="card-title">Последняя сверка</div>
+                <div className="card-sub">{lastReport ? `${lastReport.when} · ${lastReport.user}` : 'Ещё не проводилась'}</div>
+              </div>
+            </div>
+            <div style={{ padding: 16 }}>
+              {lastReport ? (
+                <>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                    <span className="chip match"><span className="dot"/>{docs.filter(x => x.status === 'match').length} совпало</span>
+                    <span className="chip miss-erp"><span className="dot"/>{docs.filter(x => x.status === 'miss-erp').length} нет в ЕРП</span>
+                    <span className="chip miss-1c"><span className="dot"/>{docs.filter(x => x.status === 'miss-1c').length} нет в 1С</span>
+                    <span className="chip sum"><span className="dot"/>{docs.filter(x => x.status === 'sum').length} по сумме</span>
+                    <span className="chip vat"><span className="dot"/>{docs.filter(x => x.status === 'vat').length} НДС</span>
+                    <span className="chip no-kod1c"><span className="dot"/>{docs.filter(x => x.status === 'no-kod1c').length} без ключа</span>
+                  </div>
+                  <a className="link" onClick={onOpenMatrix}>Открыть матрицу сверки →</a>
+                </>
+              ) : (
+                <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+                  ERP-данные уже можно выгрузить в XLSX. Для сравнения с 1С запустите сверку через REST API 1С.
+                  <br/>
+                  <button className="btn brand" style={{ marginTop: 12 }} onClick={onStart}>
+                    {comparing ? <IconSpinner size={15}/> : <IconRefresh size={15}/>}
+                    {comparing ? 'Сверяем...' : 'Запустить сверку'}
+                  </button>
+                  {compareState?.message && (
+                    <div className="subline" style={{ marginTop: 10 }}>{compareState.message}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <IconInfo size={16}/>
+              <div className="card-title">Договоры поставки</div>
+            </div>
+            <div style={{ padding: 16 }}>
+              {contracts.length > 0 ? (
+                <div className="contract-list">
+                  {contracts.map((c, idx) => (
+                    <div className="contract-row" key={`${c.dog_id || 'dog'}-${c.dog_code1c || c.role_label || idx}`}>
+                      <div className="contract-top">
+                        <div className="contract-name">{c.dog_number || `ID ${c.dog_id}`}</div>
+                        <span className="code1c">{c.dog_code1c || 'без кода 1С'}</span>
+                      </div>
+                      <div className="contract-role">{c.role_label}</div>
+                      <div className="subline">{c.org_name} → {c.client_name}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <dl className="kv">
+                  <dt>Принципал</dt><dd>{d.principal}<br/><span className="mono muted" style={{ fontSize: 11.5 }}>ИНН {d.principalInn}</span></dd>
+                  <dt>Клиент</dt><dd>{d.client}<br/><span className="mono muted" style={{ fontSize: 11.5 }}>ИНН {d.clientInn}</span></dd>
+                  <dt>Дата</dt><dd>{d.date}</dd>
+                  <dt>Валюта</dt><dd>{d.currency}</dd>
+                </dl>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+window.DeliveryCard = DeliveryCard;
+
+
+/* ===== src/ReconcileProgress.jsx ===== */
+// Progress screen — 3 stages (collect codes → request 1C → match)
+const ReconcileProgress = ({ onDone, onCancel }) => {
+  const [stage, setStage] = React.useState(0); // 0,1,2
+  const [stageProg, setStageProg] = React.useState(0); // 0..100 for current
+  const [logCount, setLogCount] = React.useState(0);
+  const log = window.PROGRESS_LOG;
+
+  React.useEffect(() => {
+    if (stage >= 3) { const t = setTimeout(onDone, 600); return () => clearTimeout(t); }
+    const tick = setInterval(() => {
+      setStageProg(p => {
+        if (p >= 100) {
+          clearInterval(tick);
+          setStage(s => s + 1);
+          return 0;
+        }
+        return p + (stage === 2 ? 4 : stage === 1 ? 2.8 : 6);
+      });
+    }, 55);
+    return () => clearInterval(tick);
+  }, [stage]);
+
+  React.useEffect(() => {
+    if (logCount >= log.length) return;
+    const delay = 140 + Math.random() * 140;
+    const t = setTimeout(() => setLogCount(c => c + 1), delay);
+    return () => clearTimeout(t);
+  }, [logCount]);
+
+  const stages = [
+    { num: '01', title: 'Сбор кодов 1С', desc: 'Из спецификации и привязанных операций' },
+    { num: '02', title: 'Запрос в 1С', desc: 'Read-only REST, получение документов по кодам' },
+    { num: '03', title: 'Сопоставление', desc: 'Поиск совпадений и расхождений' },
+  ];
+
+  return (
+    <div className="page">
+      <div className="progress-wrap">
+        <div className="progress-head">
+          <div className="progress-title">Сверяем документы с 1С</div>
+          <div className="progress-sub">Поставка {window.DELIVERY.number} · {window.DELIVERY.client}</div>
+        </div>
+
+        <div className="stages">
+          {stages.map((s, i) => {
+            const done = i < stage;
+            const active = i === stage;
+            const width = done ? 100 : active ? stageProg : 0;
+            return (
+              <div key={i} className={`stage ${done ? 'done' : ''} ${active ? 'active' : ''}`}>
+                <div className="stage-icon">
+                  {done ? <IconCheck size={18}/> : active ? <IconSpinner size={18}/> : <span className="mono" style={{ fontSize: 13, fontWeight: 600 }}>{s.num}</span>}
+                </div>
+                <div className="stage-num mono">Этап {s.num}</div>
+                <div className="stage-title">{s.title}</div>
+                <div className="stage-desc">{s.desc}</div>
+                <div className="stage-progress"><span style={{ width: `${width}%` }}/></div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="progress-log">
+          {log.slice(0, logCount).map((l, i) => (
+            <div key={i} className="line">
+              <span className="ts">[{l.t}]</span>
+              <span className={l.tag === 'ok' ? 'tag-ok' : l.tag === 'warn' ? 'tag-warn' : 'tag-info'}>
+                {l.tag === 'ok' ? '✓' : l.tag === 'warn' ? '⚠' : '›'}
+              </span>
+              <span>{l.msg}</span>
+            </div>
+          ))}
+          {logCount < log.length && <div className="line" style={{ color: 'var(--muted-2)' }}><span className="ts">...</span><span/></div>}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18 }}>
+          <button className="btn ghost" onClick={onCancel}>Отменить</button>
+          <div className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>
+            {stage >= 3 ? 'Готово' : `Этап ${Math.min(stage + 1, 3)} из 3`}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+window.ReconcileProgress = ReconcileProgress;
+
+
+/* ===== src/ReportRow.jsx ===== */
+// Single reconciliation row — two-column layout with connecting line
+const ReportRow = ({ rec, expanded, onToggle, onOpenDrawer, onCopy, onGotoOp, onLink }) => {
+  const meta = window.STATUS_META[rec.status];
+  const hasErp = !!rec.erp;
+  const has1c = !!rec.rc;
+  const diff = rec.diffFields || [];
+  const showLines = document.body.getAttribute('data-show-lines') !== 'false';
+
+  const LineSVG = () => {
+    // connector between ERP and 1C panels
+    const stroke =
+      rec.status === 'match' ? 'var(--match)' :
+      rec.status === 'miss-erp' ? 'var(--miss-erp)' :
+      rec.status === 'miss-1c' ? 'var(--miss-1c)' :
+      rec.status === 'sum' ? 'var(--sum-mismatch)' :
+      rec.status === 'vat' ? 'var(--vat)' : 'var(--border-strong)';
+    const dash = rec.status === 'match' ? '' : '4 4';
+    return (
+      <svg width="72" height="50" viewBox="0 0 72 50">
+        <line x1="0" y1="25" x2="72" y2="25" stroke={stroke} strokeWidth="1.5" strokeDasharray={dash}/>
+        <circle cx="36" cy="25" r="10" fill="var(--surface)" stroke={stroke} strokeWidth="1.5"/>
+        {rec.status === 'match' ? (
+          <path d="M31 25 l4 4 l7 -8" stroke={stroke} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+        ) : rec.status === 'miss-erp' || rec.status === 'miss-1c' ? (
+          <>
+            <path d="M32 20 l8 10 M40 20 l-8 10" stroke={stroke} strokeWidth="1.8" strokeLinecap="round"/>
+          </>
+        ) : rec.status === 'sum' ? (
+          <text x="36" y="29" textAnchor="middle" fontSize="12" fontWeight="700" fill={stroke} fontFamily="JetBrains Mono">≠</text>
+        ) : (
+          <text x="36" y="29" textAnchor="middle" fontSize="9" fontWeight="700" fill={stroke} fontFamily="Inter Tight">?</text>
+        )}
+      </svg>
+    );
+  };
+
+  const Side = ({ side, data }) => {
+    if (!data) {
+      const msg = side === 'erp'
+        ? (rec.skipReason || 'Не найдено в ЕРП')
+        : 'Не найдено в 1С';
+      return (
+        <div className={`rec-side ${side === 'erp' ? 'left' : 'right'} empty`}>
+          <div className="empty-msg">
+            <IconAlert size={14} stroke={side === 'erp' ? 'oklch(0.58 0.13 75)' : 'oklch(0.56 0.15 45)'}/>
+            <strong style={{ color: 'var(--ink-2)', fontSize: 12 }}>{side === 'erp' ? 'Нет в ЕРП' : 'Нет в 1С'}</strong>
+          </div>
+          <div style={{ fontSize: 11.5, lineHeight: 1.5 }}>{msg}</div>
+          {side === 'erp' && rec.rc && (
+            <button className="btn xs" style={{ marginTop: 4 }} onClick={(e) => { e.stopPropagation(); onLink(rec); }}>
+              <IconLink size={11}/> Привязать к операции
+            </button>
+          )}
+        </div>
+      );
+    }
+    const isDiff = (f) => diff.includes(f);
+    return (
+      <div className={`rec-side ${side === 'erp' ? 'left' : 'right'}`}>
+        <div className="doc-line-head">
+          <span className="pill-sm">{data.doctype || rec.typeLabel}</span>
+          {side === 'erp' && data.isAggregated && <span className="pill-sm">Сводно</span>}
+          <span className="doc-num mono">{data.num}</span>
+        </div>
+        <div className="doc-meta">
+          <span>
+            <span className="k">дата:</span>
+            <span className={`v ${isDiff('date') ? 'diff' : ''}`}>{data.date}</span>
+          </span>
+          <span>
+            <span className="k">сумма:</span>
+            <span className={`v ${isDiff('amount') && side === 'erp' ? 'diff' : isDiff('amount') && side === 'rc' ? 'fix' : ''}`}>{fmtMoney(data.amount, data.currency)}</span>
+          </span>
+          <span>
+            <span className="k">НДС:</span>
+            <span className={`v ${isDiff('vat') ? (side === 'erp' ? 'diff' : 'fix') : ''}`}>{data.vat}</span>
+          </span>
+          <span>
+            <span className="code1c">
+              {data.kod1c}
+              <span className="copy" onClick={(e) => { e.stopPropagation(); onCopy(data.kod1c); }} title="Скопировать код 1С"><IconCopy size={11}/></span>
+            </span>
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className={`rec-row ${expanded ? 'expanded' : ''}`} onClick={onToggle}>
+        <Side side="erp" data={rec.erp}/>
+        <div className="rec-link">{showLines ? <LineSVG/> : <div style={{ width: 1, height: 36, background: 'var(--border)' }}/>}</div>
+        <Side side="rc" data={rec.rc}/>
+
+        <div className="rec-status-cell">
+          <span className={`chip ${meta.color}`}><span className="dot"/>{meta.label}</span>
+          {rec.diffNote && <span className="detail">{rec.diffNote}</span>}
+        </div>
+
+        <div className="rec-actions" onClick={(e) => e.stopPropagation()}>
+          {hasErp && (
+            <button className="icon-btn" title="Открыть операцию в ЕРП" onClick={() => onGotoOp(rec.opId)}><IconExternal size={14}/></button>
+          )}
+          {has1c && (
+            <button className="icon-btn" title="Скопировать код 1С" onClick={() => onCopy(rec.rc.kod1c)}><IconCopy size={14}/></button>
+          )}
+          <button className="icon-btn" title="Подробнее" onClick={onOpenDrawer}><IconMore size={14}/></button>
+          <button className="icon-btn" title={expanded ? 'Свернуть' : 'Развернуть'} onClick={onToggle}><IconChevron size={14} style={{ transform: expanded ? 'rotate(180deg)' : '', transition: 'transform 0.15s' }}/></button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="rec-detail">
+          <div>
+            <h4><IconBox size={12}/> ЕРП (операция {rec.opId})</h4>
+            {rec.erp ? (
+              <dl className="kv">
+                <dt>Операция</dt><dd>{rec.opTitle}</dd>
+                <dt>Документ</dt><dd>{rec.typeLabel} <span className="mono">{rec.erp.num}</span></dd>
+                <dt>Дата</dt><dd className="mono">{rec.erp.date}</dd>
+                <dt>Сумма</dt><dd className="mono">{fmtMoney(rec.erp.amount, rec.erp.currency)}</dd>
+                <dt>НДС</dt><dd>{rec.erp.vat}</dd>
+                <dt>Код 1С</dt><dd><span className="code1c">{rec.erp.kod1c}</span></dd>
+                {rec.erp.isAggregated && (
+                  <>
+                    <dt>Агрегация</dt><dd>{rec.erp.aggregationNote || `Сводно по ${rec.erp.docCount || 0} ERP-документам`}</dd>
+                  </>
+                )}
+              </dl>
+            ) : (
+              <div className="muted" style={{ fontSize: 12 }}>Документ в ЕРП отсутствует</div>
+            )}
+          </div>
+          <div>
+            <h4><IconReceipt size={12}/> 1С</h4>
+            {rec.rc ? (
+              <dl className="kv">
+                <dt>Документ</dt><dd>{rec.rc.doctype} <span className="mono">{rec.rc.num}</span></dd>
+                <dt>Дата</dt><dd className="mono">{rec.rc.date}</dd>
+                <dt>Сумма</dt><dd className="mono">{fmtMoney(rec.rc.amount)}</dd>
+                <dt>НДС</dt><dd>{rec.rc.vat}</dd>
+                <dt>Код 1С</dt><dd><span className="code1c">{rec.rc.kod1c} <span className="copy" onClick={() => onCopy(rec.rc.kod1c)} style={{ opacity: 1 }}><IconCopy size={11}/></span></span></dd>
+              </dl>
+            ) : (
+              <div className="muted" style={{ fontSize: 12 }}>В 1С по коду не найдено</div>
+            )}
+          </div>
+          <div className="detail-actions">
+            {hasErp && <button className="btn sm" onClick={() => onGotoOp(rec.opId)}><IconExternal size={13}/>Открыть операцию {rec.opId}</button>}
+            {!hasErp && rec.rc && <button className="btn sm brand" onClick={() => onLink(rec)}><IconLink size={13}/>Привязать документ к операции</button>}
+            {rec.status === 'sum' && <button className="btn sm"><IconCheck size={13}/>Отметить проверено вручную</button>}
+            {rec.status === 'vat' && <button className="btn sm"><IconSparkle size={13}/>Проверить НДС</button>}
+            {rec.skipReason && <span className="chip neutral" style={{ alignSelf: 'center' }}><span className="dot"/>Не сверяется</span>}
+            <button className="btn sm ghost" style={{ marginLeft: 'auto' }}>Игнорировать с комментарием</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+window.ReportRow = ReportRow;
+
+
+/* ===== src/SummaryStats.jsx ===== */
+// Summary stats bar — mini counters; clicking filters the report
+const SummaryStats = ({ docs, activeFilter, onFilter }) => {
+  const by = window.groupBy(docs, x => x.status);
+  const tiles = [
+    { key: 'all',      label: 'Всего документов',     count: docs.length,                    swatch: 'var(--ink-2)' },
+    { key: 'match',    label: 'Совпадает полностью',  count: (by['match'] || []).length,     swatch: 'var(--match)' },
+    { key: 'miss-erp', label: 'Нет в ЕРП',            count: (by['miss-erp'] || []).length,  swatch: 'var(--miss-erp)' },
+    { key: 'miss-1c',  label: 'Нет в 1С',             count: (by['miss-1c'] || []).length,   swatch: 'var(--miss-1c)' },
+    { key: 'sum',      label: 'Расхождение по сумме', count: (by['sum'] || []).length,       swatch: 'var(--sum-mismatch)' },
+    { key: 'vat',      label: 'Вопрос по НДС',        count: (by['vat'] || []).length,       swatch: 'var(--vat)' },
+    { key: 'fields',   label: 'Реквизиты',            count: (by['fields'] || []).length,    swatch: 'var(--miss-erp)' },
+    { key: 'no-sf',    label: 'Нет СФ/УПД',           count: (by['no-sf'] || []).length,     swatch: 'var(--vat)' },
+    { key: 'source-error', label: 'Ошибка 1С',        count: (by['source-error'] || []).length, swatch: 'var(--miss-erp)' },
+    { key: 'no-kod1c', label: 'Нет ключа 1С',         count: (by['no-kod1c'] || []).length,  swatch: 'var(--muted)' },
+    { key: 'pending',  label: 'Не сверено',            count: (by['pending'] || []).length,   swatch: 'var(--brand)' },
+  ];
+  return (
+    <div className="summary-row">
+      {tiles.map(t => (
+        <div key={t.key}
+             className={`summary-tile ${activeFilter === t.key ? 'active' : ''}`}
+             onClick={() => onFilter(t.key)}>
+          <div className="val"><span className="swatch" style={{ background: t.swatch }}/>{t.count}</div>
+          <div className="label">{t.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+window.SummaryStats = SummaryStats;
+
+
+/* ===== src/ExportDialog.jsx ===== */
+// Export dialog — Excel template or PDF report
+const ExportDialog = ({ onClose, onDone }) => {
+  const [fmt, setFmt] = React.useState('xlsx');
+  const [scope, setScope] = React.useState('all');
+  const [template, setTemplate] = React.useState('metaltorg');
+
+  const submit = () => {
+    onDone(`Экспорт сформирован: ${fmt === 'xlsx' ? 'Excel' : 'PDF'} · ${
+      scope === 'all' ? 'все строки' : 'только расхождения'
+    }`);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <IconDownload size={16}/>
+          <div className="modal-title">Выгрузить отчёт</div>
+          <button className="btn ghost sm modal-close" onClick={onClose}><IconX size={13}/></button>
+        </div>
+        <div className="modal-body">
+          <div style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: 8, fontWeight: 600 }}>Формат</div>
+          <div className="fmt-grid" style={{ marginBottom: 18 }}>
+            <div className={`fmt-tile ${fmt === 'xlsx' ? 'selected' : ''}`} onClick={() => setFmt('xlsx')}>
+              <div className="fmt-head">
+                <div className="fmt-icon" style={{ background: 'oklch(0.97 0.04 155)', borderColor: 'oklch(0.85 0.08 155)', color: 'oklch(0.35 0.1 155)' }}>
+                  <span className="mono" style={{ fontWeight: 700, fontSize: 11 }}>XLS</span>
+                </div>
+                <div>
+                  <div className="fmt-name">Excel</div>
+                  <div className="fmt-sub">Шаблон для копирования в файл клиента</div>
+                </div>
+              </div>
+            </div>
+            <div className={`fmt-tile ${fmt === 'pdf' ? 'selected' : ''}`} onClick={() => setFmt('pdf')}>
+              <div className="fmt-head">
+                <div className="fmt-icon" style={{ background: 'oklch(0.97 0.04 25)', borderColor: 'oklch(0.86 0.1 25)', color: 'oklch(0.42 0.15 25)' }}>
+                  <span className="mono" style={{ fontWeight: 700, fontSize: 11 }}>PDF</span>
+                </div>
+                <div>
+                  <div className="fmt-name">PDF-отчёт</div>
+                  <div className="fmt-sub">Для отправки клиенту / архива</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {fmt === 'xlsx' && (
+            <>
+              <div style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: 8, fontWeight: 600 }}>Шаблон сверки клиента</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
+                {[
+                  { k: 'metaltorg',  n: 'АО «Металлторг-Урал»', d: 'Шаблон клиента (4 листа, с формулами)' },
+                  { k: 'universal',  n: 'Универсальный',        d: 'Типизированный вид для любого клиента' },
+                  { k: 'raw',        n: 'Сырая выгрузка',       d: 'Без форматирования, плоская таблица' },
+                ].map(t => (
+                  <label key={t.k} style={{ display: 'flex', gap: 10, padding: '10px 12px', border: `1px solid ${template === t.k ? 'var(--ink)' : 'var(--border)'}`, borderRadius: 10, cursor: 'pointer', background: template === t.k ? 'var(--bg-sunken)' : 'var(--surface)' }}>
+                    <input type="radio" checked={template === t.k} onChange={() => setTemplate(t.k)} style={{ marginTop: 2 }}/>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t.n}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{t.d}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: 8, fontWeight: 600 }}>Содержание</div>
+          <div className="seg" style={{ marginBottom: 4 }}>
+            <button className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>Все строки</button>
+            <button className={scope === 'issues' ? 'on' : ''} onClick={() => setScope('issues')}>Только расхождения</button>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn ghost" onClick={onClose}>Отмена</button>
+          <button className="btn sm" style={{ padding: '7px 12px' }}><IconCopy size={13}/>Скопировать в буфер</button>
+          <button className="btn brand" onClick={submit}><IconDownload size={14}/>Скачать</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+window.ExportDialog = ExportDialog;
+
+
+/* ===== src/LinkPicker.jsx ===== */
+// Link 1C doc to ERP operation — picker modal
+const LinkPicker = ({ rec, onClose, onDone }) => {
+  const [selOp, setSelOp] = React.useState('OP-45822');
+  const [selCand, setSelCand] = React.useState('АК-000510-26');
+  const cands = window.CANDIDATES_1C;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal wide" onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <IconLink size={16}/>
+          <div className="modal-title">Привязать документ 1С к операции ЕРП</div>
+          <button className="btn ghost sm modal-close" onClick={onClose}><IconX size={13}/></button>
+        </div>
+        <div className="modal-body">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            <div>
+              <div style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: 8, fontWeight: 600 }}>Документ из 1С</div>
+              <div className="card" style={{ padding: 14, borderRadius: 10 }}>
+                <div className="doc-line-head">
+                  <span className="pill-sm">{rec.rc.doctype}</span>
+                  <span className="doc-num mono">{rec.rc.num}</span>
+                </div>
+                <div className="doc-meta" style={{ marginTop: 4 }}>
+                  <span><span className="k">дата:</span><span className="v">{rec.rc.date}</span></span>
+                  <span><span className="k">сумма:</span><span className="v">{fmtMoney(rec.rc.amount)}</span></span>
+                </div>
+                <div style={{ marginTop: 8 }}><span className="code1c">{rec.rc.kod1c}</span></div>
+              </div>
+
+              <div style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginTop: 18, marginBottom: 8, fontWeight: 600 }}>Выберите операцию в ЕРП</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {['OP-45821', 'OP-45822', 'OP-45826'].map(op => {
+                  const title = ({ 'OP-45821': 'Морская перевозка · FAK', 'OP-45822': 'Ж/д доставка · Забайкальск → Екатеринбург', 'OP-45826': 'Автодоставка · Екатеринбург — склад' })[op];
+                  return (
+                    <label key={op} style={{ display: 'flex', gap: 10, padding: '9px 12px', border: `1px solid ${selOp === op ? 'var(--ink)' : 'var(--border)'}`, borderRadius: 10, cursor: 'pointer', background: selOp === op ? 'var(--bg-sunken)' : 'var(--surface)' }}>
+                      <input type="radio" checked={selOp === op} onChange={() => setSelOp(op)} style={{ marginTop: 2 }}/>
+                      <div>
+                        <div style={{ fontSize: 13 }}><span className="mono muted" style={{ fontSize: 11.5 }}>{op}</span> · {title}</div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <IconSparkle size={12}/> Предложенные совпадения
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {cands.map(c => (
+                  <label key={c.kod1c} style={{ display: 'flex', gap: 10, padding: '10px 12px', border: `1px solid ${selCand === c.kod1c ? 'var(--ink)' : 'var(--border)'}`, borderRadius: 10, cursor: 'pointer', background: selCand === c.kod1c ? 'var(--bg-sunken)' : 'var(--surface)' }}>
+                    <input type="radio" checked={selCand === c.kod1c} onChange={() => setSelCand(c.kod1c)} style={{ marginTop: 3 }}/>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{c.num}</span>
+                        <span className="pill-sm">{c.doctype}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: c.score > 0.9 ? 'oklch(0.4 0.12 155)' : 'var(--muted)' }}>
+                          {Math.round(c.score * 100)}% совпадение
+                        </span>
+                      </div>
+                      <div className="doc-meta" style={{ marginTop: 4, gap: 10 }}>
+                        <span><span className="k">дата:</span><span className="v">{c.date}</span></span>
+                        <span><span className="k">сумма:</span><span className="v">{fmtMoney(c.amount)}</span></span>
+                      </div>
+                      <div style={{ marginTop: 4 }}><span className="code1c">{c.kod1c}</span></div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <div style={{ marginTop: 12, padding: 10, background: 'var(--brand-bg)', borderRadius: 10, fontSize: 11.5, color: 'oklch(0.32 0.13 235)', display: 'flex', gap: 8 }}>
+                <IconInfo size={13}/>
+                После привязки документ автоматически попадёт в повторную сверку.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn ghost" onClick={onClose}>Отмена</button>
+          <button className="btn brand" onClick={() => onDone(`Документ ${rec.rc.num} привязан к операции ${selOp}`)}>
+            <IconCheck size={14}/>Привязать
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+window.LinkPicker = LinkPicker;
+
+
+/* ===== src/ReportScreen.jsx ===== */
+// Report screen — two-column ERP ↔ 1C with group-by-operation
+const ReportScreen = ({ onBack, onRecompare, onOpenExport, onOpenLink, onToast, lastReport, compareState }) => {
+  const [filter, setFilter] = React.useState('all');
+  const [group, setGroup] = React.useState('op'); // 'op' | 'status' | 'flat'
+  const [expanded, setExpanded] = React.useState(() => {
+    const auto = window.__tweakState?.autoExpandIssues;
+    if (!auto) return new Set();
+    return new Set(window.DOCS.filter(x => x.status !== 'match').slice(0, 1).map(x => x.id));
+  });
+  const [search, setSearch] = React.useState('');
+  const [drawerRec, setDrawerRec] = React.useState(null);
+
+  const docs = window.DOCS.filter(d => {
+    if (filter !== 'all' && d.status !== filter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const blob = [d.erp?.num, d.rc?.num, d.erp?.kod1c, d.rc?.kod1c, d.opTitle].filter(Boolean).join(' ').toLowerCase();
+      if (!blob.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const toggleRow = (id) => {
+    setExpanded(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  };
+
+  const copyToClipboard = (text) => {
+    try { navigator.clipboard.writeText(text); } catch {}
+    onToast(`Скопировано: ${text}`);
+  };
+
+  const gotoOp = (opId) => onToast(`Переход в операцию ${opId} в ЕРП`);
+
+  let grouped;
+  if (group === 'op') {
+    grouped = window.groupBy(docs, d => `${d.opId}|${d.opTitle}`);
+  } else if (group === 'status') {
+    grouped = window.groupBy(docs, d => d.status);
+  } else {
+    grouped = { '': docs };
+  }
+
+  const d = window.DELIVERY;
+  const snapshot = window.ERP_SNAPSHOT || {};
+  const recon = window.RECONCILIATION_REPORT || {};
+  const source = recon.source || null;
+  const sourceLabel = 'Данные 1С';
+  const counts = recon.counts || {};
+  const xlsxUrl = snapshot.xlsx_url ? apiUrl(snapshot.xlsx_url) : null;
+  const reportUser = lastReport?.user || 'пользователь';
+  const kindSummary = source?.by_kind
+    ? Object.entries(source.by_kind).map(([k, v]) => `${k}: ${v}`).join(' · ')
+    : '';
+
+  return (
+    <div className="page">
+      <div className="report-head">
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <button className="btn ghost sm" onClick={onBack}><IconArrowLeft size={13}/>К поставке</button>
+            <span className="pill-sm">Отчёт сверки</span>
+            <span className="mono muted" style={{ fontSize: 11.5 }}>{d.id} · №2026-04-17-011</span>
+            <span className="chip match"><span className="dot"/>Отчёт сохранён</span>
+          </div>
+          <div className="report-title">Сверка с 1С · {d.number}</div>
+          <div className="report-sub">
+            {lastReport?.when || 'Сформирован'} · {window.DOCS.length} строк сверки · принципал {d.principal} · клиент {d.client}
+          </div>
+        </div>
+        <div className="report-actions">
+          <button className="btn sm" onClick={onRecompare} disabled={compareState?.state === 'loading'}>
+            <IconRefresh size={13}/>{compareState?.state === 'loading' ? 'Сверяем...' : 'Пересверить'}
+          </button>
+          <button className="btn sm"><IconCopy size={13}/>Скопировать</button>
+          {xlsxUrl
+            ? <a className="btn brand" href={xlsxUrl}><IconDownload size={14}/>ERP XLSX</a>
+            : <button className="btn brand" onClick={onOpenExport}><IconDownload size={14}/>Выгрузить</button>}
+        </div>
+      </div>
+
+      {source && (
+        <div className="source-banner ok">
+          <IconInfo size={14}/>
+          <span>
+            {sourceLabel}: отфильтровано {counts.onec_docs || 0} из {counts.onec_all_docs || 0} строк
+            {source.files?.length ? ` · файлов: ${source.files.length}` : ''}
+            {kindSummary ? ` · ${kindSummary}` : ''}
+          </span>
+        </div>
+      )}
+
+      <SummaryStats docs={window.DOCS} activeFilter={filter} onFilter={setFilter}/>
+
+      <div className="filters-row">
+        <div className="search">
+          <IconSearch size={14}/>
+          <input placeholder="Поиск по номеру, коду 1С, операции..." value={search} onChange={e => setSearch(e.target.value)}/>
+        </div>
+        <div className="seg">
+          <button className={group === 'op' ? 'on' : ''} onClick={() => setGroup('op')}>По операциям</button>
+          <button className={group === 'status' ? 'on' : ''} onClick={() => setGroup('status')}>По статусам</button>
+          <button className={group === 'flat' ? 'on' : ''} onClick={() => setGroup('flat')}>Списком</button>
+        </div>
+        <button className="btn sm"><IconFilter size={13}/>Фильтры</button>
+      </div>
+
+      <div className="rec-wrap">
+        <div className="rec-header">
+          <div className="col-erp">
+            <span className="badge-sys" style={{ background: 'oklch(0.96 0.03 235)', borderColor: 'oklch(0.85 0.08 235)', color: 'oklch(0.35 0.13 235)' }}>
+              <IconBox size={11}/> ЕРП
+            </span>
+            <span>Документ ЕРП</span>
+          </div>
+          <div style={{ textAlign: 'center' }}>↔</div>
+          <div className="col-1c">
+            <span className="badge-sys" style={{ background: 'oklch(0.96 0.03 80)', borderColor: 'oklch(0.85 0.1 80)', color: 'oklch(0.4 0.12 75)' }}>
+              <IconReceipt size={11}/> 1С
+            </span>
+            <span>Документ 1С</span>
+          </div>
+          <div>Статус сверки</div>
+          <div style={{ textAlign: 'right' }}>Действия</div>
+        </div>
+
+        {Object.entries(grouped).map(([k, rows]) => {
+          if (group === 'flat') {
+            return rows.map(rec => (
+              <ReportRow key={rec.id} rec={rec}
+                expanded={expanded.has(rec.id)}
+                onToggle={() => toggleRow(rec.id)}
+                onOpenDrawer={() => setDrawerRec(rec)}
+                onCopy={copyToClipboard}
+                onGotoOp={gotoOp}
+                onLink={(r) => onOpenLink(r)}
+              />
+            ));
+          }
+          const [opId, opTitle] = group === 'op' ? k.split('|') : [null, null];
+          const label = group === 'op'
+            ? <>
+                <span className="mono" style={{ fontSize: 11.5, color: 'var(--muted)' }}>{opId}</span>
+                <span>{opTitle}</span>
+                <span className="c">· {rows.length} документ(ов)</span>
+              </>
+            : <>
+                <span className={`chip ${window.STATUS_META[k].color}`}><span className="dot"/>{window.STATUS_META[k].label}</span>
+                <span className="c">{rows.length} шт.</span>
+              </>;
+          return (
+            <React.Fragment key={k}>
+              <div className="rec-group-head">{label}</div>
+              {rows.map(rec => (
+                <ReportRow key={rec.id} rec={rec}
+                  expanded={expanded.has(rec.id)}
+                  onToggle={() => toggleRow(rec.id)}
+                  onOpenDrawer={() => setDrawerRec(rec)}
+                  onCopy={copyToClipboard}
+                  onGotoOp={gotoOp}
+                  onLink={(r) => onOpenLink(r)}
+                />
+              ))}
+            </React.Fragment>
+          );
+        })}
+
+        {docs.length === 0 && (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+            Нет документов по выбранному фильтру
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 18, display: 'flex', gap: 10, alignItems: 'center', padding: '12px 14px', background: 'var(--brand-bg)', borderRadius: 12, fontSize: 12.5, color: 'oklch(0.3 0.13 235)' }}>
+        <IconInfo size={14}/>
+        Отчёт сохранён в базе данных ЕРП (<span className="mono">акт_сверки.reports</span>) — будет использован для аналитики по частоте расхождений.
+      </div>
+
+      {drawerRec && (
+        <>
+          <div className="drawer-overlay" onClick={() => setDrawerRec(null)}/>
+          <aside className="drawer">
+            <div className="drawer-head">
+              <div>
+                <div style={{ fontFamily: 'Inter Tight', fontWeight: 600, fontSize: 15 }}>
+                  {drawerRec.typeLabel} {drawerRec.erp?.num || drawerRec.rc?.num}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  {drawerRec.opId} · {drawerRec.opTitle}
+                </div>
+              </div>
+              <button className="btn ghost sm" style={{ marginLeft: 'auto' }} onClick={() => setDrawerRec(null)}><IconX size={13}/></button>
+            </div>
+            <div className="drawer-body">
+              <span className={`chip ${window.STATUS_META[drawerRec.status].color}`} style={{ marginBottom: 14 }}>
+                <span className="dot"/>{window.STATUS_META[drawerRec.status].label}
+              </span>
+              {drawerRec.diffNote && <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-sunken)', borderRadius: 10, fontSize: 12.5 }}>{drawerRec.diffNote}</div>}
+
+              <h4 style={{ fontFamily: 'Inter Tight', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginTop: 22, marginBottom: 10 }}>Сторона ЕРП</h4>
+              {drawerRec.erp ? <dl className="kv">
+                <dt>Документ</dt><dd>{drawerRec.typeLabel} <span className="mono">{drawerRec.erp.num}</span></dd>
+                <dt>Дата</dt><dd className="mono">{drawerRec.erp.date}</dd>
+                <dt>Сумма</dt><dd className="mono">{fmtMoney(drawerRec.erp.amount, drawerRec.erp.currency)}</dd>
+                <dt>НДС</dt><dd>{drawerRec.erp.vat}</dd>
+                <dt>Код 1С</dt><dd><span className="code1c">{drawerRec.erp.kod1c}</span></dd>
+              </dl> : <div className="muted">Документ в ЕРП не заведён</div>}
+
+              <h4 style={{ fontFamily: 'Inter Tight', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginTop: 22, marginBottom: 10 }}>Сторона 1С</h4>
+              {drawerRec.rc ? <dl className="kv">
+                <dt>Документ</dt><dd>{drawerRec.rc.doctype} <span className="mono">{drawerRec.rc.num}</span></dd>
+                <dt>Дата</dt><dd className="mono">{drawerRec.rc.date}</dd>
+                <dt>Сумма</dt><dd className="mono">{fmtMoney(drawerRec.rc.amount)}</dd>
+                <dt>НДС</dt><dd>{drawerRec.rc.vat}</dd>
+                <dt>Код 1С</dt><dd>
+                  <span className="code1c">{drawerRec.rc.kod1c}
+                    <span className="copy" style={{ opacity: 1 }} onClick={() => copyToClipboard(drawerRec.rc.kod1c)}><IconCopy size={11}/></span>
+                  </span>
+                </dd>
+              </dl> : <div className="muted">В 1С не найдено</div>}
+
+              <h4 style={{ fontFamily: 'Inter Tight', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginTop: 22, marginBottom: 10 }}>История</h4>
+              <div style={{ fontSize: 12.5, lineHeight: 1.8, color: 'var(--ink-2)' }}>
+                <div>{lastReport?.when || 'Сформировано'} — автоматическая сверка · <span className="muted">{reportUser}</span></div>
+                <div>02.04.2026 10:12 — документ создан в ЕРП</div>
+              </div>
+            </div>
+            <div className="drawer-foot">
+              {drawerRec.erp && <button className="btn" onClick={() => gotoOp(drawerRec.opId)}><IconExternal size={13}/>В операцию</button>}
+              {!drawerRec.erp && drawerRec.rc && <button className="btn brand" onClick={() => { setDrawerRec(null); onOpenLink(drawerRec); }}><IconLink size={13}/>Привязать</button>}
+              <button className="btn sm ghost" style={{ marginLeft: 'auto' }}>Игнорировать</button>
+            </div>
+          </aside>
+        </>
+      )}
+    </div>
+  );
+};
+
+window.ReportScreen = ReportScreen;
+
+
+/* ===== src/Tweaks.jsx ===== */
+// Tweaks panel — conservative vs bold variant
+const Tweaks = ({ state, setState }) => {
+  const [visible, setVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    const handler = (e) => {
+      const t = e.data?.type;
+      if (t === '__activate_edit_mode') setVisible(true);
+      else if (t === '__deactivate_edit_mode') setVisible(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const persist = (patch) => {
+    setState(s => ({ ...s, ...patch }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: patch }, '*');
+  };
+
+  if (!visible) return null;
+
+  return (
+    <div className="tweaks">
+      <div className="tweaks-head">
+        <IconSettings size={14}/> Tweaks
+        <button className="btn ghost xs" style={{ marginLeft: 'auto' }} onClick={() => setVisible(false)}><IconX size={12}/></button>
+      </div>
+      <div className="tweaks-body">
+        <div className="tweak-row">
+          <div className="tweak-label">Визуальный вариант</div>
+          <div className="tweak-seg">
+            <button className={state.variant === 'conservative' ? 'on' : ''} onClick={() => persist({ variant: 'conservative' })}>Консервативный</button>
+            <button className={state.variant === 'bold' ? 'on' : ''} onClick={() => persist({ variant: 'bold' })}>Смелый</button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+            {state.variant === 'conservative' ? 'Плотный, бухгалтерский, крупный Inter' : 'Крупнее шрифт, больше воздуха, мягче углы'}
+          </div>
+        </div>
+        <div className="tweak-row">
+          <div className="tweak-label">Плотность</div>
+          <div className="tweak-seg">
+            <button className={state.density === 'compact' ? 'on' : ''} onClick={() => persist({ density: 'compact' })}>Плотно</button>
+            <button className={state.density === 'normal' ? 'on' : ''} onClick={() => persist({ density: 'normal' })}>Средне</button>
+            <button className={state.density === 'roomy' ? 'on' : ''} onClick={() => persist({ density: 'roomy' })}>Просторно</button>
+          </div>
+        </div>
+        <div className="tweak-row">
+          <div className="tweak-label">Линии связи ЕРП↔1С</div>
+          <div className="tweak-seg">
+            <button className={state.showLinkLines ? 'on' : ''} onClick={() => persist({ showLinkLines: true })}>Показать</button>
+            <button className={!state.showLinkLines ? 'on' : ''} onClick={() => persist({ showLinkLines: false })}>Скрыть</button>
+          </div>
+        </div>
+        <div className="tweak-row">
+          <div className="tweak-label">Авто-раскрытие расхождений</div>
+          <div className="tweak-seg">
+            <button className={state.autoExpandIssues ? 'on' : ''} onClick={() => persist({ autoExpandIssues: true })}>Вкл</button>
+            <button className={!state.autoExpandIssues ? 'on' : ''} onClick={() => persist({ autoExpandIssues: false })}>Выкл</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+window.Tweaks = Tweaks;
+
+
+const AuthScreen = ({ authState }) => {
+  const config = authState.config || {};
+  const validationConfigured = Boolean(config.erp?.token_validation_configured);
+  const statusText = authState.state === 'loading'
+    ? 'Проверяем активную сессию.'
+    : authState.state === 'authenticating'
+      ? 'Проверяем токен перехода из ERP.'
+      : validationConfigured
+        ? 'Откройте модуль из ERP. ERP передаст одноразовый токен перехода автоматически.'
+        : 'Вход из ERP не настроен на сервере. Укажите RECON_ERP_TOKEN_VALIDATE_URL и включите RECON_AUTH_REQUIRED.';
+
+  return (
+    <div className="auth-shell">
+      <div className="auth-panel">
+        <div className="logo" style={{ marginBottom: 18 }}>
+          <div className="logo-mark">АС</div>
+          <div>
+            <div className="logo-name">Акт сверки</div>
+            <div className="logo-sub">ERP ↔ 1С</div>
+          </div>
+        </div>
+        <h1 className="auth-title">Вход из ERP</h1>
+        <div className="auth-sub">
+          Модуль открывается из ERP и принимает короткоживущий токен перехода. После проверки токена сервис показывает пользователя ERP в правом верхнем углу.
+        </div>
+        <div className="auth-token-slot">
+          <span className="muted">Ожидается переход из ERP.</span>
+        </div>
+        <div className={`auth-status ${authState.error ? 'auth-error' : ''}`}>
+          {authState.error || statusText}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const UserChip = ({ user, authenticated, onLogout }) => {
+  const displayName = user?.display_name || (authenticated ? 'Пользователь' : 'Гость');
+  const email = user?.email || (authenticated ? '' : 'вход не требуется');
+  const initials = user?.initials || displayName.slice(0, 2).toUpperCase();
+  const picture = user?.picture || '';
+  return (
+    <div className="user-chip" title={email || displayName}>
+      <span
+        className="avatar"
+        style={picture ? { backgroundImage: `url(${picture})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'transparent' } : null}
+      >
+        {picture ? '' : initials}
+      </span>
+      <span className="user-meta">
+        <span className="user-name">{displayName}</span>
+        {email && <span className="user-email">{email}</span>}
+        {authenticated && <button className="user-logout" type="button" onClick={onLogout}>Выйти</button>}
+      </span>
+    </div>
+  );
+};
+
+
+/* ===== src/app.jsx ===== */
+// Root app — manages screens + modals + tweaks
+const SCREEN_KEY = 'akt_sverki_screen_v1';
+const screenFromLocation = () => {
+  const params = new URLSearchParams(window.location.search);
+  const requested = (params.get('screen') || params.get('view') || window.location.hash.replace(/^#/, '') || '').toLowerCase();
+  if (['delivery', 'matrix'].includes(requested)) return requested;
+  if (params.has('spec_id') || params.has('specId') || params.has('client_id') || params.has('clientId') || params.has('legal_id') || params.has('contact_id') || params.has('fixture') || params.has('reference')) return 'matrix';
+  return '';
+};
+
+const App = () => {
+  const [screen, setScreen] = React.useState(() => {
+    const requested = screenFromLocation();
+    if (requested) return requested;
+    const saved = localStorage.getItem(SCREEN_KEY);
+    return saved === 'report' || saved === 'progress' ? 'delivery' : (saved || 'delivery');
+  });
+  const [lastReport, setLastReport] = React.useState(null);
+  const [showExport, setShowExport] = React.useState(false);
+  const [linkingRec, setLinkingRec] = React.useState(null);
+  const [toast, setToast] = React.useState(null);
+  const [tweakState, setTweakState] = React.useState(window.__TWEAK_DEFAULTS);
+  const [dataState, setDataState] = React.useState(() => ({ state: 'loading', message: 'Проверяем контекст ERP...' }));
+  const [compareState, setCompareState] = React.useState(() => ({ state: 'idle', message: '' }));
+  const [authState, setAuthState] = React.useState(() => ({
+    state: 'loading',
+    authenticated: false,
+    user: null,
+    config: null,
+    error: '',
+  }));
+
+  React.useEffect(() => {
+    if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+  }, []);
+  React.useEffect(() => { localStorage.setItem(SCREEN_KEY, screen); }, [screen]);
+  React.useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0 });
+    const raf = window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0 }));
+    const timer = window.setTimeout(() => window.scrollTo({ top: 0, left: 0 }), 0);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
+  }, [screen]);
+
+  React.useEffect(() => {
+    let alive = true;
+    const loadAuth = async () => {
+      try {
+        const configPayload = await apiJsonFetch('/api/auth/config');
+        const config = configPayload.auth || { required: false };
+        const sessionToken = getAuthSessionToken();
+        if (sessionToken) {
+          const me = await apiJsonFetch('/api/auth/me');
+          if (!alive) return;
+          if (me.authenticated) {
+            setAuthState({ state: 'ready', authenticated: true, user: me.user || null, config: me.auth || config, error: '' });
+            return;
+          }
+          localStorage.removeItem(AUTH_SESSION_KEY);
+        }
+
+        const launchToken = getLaunchToken();
+        if (launchToken) {
+          setAuthState({ state: 'authenticating', authenticated: false, user: null, config, error: '' });
+          const payload = await apiJsonFetch('/api/auth/erp-launch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ launch_token: launchToken }),
+          });
+          if (!alive) return;
+          if (payload.session_token) localStorage.setItem(AUTH_SESSION_KEY, payload.session_token);
+          removeLaunchTokenFromUrl();
+          setAuthState({
+            state: 'ready',
+            authenticated: true,
+            user: payload.user || null,
+            config: payload.auth || config,
+            error: '',
+          });
+          return;
+        }
+
+        if (alive) setAuthState({ state: 'ready', authenticated: false, user: null, config, error: '' });
+      } catch (err) {
+        console.warn('Auth bootstrap failed', err);
+        if (alive) {
+          if (getLaunchToken()) removeLaunchTokenFromUrl();
+          setAuthState({
+            state: 'ready',
+            authenticated: false,
+            user: null,
+            config: { required: true, mode: 'erp_launch_token' },
+            error: err.message || 'Не удалось войти через ERP',
+          });
+        }
+      }
+    };
+    loadAuth();
+    return () => { alive = false; };
+  }, []);
+
+  React.useEffect(() => {
+    const authReady = authState.state === 'ready';
+    const authRequired = Boolean(authState.config?.required);
+    if (!authReady) return;
+    if (authRequired && !authState.authenticated) {
+      setDataState({ state: 'idle', message: 'Для загрузки данных требуется вход.' });
+      return;
+    }
+    let alive = true;
+    loadErpSnapshot()
+      .then((state) => { if (alive) setDataState(state); })
+      .catch((err) => {
+        if (!alive) return;
+        console.warn('ERP snapshot failed', err);
+        window.ERP_SNAPSHOT = { ...window.ERP_SNAPSHOT, sourceState: 'error' };
+        setDataState({ state: 'error', message: 'ERP API недоступен: не удалось получить данные по URL-параметрам. Показан локальный пример.' });
+      });
+    return () => { alive = false; };
+  }, [authState.state, authState.authenticated, authState.config?.required]);
+
+  // Apply tweaks to body
+  React.useEffect(() => {
+    document.body.setAttribute('data-variant', tweakState.variant);
+    document.body.setAttribute('data-density', tweakState.density);
+    document.body.setAttribute('data-show-lines', String(tweakState.showLinkLines));
+    window.__tweakState = tweakState;
+  }, [tweakState]);
+
+  const goReport = (skipProgress) => {
+    if (skipProgress && lastReport) { setScreen('report'); return; }
+    setScreen('progress');
+  };
+
+  const fireToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  const finishCompare = (payload) => {
+    const report = {
+      when: new Date().toLocaleString('ru-RU'),
+      user: authState.user?.display_name || 'пользователь',
+      summary: payload.summary || {},
+      sourceState: payload.onec_source?.state || '',
+      balanceSnapshot: balanceSnapshot(),
+    };
+    setLastReport(report);
+    const source = payload.onec_source || {};
+    const rowsCount = payload.matrix_model?.rowsCount || 0;
+    setCompareState({
+      state: source.error ? 'error' : 'done',
+      message: source.error ? `Ошибка 1С: ${source.error}` : `REST 1С: проверено поставок ${rowsCount}`,
+    });
+    setScreen('matrix');
+  };
+
+  const runFolderCompare = async () => {
+    if (compareState.state === 'loading') return;
+    setCompareState({ state: 'loading', message: 'Запрашиваем 1С через REST API и сверяем с ERP...' });
+    try {
+      const payload = await loadOneCRestMatrix();
+      finishCompare(payload);
+      fireToast('REST-сверка с 1С выполнена');
+    } catch (err) {
+      console.error('1C REST compare failed', err);
+      setCompareState({ state: 'error', message: err.message || 'Не удалось сверить с 1С' });
+      fireToast(err.message || 'Не удалось сверить с 1С');
+    }
+  };
+
+  const handleLogout = React.useCallback(async () => {
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.warn('Logout failed', err);
+    }
+    localStorage.removeItem(AUTH_SESSION_KEY);
+    setAuthState((prev) => ({ ...prev, state: 'ready', authenticated: false, user: null, error: '' }));
+    fireToast('Вы вышли');
+  }, []);
+
+  const authRequired = Boolean(authState.config?.required);
+  if (authState.state === 'loading' || authState.state === 'authenticating' || (authRequired && !authState.authenticated)) {
+    return <AuthScreen authState={authState}/>;
+  }
+
+  const activeNav = screen === 'delivery' ? 'delivery' : screen === 'matrix' ? 'matrix' : screen === 'progress' || screen === 'report' ? 'recon' : 'other';
+  const currentCrumb = screen === 'progress'
+    ? 'Сверка с 1С (в процессе)'
+    : screen === 'report'
+      ? 'Отчёт сверки'
+      : screen === 'matrix'
+        ? 'Матрица взаиморасчетов'
+        : '';
+
+  return (
+    <>
+      <div className="app-root">
+        <aside className="sidebar">
+          <div className="logo">
+            <div className="logo-mark">АС</div>
+            <div>
+              <div className="logo-name">Акт сверки</div>
+              <div className="logo-sub">ЕРП ↔ 1С</div>
+            </div>
+          </div>
+          <nav className="nav-section">
+            <div className="nav-title">Работа</div>
+            <div className={`nav-item ${activeNav === 'delivery' ? 'active' : ''}`} onClick={() => setScreen('delivery')}>
+              <IconBox size={14}/>Поставки<span className="count">12</span>
+            </div>
+            <div className={`nav-item ${activeNav === 'recon' ? 'active' : ''}`} onClick={() => setScreen('matrix')}>
+              <IconRefresh size={14}/>Сверки<span className="count">84</span>
+            </div>
+            <div className={`nav-item ${activeNav === 'matrix' ? 'active' : ''}`} onClick={() => setScreen('matrix')}>
+              <IconList size={14}/>Матрица<span className="count">1</span>
+            </div>
+            <div className="nav-item"><IconChart size={14}/>Аналитика</div>
+            <div className="nav-item"><IconDoc size={14}/>Документы</div>
+          </nav>
+          <nav className="nav-section">
+            <div className="nav-title">Справочники</div>
+            <div className="nav-item"><IconList size={14}/>Контрагенты</div>
+            <div className="nav-item"><IconSettings size={14}/>Интеграция с 1С</div>
+          </nav>
+          <div style={{ marginTop: 'auto', padding: '10px 8px', fontSize: 11, color: 'var(--muted)', borderTop: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'oklch(0.7 0.15 155)' }}/>
+              1С: Enterprise 8.3
+            </div>
+            <div className="mono muted" style={{ fontSize: 10.5, marginTop: 4 }}>REST sync</div>
+          </div>
+        </aside>
+
+        <main className="content">
+          <header className="topbar">
+            <div className="crumbs">
+              <span>Поставки</span>
+              <span className="sep">/</span>
+              <span>{window.DELIVERY.id}</span>
+              {screen !== 'delivery' && <><span className="sep">/</span>
+                <span className="current">{currentCrumb}</span></>}
+            </div>
+            <div className="top-actions">
+              <button className="btn ghost sm"><IconBell size={14}/></button>
+              <UserChip user={authState.user} authenticated={authState.authenticated} onLogout={handleLogout}/>
+            </div>
+          </header>
+
+          {screen === 'delivery' && (
+            <DeliveryCard
+              onStart={() => runFolderCompare()}
+              onOpenMatrix={() => setScreen('matrix')}
+              lastReport={lastReport}
+              dataState={dataState}
+              compareState={compareState}
+            />
+          )}
+          {screen === 'progress' && (
+            <ReconcileProgress
+              onDone={() => {
+                setLastReport({ when: new Date().toLocaleString('ru-RU'), user: authState.user?.display_name || 'пользователь' });
+                setScreen('report');
+                fireToast('Отчёт сформирован и сохранён');
+              }}
+              onCancel={() => setScreen('delivery')}
+            />
+          )}
+          {screen === 'matrix' && (
+            <ReconciliationMatrixPage
+              onBack={() => setScreen('delivery')}
+              onOpenReport={() => runFolderCompare()}
+              lastReport={lastReport}
+              compareState={compareState}
+              dataState={dataState}
+            />
+          )}
+          {screen === 'report' && (
+            <ReportScreen
+              onBack={() => setScreen('delivery')}
+              onRecompare={runFolderCompare}
+              onOpenExport={() => setShowExport(true)}
+              onOpenLink={(rec) => setLinkingRec(rec)}
+              onToast={fireToast}
+              lastReport={lastReport}
+              compareState={compareState}
+            />
+          )}
+        </main>
+      </div>
+
+      {showExport && <ExportDialog onClose={() => setShowExport(false)} onDone={(msg) => { setShowExport(false); fireToast(msg); }}/>}
+      {linkingRec && <LinkPicker rec={linkingRec} onClose={() => setLinkingRec(null)} onDone={(msg) => { setLinkingRec(null); fireToast(msg); }}/>}
+
+      <Tweaks state={tweakState} setState={setTweakState}/>
+
+      {toast && <div className="toast"><IconCheck size={14}/>{toast}</div>}
+    </>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+
+
+</script>
+</body>
+</html>

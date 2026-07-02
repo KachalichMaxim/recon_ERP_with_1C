@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+from dataclasses import asdict, is_dataclass
+from datetime import date, datetime
+from decimal import Decimal
+from enum import Enum
+from typing import Any
+
+from recon_erp_1c.domain.entities import AccountingDocument, ReconciliationIssue, ReconciliationRun
+
+
+def to_jsonable(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, date | datetime):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return value.value
+    if is_dataclass(value):
+        return {key: to_jsonable(item) for key, item in asdict(value).items()}
+    if isinstance(value, list | tuple):
+        return [to_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): to_jsonable(item) for key, item in value.items()}
+    return value
+
+
+def document_to_dict(document: AccountingDocument | None) -> dict[str, Any] | None:
+    if document is None:
+        return None
+    return to_jsonable(document)
+
+
+def issue_to_dict(issue: ReconciliationIssue) -> dict[str, Any]:
+    return {
+        "status": issue.status.value,
+        "message": issue.message,
+        "fields": list(issue.fields),
+        "erp_document": document_to_dict(issue.erp_document),
+        "onec_document": document_to_dict(issue.onec_document),
+    }
+
+
+def run_to_dict(run: ReconciliationRun) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    for issue in run.issues:
+        counts[issue.status.value] = counts.get(issue.status.value, 0) + 1
+    return {
+        "run_id": run.run_id,
+        "created_at": run.created_at.isoformat(),
+        "matched": run.matched,
+        "delivery": to_jsonable(run.delivery),
+        "summary": {
+            "issues_total": len(run.issues),
+            "by_status": counts,
+        },
+        "issues": [issue_to_dict(issue) for issue in run.issues],
+    }

@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.DS_Store
+.env
+*.log
+tmp/
+dist/
+build/
+.venv/
+node_modules/
+*.xlsx
+*.xls
+!reference/live_samples/*.json

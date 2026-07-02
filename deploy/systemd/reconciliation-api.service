@@ -1,0 +1,24 @@
+[Unit]
+Description=ERP / 1C Reconciliation API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/recon_erp_1c
+ExecStart=/usr/bin/python3 -m recon_erp_1c.interfaces.http.api
+Restart=always
+RestartSec=2
+Environment=RECON_API_HOST=0.0.0.0
+Environment=RECON_API_PORT=8780
+Environment=PYTHONPATH=/opt/recon_erp_1c/src
+Environment=RECON_ERP_DB_HOST=erp.vedagent
+Environment=RECON_ERP_DB_PORT=3306
+Environment=RECON_ERP_DB_NAME=veda25
+Environment=RECON_ERP_DB_USER=
+Environment=RECON_ERP_DB_PASSWORD=
+Environment=RECON_ONEC_REST_BASE_URL=
+Environment=RECON_ONEC_REST_TOKEN=
+
+[Install]
+WantedBy=multi-user.target

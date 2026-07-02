@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>Сверка ERP и 1С</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23C4122F'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='26' font-family='Arial' font-weight='700' fill='white'%3EV%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="reconciliation.css?v=20260702_matrix_toggle">
+  <script src="reconciliation.js?v=20260702_matrix_toggle" defer></script>
+</head>
+<body>
+  <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="brand-mark">V</div>
+        <div>
+          <div class="brand-title">VEDAGENT</div>
+          <div class="brand-subtitle">интеграционные сервисы</div>
+        </div>
+      </div>
+      <h1 id="loginTitle">Сверка ERP ↔ 1С</h1>
+      <p>Войдите с логином и паролем ERP.</p>
+
+      <div class="service-chip">
+        <span class="service-dot"></span>
+        <span>Read-only сервис сверки · ERP / 1С</span>
+      </div>
+
+      <div class="field">
+        <label for="loginInput">Логин ERP</label>
+        <input id="loginInput" autocomplete="username" inputmode="email" placeholder="например, e.sokolova">
+      </div>
+      <div class="field">
+        <label for="passwordInput">Пароль</label>
+        <input id="passwordInput" type="password" autocomplete="current-password" placeholder="••••••••">
+      </div>
+
+      <div class="message" id="loginMessage" role="status" aria-live="polite"></div>
+      <button class="btn btn-primary full" id="loginBtn">Войти</button>
+    </div>
+    <div class="login-footnote">Локальная проверка: demo@local.test / demo</div>
+  </section>
+
+  <div class="app hidden" id="workArea">
+    <aside class="sidebar" aria-label="Основная навигация">
+      <div class="side-brand">
+        <div class="brand-mark">V</div>
+        <div>
+          <div class="brand-title light">VEDAGENT</div>
+          <div class="brand-subtitle">ERP ↔ 1С</div>
+        </div>
+      </div>
+
+      <nav class="side-nav">
+        <div class="nav-section">Финансы</div>
+        <button class="nav-item active" id="navMatrixBtn" type="button">
+          <span class="nav-icon">≡</span>
+          <span>Взаиморасчеты</span>
+        </button>
+        <button class="nav-item" id="navReconBtn" type="button">
+          <span class="nav-icon">✓</span>
+          <span>Сверка ERP/1С</span>
+        </button>
+        <div class="nav-section">Сервис</div>
+        <button class="nav-item muted" type="button" disabled>
+          <span class="nav-icon">↧</span>
+          <span>Выгрузки</span>
+        </button>
+        <button class="nav-item muted" type="button" disabled>
+          <span class="nav-icon">⚙</span>
+          <span>Настройки</span>
+        </button>
+      </nav>
+
+      <div class="side-user">
+        <div class="avatar" id="userAvatar">?</div>
+        <div class="side-user-text">
+          <div id="userName">Не авторизован</div>
+          <div id="userLogin">—</div>
+        </div>
+        <button class="logout" id="logoutBtn" title="Выйти" type="button">⎋</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1>Сверка ERP и 1С</h1>
+          <div class="top-meta">
+            <span id="erpStatusChip">ERP: ожидает запрос</span>
+            <span id="onecStatusChip">1С REST: ожидает настройку</span>
+            <span id="modeStatusChip">Режим: read-only</span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <button class="btn btn-outline" id="refreshBtn" type="button">↻ Обновить</button>
+          <button class="btn btn-primary" id="topExportBtn" type="button" disabled>Экспорт XLSX</button>
+        </div>
+      </header>
+
+      <div class="tabbar" role="tablist" aria-label="Разделы сверки">
+        <button class="tab active" id="tabMatrixBtn" type="button" role="tab" aria-selected="true">Матрица взаиморасчетов</button>
+        <button class="tab" id="tabReconBtn" type="button" role="tab" aria-selected="false">Сверка ERP ↔ 1С <span class="tab-badge" id="reconBadge">0</span></button>
+      </div>
+
+      <section class="screen" id="matrixScreen" aria-labelledby="matrixTitle">
+        <div class="section-heading">
+          <div>
+            <h2 id="matrixTitle">Взаиморасчеты с клиентом по поставкам</h2>
+            <p>Иерархия клиент → ЮЛ → договор → поставка. Это ERP-сальдовка: счета, оплаты, возмещаемые и невозмещаемые суммы.</p>
+          </div>
+          <button class="btn btn-outline" id="matrixToReconBtn" type="button" disabled>Сверить выбранную с 1С</button>
+        </div>
+
+        <section class="filters" aria-label="Фильтры матрицы">
+          <div class="field search-field">
+            <label for="clientIdInput">ЮЛ клиента ERP</label>
+            <input id="clientIdInput" autocomplete="off" placeholder="Введите название, ИНН или client_id">
+            <div class="suggestions hidden" id="clientSuggestions"></div>
+          </div>
+          <div class="field">
+            <label for="dogIdInput">Договор ERP</label>
+            <input id="dogIdInput" type="number" placeholder="88">
+          </div>
+          <div class="field">
+            <label for="dateFromInput">Период с</label>
+            <input id="dateFromInput" type="date">
+          </div>
+          <div class="field">
+            <label for="dateToInput">Период по</label>
+            <input id="dateToInput" type="date">
+          </div>
+          <div class="field compact">
+            <label for="limitInput">Поставок</label>
+            <input id="limitInput" type="number" value="20" min="1" max="100">
+          </div>
+          <div class="filter-actions">
+            <button class="btn btn-primary" id="loadMatrixBtn" type="button">Найти поставки</button>
+            <button class="btn btn-outline" id="presetYearBtn" type="button">Год</button>
+            <button class="btn btn-outline" id="preset90Btn" type="button">90 дней</button>
+            <button class="btn btn-ghost" id="resetFiltersBtn" type="button">Сбросить</button>
+          </div>
+        </section>
+        <div class="message" id="matrixMessage" role="status" aria-live="polite"></div>
+
+        <div class="kpi-grid" id="matrixSummaryCards">
+          <div class="kpi"><span>Поставки</span><b data-key="deliveries">0</b></div>
+          <div class="kpi"><span>Сумма по счетам</span><b data-key="invoice_sum">0 ₽</b></div>
+          <div class="kpi"><span>Сумма оплат</span><b data-key="payment_sum">0 ₽</b></div>
+          <div class="kpi"><span>Возмещаемые</span><b data-key="reimbursable_sum">0 ₽</b></div>
+          <div class="kpi"><span>Невозмещаемые</span><b data-key="non_reimbursable_sum">0 ₽</b></div>
+          <div class="kpi"><span>Долг/переплата</span><b data-key="balance">0 ₽</b></div>
+        </div>
+
+        <div class="table-wrap matrix-wrap">
+          <table class="matrix-table">
+            <thead>
+              <tr>
+                <th class="sticky-col">Иерархия</th>
+                <th>№ спецификации</th>
+                <th>Счет</th>
+                <th class="num">Сумма по счету</th>
+                <th class="num">Сумма оплаты</th>
+                <th class="num">Возмещаемые расходы</th>
+                <th class="num">Невозмещаемые расходы</th>
+                <th>№ счф</th>
+                <th class="num">(+/-)</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody id="matrixRows">
+              <tr><td colspan="10" class="empty-cell">Задайте фильтры и нажмите “Найти поставки”.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="screen hidden" id="reconScreen" aria-labelledby="reconTitle">
+        <div class="section-heading">
+          <div>
+            <h2 id="reconTitle">Документная сверка ERP ↔ 1С</h2>
+            <p>Сравнение выполняется по кодам 1С, датам, суммам, валюте, договорам и НДС. Комментарии к кейсам сохраняются локально до подключения общего журнала разбора.</p>
+          </div>
+          <div class="button-row">
+            <button class="btn btn-primary" id="runBtn" type="button" disabled>Сверить с 1С</button>
+            <button class="btn btn-outline" id="exportBtn" type="button" disabled>Экспорт XLSX</button>
+          </div>
+        </div>
+
+        <div class="selected-context" id="selectedContext">
+          Выберите поставку на экране матрицы.
+        </div>
+
+        <div class="loading-overlay hidden" id="loadingOverlay" aria-live="polite" aria-modal="true" role="dialog">
+          <div class="loading-panel">
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <div class="loading-copy">
+              <h3>Идет сверка ERP и 1С</h3>
+              <p id="loadingStepText">Готовим запрос...</p>
+            </div>
+            <div class="progress" id="progressBox"></div>
+          </div>
+        </div>
+        <div class="message" id="runMessage" role="status" aria-live="polite"></div>
+
+        <div class="kpi-grid recon-kpi" id="summaryCards">
+          <button class="kpi kpi-filter active" type="button" data-result-filter="all"><span>Документов</span><b data-key="issues_total">0</b></button>
+          <button class="kpi kpi-filter ok" type="button" data-result-filter="match"><span>Совпало</span><b data-status="match">0</b></button>
+          <button class="kpi kpi-filter bad" type="button" data-result-filter="not_found_in_1c"><span>Нет в 1С</span><b data-status="not_found_in_1c">0</b></button>
+          <button class="kpi kpi-filter warn" type="button" data-result-filter="not_found_in_erp"><span>Нет в ERP</span><b data-status="not_found_in_erp">0</b></button>
+          <button class="kpi kpi-filter bad" type="button" data-result-filter="mismatches"><span>Расхождения</span><b data-role="mismatches">0</b></button>
+        </div>
+
+        <div class="result-toolbar">
+          <input id="resultSearchInput" placeholder="Номер, код 1С, причина...">
+          <select id="statusFilter">
+            <option value="all">Все статусы</option>
+            <option value="problems">Только к разбору</option>
+            <option value="match">Совпало</option>
+            <option value="not_found_in_1c">Нет в 1С</option>
+            <option value="not_found_in_erp">Нет в ERP</option>
+            <option value="mismatches">Расхождения</option>
+            <option value="amount_mismatch">Сумма/валюта</option>
+            <option value="date_mismatch">Дата</option>
+            <option value="contract_mismatch">Договор</option>
+            <option value="vat_mismatch">НДС</option>
+          </select>
+        </div>
+
+        <div class="table-wrap">
+          <table class="result-table">
+            <thead>
+              <tr>
+                <th>Статус</th>
+                <th>Тип</th>
+                <th>ERP документ</th>
+                <th>1С документ</th>
+                <th>Дата</th>
+                <th class="num">ERP сумма</th>
+                <th class="num">1С сумма</th>
+                <th>Причина</th>
+                <th>Разбор</th>
+              </tr>
+            </thead>
+            <tbody id="resultRows">
+              <tr><td colspan="9" class="empty-cell">Сверка еще не запускалась.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
