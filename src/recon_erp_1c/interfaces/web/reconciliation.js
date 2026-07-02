@@ -53,11 +53,8 @@
     logoutBtn: $('logoutBtn'),
     navMatrixBtn: $('navMatrixBtn'),
     navReconBtn: $('navReconBtn'),
-    tabMatrixBtn: $('tabMatrixBtn'),
-    tabReconBtn: $('tabReconBtn'),
     matrixScreen: $('matrixScreen'),
     reconScreen: $('reconScreen'),
-    reconBadge: $('reconBadge'),
     erpStatusChip: $('erpStatusChip'),
     onecStatusChip: $('onecStatusChip'),
     modeStatusChip: $('modeStatusChip'),
@@ -175,11 +172,60 @@
     const isMatrix = view === 'matrix';
     els.matrixScreen.classList.toggle('hidden', !isMatrix);
     els.reconScreen.classList.toggle('hidden', isMatrix);
-    [els.navMatrixBtn, els.tabMatrixBtn].forEach((node) => node.classList.toggle('active', isMatrix));
-    [els.navReconBtn, els.tabReconBtn].forEach((node) => node.classList.toggle('active', !isMatrix));
-    els.tabMatrixBtn.setAttribute('aria-selected', String(isMatrix));
-    els.tabReconBtn.setAttribute('aria-selected', String(!isMatrix));
+    els.navMatrixBtn.classList.toggle('active', isMatrix);
+    els.navReconBtn.classList.toggle('active', !isMatrix);
+    updateWorkflowState();
     updateActionState();
+  }
+
+  function updateWorkflowState() {
+    const hasMatrix = Boolean(state.matrix.length);
+    const hasSpec = Boolean(state.selectedSpecId);
+    const hasRun = Boolean(state.run);
+    document.querySelectorAll('[data-workflow-step]').forEach((node) => {
+      const step = node.getAttribute('data-workflow-step');
+      const active = (state.view === 'matrix' && !hasMatrix && step === 'matrix')
+        || (state.view === 'matrix' && hasMatrix && !hasSpec && step === 'select')
+        || (state.view === 'matrix' && hasSpec && step === 'recon')
+        || (state.view === 'recon' && !hasRun && step === 'recon')
+        || (state.view === 'recon' && hasRun && step === 'review');
+      const done = (step === 'matrix' && hasMatrix)
+        || (step === 'select' && hasSpec)
+        || (step === 'recon' && hasRun);
+      node.classList.toggle('active', active);
+      node.classList.toggle('done', done);
+    });
+  }
+
+  function openReconGuarded() {
+    if (!state.matrix.length) {
+      setView('matrix');
+      setMessage(els.matrixMessage, 'Сначала загрузите поставки.', true);
+      focusMatrixWorkflow();
+      return false;
+    }
+    if (!state.selectedSpecId) {
+      setView('matrix');
+      setMessage(els.matrixMessage, 'Выберите поставку в таблице для проверки ПДР.', true);
+      highlightMatrixSelection();
+      return false;
+    }
+    setMessage(els.matrixMessage, '');
+    setView('recon');
+    return true;
+  }
+
+  function focusMatrixWorkflow() {
+    const target = els.matrixRows.closest('.table-wrap') || els.loadMatrixBtn;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function highlightMatrixSelection() {
+    focusMatrixWorkflow();
+    const table = els.matrixRows.closest('.table-wrap');
+    if (!table) return;
+    table.classList.add('selection-required');
+    setTimeout(() => table.classList.remove('selection-required'), 1600);
   }
 
   function applyAuthState() {
@@ -365,16 +411,29 @@
       state.matrixMode = payload.mode || 'erp_live';
       state.matrixOffset = Number(payload.offset || state.matrixOffset || 0);
       if (!state.matrix.some((row) => Number(row.spec_id) === Number(state.selectedSpecId))) {
-        state.selectedSpecId = state.matrix.length ? Number(state.matrix[0].spec_id) : null;
+        state.run = null;
+        if (state.matrix.length === 1) {
+          state.selectedSpecId = Number(state.matrix[0].spec_id);
+          localStorage.setItem('recon_selected_spec', String(state.selectedSpecId));
+        } else {
+          state.selectedSpecId = null;
+          localStorage.removeItem('recon_selected_spec');
+        }
         state.matrixDetailsOpen = false;
         localStorage.setItem('recon_matrix_details_open', '0');
       }
       renderMatrix(buildMatrixSummary(matrixVisibleItems()));
       renderSelectedContext();
+      renderResults();
       updateActionState();
       const modeText = state.matrixMode === 'ui_demo' ? 'Локальный UI-пример, не боевые данные.' : 'Данные ERP загружены.';
       const totalText = payload.total_count ? ` из ${payload.total_count}` : '';
-      setMessage(els.matrixMessage, `${modeText} Поставок: ${state.matrix.length}${totalText}.`);
+      const selectionText = state.matrix.length === 1 && state.selectedSpecId
+        ? ' Найдена одна поставка — она выбрана автоматически.'
+        : state.matrix.length
+          ? ' Выберите поставку для проверки ПДР.'
+          : '';
+      setMessage(els.matrixMessage, `${modeText} Поставок: ${state.matrix.length}${totalText}.${selectionText}`);
       updateMatrixPager();
       els.erpStatusChip.textContent = state.matrixMode === 'ui_demo' ? 'ERP: демо-данные' : 'ERP: данные загружены';
     } catch (err) {
@@ -633,18 +692,31 @@
     });
     els.matrixRows.querySelectorAll('tr[data-spec-id]').forEach((tr) => {
       tr.addEventListener('click', () => {
-        state.selectedSpecId = Number(tr.getAttribute('data-spec-id'));
-        localStorage.setItem('recon_selected_spec', String(state.selectedSpecId));
-        state.matrixDetailsOpen = false;
-        localStorage.setItem('recon_matrix_details_open', '0');
-        state.run = null;
-        renderMatrix(buildMatrixSummary(matrixVisibleItems()));
-        renderSelectedContext();
-        renderResults();
-        updateActionState();
+        selectSpec(Number(tr.getAttribute('data-spec-id')));
+      });
+    });
+    els.matrixRows.querySelectorAll('[data-select-spec-id]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        selectSpec(Number(button.getAttribute('data-select-spec-id')));
       });
     });
     updateMatrixPager();
+  }
+
+  function selectSpec(specId) {
+    if (!specId) return;
+    state.selectedSpecId = Number(specId);
+    localStorage.setItem('recon_selected_spec', String(state.selectedSpecId));
+    state.matrixDetailsOpen = false;
+    localStorage.setItem('recon_matrix_details_open', '0');
+    state.run = null;
+    setMessage(els.matrixMessage, 'Поставка выбрана. Можно проверить ПДР или скачать XLSX.');
+    renderMatrix(buildMatrixSummary(matrixVisibleItems()));
+    renderSelectedContext();
+    renderResults();
+    updateActionState();
+    updateWorkflowState();
   }
 
   function updateMatrixPager() {
@@ -709,7 +781,7 @@
       : `data-toggle-key="${escapeHtml(toggleKey || '')}"`;
     const marker = toggleKey
       ? `<span class="level-toggle" aria-hidden="true">${expanded ? '⌄' : '›'}</span>`
-      : '<span class="level-marker">•</span>';
+      : `<button class="select-spec-btn ${selected ? 'selected' : ''}" type="button" data-select-spec-id="${escapeHtml(specId || '')}" aria-label="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}">${selected ? '●' : '○'} ${selected ? 'Выбрано' : 'Выбрать'}</button>`;
     return `<tr class="${rowClass}" ${rowAttrs}>
       <td class="sticky-col">
         <div class="hierarchy-cell level-${level}">
@@ -831,7 +903,17 @@
   function renderSelectedContext() {
     const row = selectedSpec();
     if (!row) {
-      els.selectedContext.innerHTML = 'Выберите поставку на экране матрицы.';
+      els.selectedContext.innerHTML = `
+        <div class="empty-state">
+          <h3>Поставка не выбрана</h3>
+          <p>Чтобы проверить ПДР, загрузите поставки и выберите одну строку в матрице.</p>
+          <ol>
+            <li>Перейдите к взаиморасчетам.</li>
+            <li>Нажмите “Найти поставки”.</li>
+            <li>Выберите поставку кнопкой “Выбрать”.</li>
+          </ol>
+          <button class="btn btn-primary" type="button" data-go-matrix-select>Перейти к выбору поставки</button>
+        </div>`;
       return;
     }
     els.selectedContext.innerHTML = `<strong>${escapeHtml(row.client_name || 'Клиент')} · ${escapeHtml(deliveryLabel(row))}</strong>
@@ -994,7 +1076,7 @@
       'contract_context_missing',
     ].reduce((sum, key) => sum + Number(by[key] || 0), 0);
     els.summaryCards.querySelector('[data-role="mismatches"]').textContent = mismatches;
-    els.reconBadge.textContent = String(total);
+    updateWorkflowState();
   }
 
   function renderResults() {
@@ -1250,8 +1332,9 @@
     const hasRun = Boolean(state.run);
     els.matrixToReconBtn.disabled = !hasSpec;
     els.runBtn.disabled = !hasSpec;
-    els.runBtn.textContent = hasRun ? 'Обновить сверку' : 'Сверить с 1С';
+    els.runBtn.textContent = hasRun ? 'Обновить сверку' : 'Проверить ПДР';
     els.exportBtn.disabled = !hasRun;
+    updateWorkflowState();
   }
 
   function toggleSidebar() {
@@ -1350,12 +1433,13 @@
     els.passwordInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') login(); });
     els.logoutBtn.addEventListener('click', logout);
     els.navMatrixBtn.addEventListener('click', () => setView('matrix'));
-    els.navReconBtn.addEventListener('click', () => setView('recon'));
-    els.tabMatrixBtn.addEventListener('click', () => setView('matrix'));
-    els.tabReconBtn.addEventListener('click', () => setView('recon'));
-    els.matrixToReconBtn.addEventListener('click', () => setView('recon'));
+    els.navReconBtn.addEventListener('click', openReconGuarded);
+    els.matrixToReconBtn.addEventListener('click', openReconGuarded);
     els.sidebarToggleBtn.addEventListener('click', toggleSidebar);
-    els.refreshBtn.addEventListener('click', () => state.view === 'matrix' ? loadMatrix(state.matrixOffset) : runReconciliation());
+    els.refreshBtn.addEventListener('click', () => {
+      if (state.view === 'matrix') loadMatrix(state.matrixOffset);
+      else if (openReconGuarded()) runReconciliation();
+    });
     els.loadMatrixBtn.addEventListener('click', () => loadMatrix(0));
     els.clientIdInput.addEventListener('input', scheduleClientSearch);
     els.dogIdInput.addEventListener('input', scheduleDogSearch);
@@ -1380,7 +1464,7 @@
     els.presetYearBtn.addEventListener('click', setCurrentYear);
     els.preset90Btn.addEventListener('click', setLast90Days);
     els.resetFiltersBtn.addEventListener('click', resetFilters);
-    els.matrixSelectionReconBtn.addEventListener('click', () => setView('recon'));
+    els.matrixSelectionReconBtn.addEventListener('click', openReconGuarded);
     els.matrixSelectionDetailsBtn.addEventListener('click', toggleMatrixDetails);
     els.matrixSelectionExportBtn.addEventListener('click', exportMatrixXlsx);
     els.matrixPrevBtn.addEventListener('click', () => matrixPage(-1));
@@ -1389,6 +1473,12 @@
     els.exportBtn.addEventListener('click', exportXlsx);
     els.statusFilter.addEventListener('change', renderResults);
     els.resultSearchInput.addEventListener('input', renderResults);
+    els.selectedContext.addEventListener('click', (event) => {
+      if (event.target && event.target.matches('[data-go-matrix-select]')) {
+        setView('matrix');
+        highlightMatrixSelection();
+      }
+    });
     els.summaryCards.querySelectorAll('[data-result-filter]').forEach((node) => {
       node.addEventListener('click', () => {
         els.statusFilter.value = node.getAttribute('data-result-filter') || 'all';
@@ -1404,7 +1494,8 @@
     await loadRuntimeConfig();
     await consumeLaunchToken();
     applyAuthState();
-    setView(state.view === 'recon' ? 'recon' : 'matrix');
+    if (state.view === 'recon' && state.selectedSpecId && state.matrix.length) setView('recon');
+    else setView('matrix');
     renderMatrix();
     renderSelectedContext();
     renderProgress(null);
