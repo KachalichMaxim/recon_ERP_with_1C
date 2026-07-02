@@ -69,6 +69,10 @@
     matrixMessage: $('matrixMessage'),
     matrixRows: $('matrixRows'),
     matrixSummaryCards: $('matrixSummaryCards'),
+    matrixSelectionPanel: $('matrixSelectionPanel'),
+    matrixSelectionText: $('matrixSelectionText'),
+    matrixSelectionReconBtn: $('matrixSelectionReconBtn'),
+    matrixSelectionExportBtn: $('matrixSelectionExportBtn'),
     matrixToReconBtn: $('matrixToReconBtn'),
     selectedContext: $('selectedContext'),
     loadingOverlay: $('loadingOverlay'),
@@ -381,6 +385,7 @@
   function renderMatrix(summary) {
     const items = state.matrix || [];
     renderMatrixSummary(summary || buildMatrixSummary(items));
+    renderMatrixSelectionPanel();
     if (!items.length) {
       els.matrixRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Поставки не загружены.</td></tr>';
       return;
@@ -539,6 +544,28 @@
     return state.matrix.find((row) => Number(row.spec_id) === Number(state.selectedSpecId)) || null;
   }
 
+  function renderMatrixSelectionPanel() {
+    const row = selectedSpec();
+    if (!row) {
+      els.matrixSelectionPanel.classList.add('hidden');
+      els.matrixSelectionText.innerHTML = '';
+      return;
+    }
+    const balance = Number(row.balance || 0);
+    const balanceLabel = row.balance_label || (balance > 0 ? 'Переплата' : balance < 0 ? 'Долг' : 'Закрыто');
+    const balanceClass = balance < 0 ? 'debt' : balance > 0 ? 'overpayment' : 'closed';
+    els.matrixSelectionPanel.classList.remove('hidden');
+    els.matrixSelectionText.innerHTML = `
+      <div class="selected-title">Выбрана поставка: ${escapeHtml(deliveryLabel(row))}</div>
+      <div class="selected-meta">
+        <span>Клиент: ${escapeHtml(row.client_name || '—')}</span>
+        <span>Договор: ${escapeHtml(row.base_contract_number || '—')}</span>
+        <span>Договор покупателя 1С: <b>${escapeHtml(row.buyer_contract_code || '—')}</b></span>
+        <span>Договор комитента 1С: <b>${escapeHtml(row.committent_contract_code || '—')}</b></span>
+        <span>Сальдо: <b class="${balanceClass}">${escapeHtml(fmtMoneyValue(row.balance))} · ${escapeHtml(balanceLabel)}</b></span>
+      </div>`;
+  }
+
   function renderSelectedContext() {
     const row = selectedSpec();
     if (!row) {
@@ -692,7 +719,16 @@
     els.summaryCards.querySelector('[data-status="match"]').textContent = by.match || 0;
     els.summaryCards.querySelector('[data-status="not_found_in_1c"]').textContent = by.not_found_in_1c || 0;
     els.summaryCards.querySelector('[data-status="not_found_in_erp"]').textContent = by.not_found_in_erp || 0;
-    const mismatches = ['amount_mismatch', 'date_mismatch', 'contract_mismatch', 'vat_mismatch'].reduce((sum, key) => sum + Number(by[key] || 0), 0);
+    const mismatches = [
+      'amount_mismatch',
+      'date_mismatch',
+      'contract_mismatch',
+      'number_mismatch',
+      'vat_mismatch',
+      'duplicate_in_1c',
+      'ambiguous_match',
+      'aggregation_conflict',
+    ].reduce((sum, key) => sum + Number(by[key] || 0), 0);
     els.summaryCards.querySelector('[data-role="mismatches"]').textContent = mismatches;
     els.reconBadge.textContent = String(total);
   }
@@ -704,7 +740,16 @@
     syncResultFilterTiles(filter);
     let rows = issues;
     if (filter === 'problems') rows = rows.filter((row) => row.status !== 'match');
-    else if (filter === 'mismatches') rows = rows.filter((row) => ['amount_mismatch', 'date_mismatch', 'contract_mismatch', 'vat_mismatch'].includes(row.status));
+    else if (filter === 'mismatches') rows = rows.filter((row) => [
+      'amount_mismatch',
+      'date_mismatch',
+      'contract_mismatch',
+      'number_mismatch',
+      'vat_mismatch',
+      'duplicate_in_1c',
+      'ambiguous_match',
+      'aggregation_conflict',
+    ].includes(row.status));
     else if (filter !== 'all') rows = rows.filter((row) => row.status === filter);
     if (search) rows = rows.filter((row) => JSON.stringify(row).toLowerCase().includes(search));
     if (!rows.length) {
@@ -804,7 +849,11 @@
       amount_mismatch: ['bad', 'Сумма/валюта'],
       date_mismatch: ['warn', 'Дата'],
       contract_mismatch: ['warn', 'Договор'],
+      number_mismatch: ['warn', 'Номер'],
       vat_mismatch: ['warn', 'НДС'],
+      duplicate_in_1c: ['bad', 'Дубли 1С'],
+      ambiguous_match: ['bad', 'Неоднозначно'],
+      aggregation_conflict: ['warn', 'Конфликт агрегации'],
       not_comparable: ['warn', 'Не сверяется'],
     };
     const value = map[status] || ['warn', status || 'unknown'];
@@ -965,9 +1014,11 @@
     els.presetYearBtn.addEventListener('click', setCurrentYear);
     els.preset90Btn.addEventListener('click', setLast90Days);
     els.resetFiltersBtn.addEventListener('click', resetFilters);
+    els.matrixSelectionReconBtn.addEventListener('click', () => setView('recon'));
+    els.matrixSelectionExportBtn.addEventListener('click', exportMatrixXlsx);
     els.runBtn.addEventListener('click', runReconciliation);
     els.exportBtn.addEventListener('click', exportXlsx);
-    els.topExportBtn.addEventListener('click', exportXlsx);
+    els.topExportBtn.addEventListener('click', () => state.view === 'matrix' ? exportMatrixXlsx() : exportXlsx());
     els.statusFilter.addEventListener('change', renderResults);
     els.resultSearchInput.addEventListener('input', renderResults);
     els.summaryCards.querySelectorAll('[data-result-filter]').forEach((node) => {

@@ -209,7 +209,8 @@ sequenceDiagram
 - Для больших объемов используется background runner и collection endpoints с `cursor`/`limit`.
 - Все запуски сверки пишутся в `veda_reconciliation_runs`.
 - Все документные результаты и расхождения пишутся в `veda_reconciliation_items`.
-- Расхождения логируются типизированно: `MISSING_IN_ERP`, `MISSING_IN_1C`, `AMOUNT_MISMATCH`, `DATE_MISMATCH`, `NUMBER_MISMATCH`, `CONTRACT_MISMATCH`, `VAT_MISMATCH`, `SOURCE_ERROR`.
+- Документы сопоставляются по бизнес-ключу `тип документа + код 1C + дата 1C + договор 1C`; матч только по коду 1C запрещен из-за дублей.
+- Расхождения логируются типизированно: `MISSING_IN_ERP`, `MISSING_IN_1C`, `AMOUNT_MISMATCH`, `DATE_MISMATCH`, `NUMBER_MISMATCH`, `CONTRACT_MISMATCH`, `VAT_MISMATCH`, `DUPLICATE_IN_1C`, `AMBIGUOUS_MATCH`, `SOURCE_ERROR`.
 
 ## Persistent Log Model
 

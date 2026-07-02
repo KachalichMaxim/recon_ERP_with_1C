@@ -36,6 +36,9 @@ def issue_to_dict(issue: ReconciliationIssue) -> dict[str, Any]:
         "status": issue.status.value,
         "message": issue.message,
         "fields": list(issue.fields),
+        "primary_reason": issue.primary_reason,
+        "severity": issue.severity,
+        "match_confidence": issue.match_confidence,
         "erp_document": document_to_dict(issue.erp_document),
         "onec_document": document_to_dict(issue.onec_document),
     }

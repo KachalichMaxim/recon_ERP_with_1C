@@ -129,6 +129,10 @@ GET /reconciliation/v1/snapshot
 period + organization_code/inn + counterparty_code/inn + buyer_contract_code/committent_contract_code + document_code/document_number
 ```
 
+Для автоматической сверки документов Python использует ключ `document_type + document_code + document_date + contract_code`.
+`document_code` без даты и договора не считается уникальным: в ERP и 1C возможны дубли кодов за разные даты, договоры или типы документов.
+Если 1C возвращает несколько документов по одному `document_code + document_date + contract_code`, сервис фиксирует статус `DUPLICATE_IN_1C`, а не выбирает первый документ.
+
 Для поставки основной ключ связи:
 
 | ERP | 1C | Роль |

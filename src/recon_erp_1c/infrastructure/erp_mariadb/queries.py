@@ -96,6 +96,7 @@ SELECT DISTINCT
     COALESCE(schet.f_id, 0) AS source_id,
     NULL AS operation_id,
     COALESCE(nds.f_name, '') AS vat_rate,
+    '' AS reimbursement_type,
     CASE WHEN schet.f_status = 9 THEN 1 ELSE 0 END AS deleted
 FROM veda_schets schet
 JOIN veda_specs spec ON spec.f_id = %(spec_id)s
@@ -124,6 +125,11 @@ SELECT
     COALESCE(akt.f_id, 0) AS source_id,
     COALESCE(oper.f_id, 0) AS operation_id,
     COALESCE(nds.f_name, '') AS vat_rate,
+    CASE
+        WHEN COALESCE(oper.f_isvozm, 0) = 1 THEN 'reimbursable'
+        WHEN COALESCE(oper.f_isvozm, 0) = 2 THEN 'non_reimbursable'
+        ELSE 'unknown'
+    END AS reimbursement_type,
     CASE WHEN akt.f_status = 9 THEN 1 ELSE 0 END AS deleted
 FROM veda_spec_invoices oper
 JOIN veda_specs spec ON spec.f_id = %(spec_id)s
@@ -160,6 +166,7 @@ SELECT
     COALESCE(h.f_id, 0) AS source_id,
     COALESCE(oper.f_id, 0) AS operation_id,
     '' AS vat_rate,
+    '' AS reimbursement_type,
     0 AS deleted
 FROM veda_acchist_docs d
 JOIN veda_acchist h ON h.f_id = d.f_acchistid

@@ -156,6 +156,8 @@ The only direct online 1C source for the Python backend is the read-only REST co
 - `AMOUNT_MISMATCH` - сумма расходится;
 - `DATE_MISMATCH` - дата расходится;
 - `NUMBER_MISMATCH` - номер/код расходится;
+- `DUPLICATE_IN_1C` - по ключу `код 1C + дата 1C + договор` найдено несколько документов 1C;
+- `AMBIGUOUS_MATCH` - резервный ключ дал несколько кандидатов и документ нельзя сопоставить автоматически;
 - `VAT_MISMATCH` - ставка/сумма НДС расходится;
 - `CONTRACT_CONTEXT_MISSING` - нет договора/заявки в 1C DTO;
 - `CONTRACT_MISMATCH` - договор/заявка не совпали;

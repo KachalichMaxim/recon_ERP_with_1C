@@ -639,6 +639,47 @@ textarea::placeholder {
   box-shadow: 0 0 0 3px rgba(23, 25, 28, 0.08);
 }
 
+.selected-delivery-panel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.selected-title {
+  color: var(--ink);
+  font-weight: 850;
+}
+
+.selected-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.selected-meta b {
+  color: var(--ink);
+}
+
+.selected-meta .debt {
+  color: var(--red-strong);
+}
+
+.selected-meta .overpayment {
+  color: var(--yellow);
+}
+
+.selected-meta .closed {
+  color: var(--green);
+}
+
 .table-wrap {
   overflow: auto;
   max-height: calc(100vh - 355px);

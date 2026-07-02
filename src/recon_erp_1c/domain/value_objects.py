@@ -33,10 +33,14 @@ class ReconciliationStatus(StrEnum):
     MATCH = "match"
     NOT_FOUND_IN_1C = "not_found_in_1c"
     NOT_FOUND_IN_ERP = "not_found_in_erp"
+    DUPLICATE_IN_1C = "duplicate_in_1c"
+    AMBIGUOUS_MATCH = "ambiguous_match"
     AMOUNT_MISMATCH = "amount_mismatch"
+    NUMBER_MISMATCH = "number_mismatch"
     DATE_MISMATCH = "date_mismatch"
     CONTRACT_MISMATCH = "contract_mismatch"
     VAT_MISMATCH = "vat_mismatch"
+    AGGREGATION_CONFLICT = "aggregation_conflict"
     NOT_COMPARABLE = "not_comparable"
 
 

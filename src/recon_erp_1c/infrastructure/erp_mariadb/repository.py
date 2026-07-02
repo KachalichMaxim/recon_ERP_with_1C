@@ -191,6 +191,7 @@ def _row_to_document(row: dict[str, Any]) -> AccountingDocument:
         source_id=str(row.get("source_id") or ""),
         operation_id=_int_or_none(row.get("operation_id")),
         vat_rate=_str(row.get("vat_rate")),
+        reimbursement_type=_str(row.get("reimbursement_type")),
     )
 
 

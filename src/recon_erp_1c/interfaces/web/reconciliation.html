@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light">
   <title>Сверка ERP и 1С</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23C4122F'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='26' font-family='Arial' font-weight='700' fill='white'%3EV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="reconciliation.css?v=20260702_matrix_toggle">
-  <script src="reconciliation.js?v=20260702_matrix_toggle" defer></script>
+  <link rel="stylesheet" href="reconciliation.css?v=20260702_match_date">
+  <script src="reconciliation.js?v=20260702_match_date" defer></script>
 </head>
 <body>
   <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
@@ -151,6 +151,14 @@
           <div class="kpi"><span>Возмещаемые</span><b data-key="reimbursable_sum">0 ₽</b></div>
           <div class="kpi"><span>Невозмещаемые</span><b data-key="non_reimbursable_sum">0 ₽</b></div>
           <div class="kpi"><span>Долг/переплата</span><b data-key="balance">0 ₽</b></div>
+        </div>
+
+        <div class="selected-delivery-panel hidden" id="matrixSelectionPanel">
+          <div id="matrixSelectionText"></div>
+          <div class="button-row">
+            <button class="btn btn-primary" id="matrixSelectionReconBtn" type="button">Сверить с 1С</button>
+            <button class="btn btn-outline" id="matrixSelectionExportBtn" type="button">Скачать XLSX</button>
+          </div>
         </div>
 
         <div class="table-wrap matrix-wrap">

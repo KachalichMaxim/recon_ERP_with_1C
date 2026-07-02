@@ -375,8 +375,18 @@ def _matrix_row(repository: MariaDbErpReadRepository, delivery_row: dict[str, ob
     invoices = [doc for doc in documents if doc.kind == DocumentKind.CUSTOMER_INVOICE]
     payments = [doc for doc in documents if doc.kind == DocumentKind.PAYMENT]
     sales = [doc for doc in documents if doc.kind == DocumentKind.SALE]
-    non_reimbursable = [doc for doc in sales if buyer_code and doc.contract_code1c == buyer_code]
-    reimbursable = [doc for doc in sales if doc not in non_reimbursable]
+    non_reimbursable = [
+        doc
+        for doc in sales
+        if doc.reimbursement_type == "non_reimbursable"
+        or (doc.reimbursement_type in {"", "unknown"} and buyer_code and doc.contract_code1c == buyer_code)
+    ]
+    reimbursable = [
+        doc
+        for doc in sales
+        if doc.reimbursement_type == "reimbursable"
+        or (doc.reimbursement_type in {"", "unknown"} and doc not in non_reimbursable)
+    ]
     invoice_sum = _sum_docs(invoices)
     payment_sum = _sum_docs(payments)
     reimbursable_sum = _sum_docs(reimbursable)

@@ -60,6 +60,7 @@ class AccountingDocument:
     source_id: str = ""
     operation_id: int | None = None
     vat_rate: str = ""
+    reimbursement_type: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +70,9 @@ class ReconciliationIssue:
     erp_document: AccountingDocument | None = None
     onec_document: AccountingDocument | None = None
     fields: tuple[str, ...] = ()
+    primary_reason: str = ""
+    severity: str = "info"
+    match_confidence: str = ""
 
 
 @dataclass(slots=True)
