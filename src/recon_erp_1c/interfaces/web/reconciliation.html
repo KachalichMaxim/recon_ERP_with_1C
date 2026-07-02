@@ -20,7 +20,7 @@
         </div>
       </div>
       <h1 id="loginTitle">Сверка ERP ↔ 1С</h1>
-      <p>Войдите с логином и паролем ERP.</p>
+      <p id="loginHint">Откройте модуль из ERP. Вход выполняется по токену пользователя.</p>
 
       <div class="service-chip">
         <span class="service-dot"></span>
@@ -88,7 +88,10 @@
     <main class="main">
       <header class="topbar">
         <div>
-          <h1>Сверка ERP и 1С</h1>
+          <div class="top-title-row">
+            <button class="btn btn-ghost icon-btn" id="sidebarToggleBtn" type="button" title="Скрыть меню">☰</button>
+            <h1>Сверка ERP и 1С</h1>
+          </div>
           <div class="top-meta">
             <span id="erpStatusChip">ERP: ожидает запрос</span>
             <span id="onecStatusChip">1С: ожидает настройку</span>
@@ -97,7 +100,6 @@
         </div>
         <div class="top-actions">
           <button class="btn btn-outline" id="refreshBtn" type="button">↻ Обновить</button>
-          <button class="btn btn-primary" id="topExportBtn" type="button" disabled>Экспорт XLSX</button>
         </div>
       </header>
 
@@ -170,6 +172,7 @@
           <div id="matrixSelectionText"></div>
           <div class="button-row">
             <button class="btn btn-primary" id="matrixSelectionReconBtn" type="button">Сверить с 1С</button>
+            <button class="btn btn-outline" id="matrixSelectionDetailsBtn" type="button">Показать документы</button>
             <button class="btn btn-outline" id="matrixSelectionExportBtn" type="button">Скачать XLSX</button>
           </div>
         </div>
@@ -195,13 +198,18 @@
             </tbody>
           </table>
         </div>
+        <div class="pager" id="matrixPager">
+          <button class="btn btn-outline" id="matrixPrevBtn" type="button">Назад</button>
+          <span id="matrixPagerText">Поставки не загружены</span>
+          <button class="btn btn-outline" id="matrixNextBtn" type="button">Дальше</button>
+        </div>
       </section>
 
       <section class="screen hidden" id="reconScreen" aria-labelledby="reconTitle">
         <div class="section-heading">
           <div>
             <h2 id="reconTitle">Документная сверка ERP ↔ 1С</h2>
-            <p>Сравнение выполняется по кодам 1С, датам, суммам, валюте, договорам и НДС. Комментарии к кейсам сохраняются локально до подключения общего журнала разбора.</p>
+            <p>Сравнение выполняется по кодам 1С, датам, суммам, валюте, договорам и НДС. Комментарии сохраняются в журнал разбора; при временной недоступности backend черновик остается локально.</p>
           </div>
           <div class="button-row">
             <button class="btn btn-primary" id="runBtn" type="button" disabled>Сверить с 1С</button>
@@ -243,9 +251,15 @@
             <option value="not_found_in_erp">Нет в ERP</option>
             <option value="mismatches">Расхождения</option>
             <option value="amount_mismatch">Сумма/валюта</option>
+            <option value="number_mismatch">Номер</option>
             <option value="date_mismatch">Дата</option>
             <option value="contract_mismatch">Договор</option>
             <option value="vat_mismatch">НДС</option>
+            <option value="duplicate_in_1c">Дубли 1С</option>
+            <option value="ambiguous_match">Неоднозначно</option>
+            <option value="aggregation_conflict">Конфликт агрегации</option>
+            <option value="not_comparable">Не сверяется</option>
+            <option value="contract_context_missing">Нет аналитики поставки</option>
           </select>
         </div>
 

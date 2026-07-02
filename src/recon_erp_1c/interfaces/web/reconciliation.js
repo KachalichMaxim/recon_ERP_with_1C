@@ -26,7 +26,10 @@
     matrix: [],
     matrixPayload: null,
     matrixMode: '',
+    matrixOffset: 0,
+    matrixDetailsOpen: localStorage.getItem('recon_matrix_details_open') === '1',
     matrixExpanded: JSON.parse(localStorage.getItem('recon_matrix_expanded_v1') || '{}'),
+    sidebarCollapsed: localStorage.getItem('recon_sidebar_collapsed') === '1',
     selectedSpecId: Number(localStorage.getItem('recon_selected_spec') || 0) || null,
     run: null,
     feedback: JSON.parse(localStorage.getItem('recon_feedback_v1') || '{}'),
@@ -40,6 +43,7 @@
     loginInput: $('loginInput'),
     passwordInput: $('passwordInput'),
     loginBtn: $('loginBtn'),
+    loginHint: $('loginHint'),
     loginForm: $('loginForm'),
     loginFootnote: $('loginFootnote'),
     loginMessage: $('loginMessage'),
@@ -57,8 +61,8 @@
     erpStatusChip: $('erpStatusChip'),
     onecStatusChip: $('onecStatusChip'),
     modeStatusChip: $('modeStatusChip'),
+    sidebarToggleBtn: $('sidebarToggleBtn'),
     refreshBtn: $('refreshBtn'),
-    topExportBtn: $('topExportBtn'),
     clientIdInput: $('clientIdInput'),
     clientSuggestions: $('clientSuggestions'),
     dogIdInput: $('dogIdInput'),
@@ -77,7 +81,11 @@
     matrixSelectionPanel: $('matrixSelectionPanel'),
     matrixSelectionText: $('matrixSelectionText'),
     matrixSelectionReconBtn: $('matrixSelectionReconBtn'),
+    matrixSelectionDetailsBtn: $('matrixSelectionDetailsBtn'),
     matrixSelectionExportBtn: $('matrixSelectionExportBtn'),
+    matrixPagerText: $('matrixPagerText'),
+    matrixPrevBtn: $('matrixPrevBtn'),
+    matrixNextBtn: $('matrixNextBtn'),
     matrixToReconBtn: $('matrixToReconBtn'),
     selectedContext: $('selectedContext'),
     loadingOverlay: $('loadingOverlay'),
@@ -202,6 +210,11 @@
     const directLogin = Boolean(auth.direct_login_enabled);
     if (els.loginFootnote) els.loginFootnote.classList.toggle('hidden', !demo);
     if (els.loginForm) els.loginForm.classList.toggle('hidden', !directLogin);
+    if (els.loginHint) {
+      els.loginHint.textContent = directLogin
+        ? 'Войдите с логином и паролем ERP.'
+        : 'Откройте модуль из ERP. Вход выполняется по токену пользователя.';
+    }
     if (!state.token && !directLogin) {
       setMessage(els.loginMessage, 'Откройте модуль из ERP. Доступ выполняется по launch token пользователя.');
     }
@@ -314,6 +327,7 @@
       ['date_from', els.dateFromInput.value],
       ['date_to', els.dateToInput.value],
       ['limit', els.limitInput.value || '20'],
+      ['offset', String(state.matrixOffset || 0)],
     ].forEach(([key, value]) => {
       if (String(value || '').trim()) params.set(key, value);
     });
@@ -334,10 +348,11 @@
     return /^\d+$/.test(text) ? text : '';
   }
 
-  async function loadMatrix() {
+  async function loadMatrix(offset) {
     if (!validateDateRange(els.matrixMessage)) return;
     if (!validateClientFilter(els.matrixMessage)) return;
     if (!validateDogFilter(els.matrixMessage)) return;
+    state.matrixOffset = Math.max(0, Number(offset == null ? state.matrixOffset : offset) || 0);
     els.loadMatrixBtn.disabled = true;
     els.matrixRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Загружаем ERP-матрицу...</td></tr>';
     setMessage(els.matrixMessage, 'Получаем поставки и агрегаты из ERP...');
@@ -348,8 +363,11 @@
       state.matrix = payload.items || [];
       state.matrixPayload = payload;
       state.matrixMode = payload.mode || 'erp_live';
+      state.matrixOffset = Number(payload.offset || state.matrixOffset || 0);
       if (!state.matrix.some((row) => Number(row.spec_id) === Number(state.selectedSpecId))) {
         state.selectedSpecId = state.matrix.length ? Number(state.matrix[0].spec_id) : null;
+        state.matrixDetailsOpen = false;
+        localStorage.setItem('recon_matrix_details_open', '0');
       }
       renderMatrix(buildMatrixSummary(matrixVisibleItems()));
       renderSelectedContext();
@@ -357,6 +375,7 @@
       const modeText = state.matrixMode === 'ui_demo' ? 'Локальный UI-пример, не боевые данные.' : 'Данные ERP загружены.';
       const totalText = payload.total_count ? ` из ${payload.total_count}` : '';
       setMessage(els.matrixMessage, `${modeText} Поставок: ${state.matrix.length}${totalText}.`);
+      updateMatrixPager();
       els.erpStatusChip.textContent = state.matrixMode === 'ui_demo' ? 'ERP: демо-данные' : 'ERP: данные загружены';
     } catch (err) {
       state.matrix = [];
@@ -542,6 +561,7 @@
     renderMatrixSelectionPanel();
     if (!items.length) {
       els.matrixRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Поставки не загружены или не подходят под выбранный фильтр.</td></tr>';
+      updateMatrixPager();
       return;
     }
     const byClient = groupBy(items, (row) => `${row.client_id || 0}|${row.client_name || ''}`);
@@ -596,7 +616,7 @@
             specText: row.spec_number || '—',
             specId: row.spec_id,
           }));
-          if (Number(row.spec_id) === Number(state.selectedSpecId)) {
+          if (Number(row.spec_id) === Number(state.selectedSpecId) && state.matrixDetailsOpen) {
             html.push(matrixSpecDetailsHtml(row));
           }
         }
@@ -615,6 +635,8 @@
       tr.addEventListener('click', () => {
         state.selectedSpecId = Number(tr.getAttribute('data-spec-id'));
         localStorage.setItem('recon_selected_spec', String(state.selectedSpecId));
+        state.matrixDetailsOpen = false;
+        localStorage.setItem('recon_matrix_details_open', '0');
         state.run = null;
         renderMatrix(buildMatrixSummary(matrixVisibleItems()));
         renderSelectedContext();
@@ -622,6 +644,29 @@
         updateActionState();
       });
     });
+    updateMatrixPager();
+  }
+
+  function updateMatrixPager() {
+    const payload = state.matrixPayload || {};
+    const limit = Number(payload.limit || els.limitInput.value || 20);
+    const offset = Number(payload.offset || state.matrixOffset || 0);
+    const count = Number(payload.count || state.matrix.length || 0);
+    const total = Number(payload.total_count || count || 0);
+    const from = count ? offset + 1 : 0;
+    const to = offset + count;
+    if (els.matrixPagerText) {
+      els.matrixPagerText.textContent = total ? `Показано ${from}-${to} из ${total}` : 'Поставки не загружены';
+    }
+    if (els.matrixPrevBtn) els.matrixPrevBtn.disabled = offset <= 0;
+    if (els.matrixNextBtn) els.matrixNextBtn.disabled = !payload.has_more || count <= 0 || limit <= 0;
+  }
+
+  function matrixPage(delta) {
+    const payload = state.matrixPayload || {};
+    const limit = Number(payload.limit || els.limitInput.value || 20);
+    const currentOffset = Number(payload.offset || state.matrixOffset || 0);
+    loadMatrix(Math.max(0, currentOffset + delta * limit));
   }
 
   function matrixVisibleItems() {
@@ -761,6 +806,7 @@
     if (!row) {
       els.matrixSelectionPanel.classList.add('hidden');
       els.matrixSelectionText.innerHTML = '';
+      if (els.matrixSelectionDetailsBtn) els.matrixSelectionDetailsBtn.disabled = true;
       return;
     }
     const balance = Number(row.balance || 0);
@@ -776,6 +822,10 @@
         <span>Договор комитента 1С: <b>${escapeHtml(row.committent_contract_code || '—')}</b></span>
         <span>Сальдо: <b class="${balanceClass}">${escapeHtml(fmtMoneyValue(row.balance))} · ${escapeHtml(balanceLabel)}</b></span>
       </div>`;
+    if (els.matrixSelectionDetailsBtn) {
+      els.matrixSelectionDetailsBtn.disabled = false;
+      els.matrixSelectionDetailsBtn.textContent = state.matrixDetailsOpen ? 'Скрыть документы' : 'Показать документы';
+    }
   }
 
   function renderSelectedContext() {
@@ -824,7 +874,7 @@
     if (!validateDateRange(els.runMessage)) return;
     els.runBtn.disabled = true;
     els.exportBtn.disabled = true;
-    els.topExportBtn.disabled = true;
+    els.runBtn.textContent = 'Сверяем...';
     setMessage(els.runMessage, 'Запускаем сверку...');
     renderProgress('erp_context');
     const timer = stagedProgress();
@@ -940,6 +990,8 @@
       'duplicate_in_1c',
       'ambiguous_match',
       'aggregation_conflict',
+      'not_comparable',
+      'contract_context_missing',
     ].reduce((sum, key) => sum + Number(by[key] || 0), 0);
     els.summaryCards.querySelector('[data-role="mismatches"]').textContent = mismatches;
     els.reconBadge.textContent = String(total);
@@ -961,6 +1013,8 @@
       'duplicate_in_1c',
       'ambiguous_match',
       'aggregation_conflict',
+      'not_comparable',
+      'contract_context_missing',
     ].includes(row.status));
     else if (filter !== 'all') rows = rows.filter((row) => row.status === filter);
     if (search) rows = rows.filter((row) => JSON.stringify(row).toLowerCase().includes(search));
@@ -1050,7 +1104,14 @@
   function feedbackKey(row) {
     const erp = row.erp_document || {};
     const onec = row.onec_document || {};
-    return [row.status, erp.kind || onec.kind, erp.code1c || erp.number || '', onec.code1c || onec.number || ''].join('|');
+    return [
+      row.status,
+      erp.kind || onec.kind || '',
+      erp.code1c || erp.number || '',
+      onec.code1c || onec.number || '',
+      erp.date || onec.date || '',
+      erp.contract_code1c || onec.contract_code1c || '',
+    ].join('|');
   }
 
   function issueType(row) {
@@ -1078,6 +1139,7 @@
       currency: 'валюта',
       amount: 'сумма',
       contract_code1c: 'договор 1С',
+      contract_context: 'аналитика поставки',
       vat_rate: 'ставка НДС',
     };
     const fields = (row.fields || []).map((field) => labels[field] || field);
@@ -1099,6 +1161,7 @@
       ambiguous_match: ['bad', 'Неоднозначно'],
       aggregation_conflict: ['warn', 'Конфликт агрегации'],
       not_comparable: ['warn', 'Не сверяется'],
+      contract_context_missing: ['bad', 'Нет аналитики поставки'],
     };
     const value = map[status] || ['warn', status || 'unknown'];
     return `<span class="badge ${value[0]}">${escapeHtml(value[1])}</span>`;
@@ -1185,11 +1248,29 @@
   function updateActionState() {
     const hasSpec = Boolean(state.selectedSpecId);
     const hasRun = Boolean(state.run);
-    const hasMatrix = matrixVisibleItems().length > 0;
     els.matrixToReconBtn.disabled = !hasSpec;
     els.runBtn.disabled = !hasSpec;
+    els.runBtn.textContent = hasRun ? 'Обновить сверку' : 'Сверить с 1С';
     els.exportBtn.disabled = !hasRun;
-    els.topExportBtn.disabled = state.view === 'matrix' ? !hasMatrix : !hasRun;
+  }
+
+  function toggleSidebar() {
+    state.sidebarCollapsed = !state.sidebarCollapsed;
+    localStorage.setItem('recon_sidebar_collapsed', state.sidebarCollapsed ? '1' : '0');
+    applySidebarState();
+  }
+
+  function applySidebarState() {
+    els.workArea.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
+    els.sidebarToggleBtn.textContent = state.sidebarCollapsed ? '☰' : '☰';
+    els.sidebarToggleBtn.title = state.sidebarCollapsed ? 'Показать меню' : 'Скрыть меню';
+  }
+
+  function toggleMatrixDetails() {
+    if (!state.selectedSpecId) return;
+    state.matrixDetailsOpen = !state.matrixDetailsOpen;
+    localStorage.setItem('recon_matrix_details_open', state.matrixDetailsOpen ? '1' : '0');
+    renderMatrix(buildMatrixSummary(matrixVisibleItems()));
   }
 
   function validateClientFilter(messageNode) {
@@ -1249,13 +1330,17 @@
     setCurrentYear();
     state.matrix = [];
     state.matrixPayload = null;
+    state.matrixOffset = 0;
+    state.matrixDetailsOpen = false;
     state.selectedSpecId = null;
     state.run = null;
     localStorage.removeItem('recon_selected_spec');
+    localStorage.setItem('recon_matrix_details_open', '0');
     renderMatrix();
     renderSelectedContext();
     renderResults();
     updateActionState();
+    updateMatrixPager();
     setMessage(els.matrixMessage, 'Фильтры сброшены.');
     setMessage(els.runMessage, '');
   }
@@ -1269,8 +1354,9 @@
     els.tabMatrixBtn.addEventListener('click', () => setView('matrix'));
     els.tabReconBtn.addEventListener('click', () => setView('recon'));
     els.matrixToReconBtn.addEventListener('click', () => setView('recon'));
-    els.refreshBtn.addEventListener('click', () => state.view === 'matrix' ? loadMatrix() : runReconciliation());
-    els.loadMatrixBtn.addEventListener('click', loadMatrix);
+    els.sidebarToggleBtn.addEventListener('click', toggleSidebar);
+    els.refreshBtn.addEventListener('click', () => state.view === 'matrix' ? loadMatrix(state.matrixOffset) : runReconciliation());
+    els.loadMatrixBtn.addEventListener('click', () => loadMatrix(0));
     els.clientIdInput.addEventListener('input', scheduleClientSearch);
     els.dogIdInput.addEventListener('input', scheduleDogSearch);
     els.clientIdInput.addEventListener('keydown', (event) => {
@@ -1295,10 +1381,12 @@
     els.preset90Btn.addEventListener('click', setLast90Days);
     els.resetFiltersBtn.addEventListener('click', resetFilters);
     els.matrixSelectionReconBtn.addEventListener('click', () => setView('recon'));
+    els.matrixSelectionDetailsBtn.addEventListener('click', toggleMatrixDetails);
     els.matrixSelectionExportBtn.addEventListener('click', exportMatrixXlsx);
+    els.matrixPrevBtn.addEventListener('click', () => matrixPage(-1));
+    els.matrixNextBtn.addEventListener('click', () => matrixPage(1));
     els.runBtn.addEventListener('click', runReconciliation);
     els.exportBtn.addEventListener('click', exportXlsx);
-    els.topExportBtn.addEventListener('click', () => state.view === 'matrix' ? exportMatrixXlsx() : exportXlsx());
     els.statusFilter.addEventListener('change', renderResults);
     els.resultSearchInput.addEventListener('input', renderResults);
     els.summaryCards.querySelectorAll('[data-result-filter]').forEach((node) => {
@@ -1312,6 +1400,7 @@
   async function boot() {
     initDefaults();
     bind();
+    applySidebarState();
     await loadRuntimeConfig();
     await consumeLaunchToken();
     applyAuthState();

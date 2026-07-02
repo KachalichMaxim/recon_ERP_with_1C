@@ -186,7 +186,7 @@ def test_match_documents_detects_duplicate_1c_candidates_by_code_date_contract()
     assert issues[0].match_confidence == "exact"
 
 
-def test_match_documents_does_not_match_same_code_date_with_different_contract() -> None:
+def test_match_documents_reports_contract_mismatch_for_same_code_date_with_different_contract() -> None:
     erp_doc = AccountingDocument(
         source=SourceSystem.ERP,
         kind=DocumentKind.PAYMENT,
@@ -208,11 +208,36 @@ def test_match_documents_does_not_match_same_code_date_with_different_contract()
 
     issues = match_documents([erp_doc], [onec_doc])
 
-    assert len(issues) == 2
-    assert {issue.status for issue in issues} == {
-        ReconciliationStatus.NOT_FOUND_IN_1C,
-        ReconciliationStatus.NOT_FOUND_IN_ERP,
-    }
+    assert len(issues) == 1
+    assert issues[0].status == ReconciliationStatus.CONTRACT_MISMATCH
+    assert issues[0].fields == ("contract_code1c",)
+
+
+def test_match_documents_reports_missing_contract_context() -> None:
+    erp_doc = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.SALE,
+        code1c="00БП-000198",
+        number="00БП-000198",
+        date=date(2025, 8, 9),
+        amount=Money.of("67055.99"),
+        contract_code1c="БП-051945",
+    )
+    onec_doc = AccountingDocument(
+        source=SourceSystem.ONE_C,
+        kind=DocumentKind.SALE,
+        code1c="00БП-000198",
+        number="00БП-000198",
+        date=date(2025, 8, 9),
+        amount=Money.of("67055.99"),
+        contract_code1c="",
+    )
+
+    issues = match_documents([erp_doc], [onec_doc])
+
+    assert len(issues) == 1
+    assert issues[0].status == ReconciliationStatus.CONTRACT_CONTEXT_MISSING
+    assert issues[0].fields == ("contract_context",)
 
 
 def test_aggregation_preserves_distinct_1c_documents_with_same_code_date_contract() -> None:

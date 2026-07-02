@@ -10,6 +10,7 @@ STATUS_PRIORITY = (
     ("amount", ReconciliationStatus.AMOUNT_MISMATCH, "critical"),
     ("currency", ReconciliationStatus.AMOUNT_MISMATCH, "critical"),
     ("contract_code1c", ReconciliationStatus.CONTRACT_MISMATCH, "critical"),
+    ("contract_context", ReconciliationStatus.CONTRACT_CONTEXT_MISSING, "critical"),
     ("date", ReconciliationStatus.DATE_MISMATCH, "warning"),
     ("code1c", ReconciliationStatus.NUMBER_MISMATCH, "warning"),
     ("number", ReconciliationStatus.NUMBER_MISMATCH, "warning"),
@@ -34,8 +35,11 @@ def compare_documents(erp_doc: AccountingDocument, onec_doc: AccountingDocument)
         mismatch_fields.append("currency")
     elif erp_doc.amount.amount != onec_doc.amount.amount:
         mismatch_fields.append("amount")
-    if erp_doc.contract_code1c and onec_doc.contract_code1c and erp_doc.contract_code1c != onec_doc.contract_code1c:
-        mismatch_fields.append("contract_code1c")
+    if erp_doc.contract_code1c and onec_doc.contract_code1c:
+        if erp_doc.contract_code1c != onec_doc.contract_code1c:
+            mismatch_fields.append("contract_code1c")
+    elif erp_doc.contract_code1c or onec_doc.contract_code1c:
+        mismatch_fields.append("contract_context")
     if erp_doc.vat_rate and onec_doc.vat_rate and erp_doc.vat_rate != onec_doc.vat_rate:
         mismatch_fields.append("vat_rate")
 

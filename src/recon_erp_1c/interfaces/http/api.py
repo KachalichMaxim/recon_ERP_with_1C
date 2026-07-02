@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -10,6 +11,7 @@ from pathlib import Path
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
+from uuid import uuid4
 
 from recon_erp_1c.application.serializers import run_to_dict
 from recon_erp_1c.application.use_cases.list_deliveries import ListDeliveriesCommand, ListDeliveriesUseCase
@@ -24,6 +26,10 @@ from recon_erp_1c.infrastructure.onec_rest.client import OneCRestClient, OneCRes
 from recon_erp_1c.infrastructure.onec_rest.repository import OneCRestReadRepository
 from recon_erp_1c.infrastructure.persistence.mariadb_log_repository import MariaDbReconciliationLogRepository
 from recon_erp_1c.interfaces.http.auth import AuthenticationError, create_session_token, request_context
+
+
+_BATCH_JOBS: dict[str, dict[str, object]] = {}
+_BATCH_LOCK = threading.Lock()
 
 
 def _app_config() -> AppConfig:
@@ -64,6 +70,9 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/reconciliation/history":
                 self._history(query)
+                return
+            if parsed.path.startswith("/api/reconciliation/batch/"):
+                self._batch_status(parsed.path)
                 return
             if parsed.path == "/api/reconciliation/run":
                 self._run_reconciliation(query)
@@ -448,39 +457,36 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
         date_to = str(payload.get("date_to") or "").strip()
         if not date_from or not date_to:
             raise ValueError("date_from and date_to are required")
-        if _app_config().ui_demo:
-            runs = [
-                {
-                    "run_id": f"ui-demo-batch-{spec_id}",
-                    "delivery": {"erp_spec_id": spec_id},
-                    "summary": {"issues_total": 0, "by_status": {"match": 0}},
-                    "issues": [],
-                    "metrics": {"total_ms": 0},
-                }
-                for spec_id in spec_ids
-            ]
-            self._json(HTTPStatus.OK, {"ok": True, "count": len(runs), "runs": runs, "mode": "ui_demo"})
-            return
-        started = time.perf_counter()
-        runs = []
-        for spec_id in spec_ids:
-            query = {
-                "spec_id": [str(spec_id)],
-                "date_from": [date_from],
-                "date_to": [date_to],
-                "persist_log": [str(payload.get("persist_log", "1"))],
-            }
-            run = run_to_dict(_execute_reconciliation(query))
-            runs.append(run)
-        self._json(
-            HTTPStatus.OK,
-            {
-                "ok": True,
-                "count": len(runs),
-                "runs": runs,
-                "metrics": {"total_ms": round((time.perf_counter() - started) * 1000, 2)},
-            },
+        job_id = str(uuid4())
+        job = {
+            "job_id": job_id,
+            "status": "queued",
+            "total": len(spec_ids),
+            "done": 0,
+            "runs": [],
+            "errors": [],
+            "created_at": time.time(),
+            "updated_at": time.time(),
+        }
+        with _BATCH_LOCK:
+            _BATCH_JOBS[job_id] = job
+        thread = threading.Thread(
+            target=_execute_batch_job,
+            args=(job_id, spec_ids, date_from, date_to, str(payload.get("persist_log", "1"))),
+            daemon=True,
         )
+        thread.start()
+        self._json(HTTPStatus.ACCEPTED, {"ok": True, "job_id": job_id, "status": "queued", "total": len(spec_ids)})
+
+    def _batch_status(self, path: str) -> None:
+        self._require_context()
+        job_id = path.rstrip("/").rsplit("/", 1)[-1]
+        with _BATCH_LOCK:
+            job = dict(_BATCH_JOBS.get(job_id) or {})
+        if not job:
+            self._json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found", "message": "Batch job not found"})
+            return
+        self._json(HTTPStatus.OK, {"ok": True, "job": job})
 
     def _require_context(self):
         config = _app_config()
@@ -987,6 +993,63 @@ def _validate_erp_launch_token(launch_token: str) -> dict[str, object]:
         "name": name,
         "structure_code": profile.get("structure_code") or dict_payload.get("structure_code") or "",
     }
+
+
+def _execute_batch_job(job_id: str, spec_ids: list[int], date_from: str, date_to: str, persist_log: str) -> None:
+    _update_batch_job(job_id, status="running")
+    started = time.perf_counter()
+    if _app_config().ui_demo:
+        for spec_id in spec_ids:
+            run = {
+                "run_id": f"ui-demo-batch-{spec_id}",
+                "delivery": {"erp_spec_id": spec_id},
+                "summary": {"issues_total": 0, "by_status": {"match": 0}},
+                "issues": [],
+                "metrics": {"total_ms": 0},
+            }
+            _append_batch_result(job_id, run=run)
+        _update_batch_job(job_id, status="completed", metrics={"total_ms": round((time.perf_counter() - started) * 1000, 2)})
+        return
+
+    for spec_id in spec_ids:
+        try:
+            query = {
+                "spec_id": [str(spec_id)],
+                "date_from": [date_from],
+                "date_to": [date_to],
+                "persist_log": [persist_log],
+            }
+            run = run_to_dict(_execute_reconciliation(query))
+            _append_batch_result(job_id, run=run)
+        except Exception as exc:  # noqa: BLE001 - background job must keep processing remaining specs
+            _append_batch_result(job_id, error={"spec_id": spec_id, "message": str(exc), "type": exc.__class__.__name__})
+    _update_batch_job(job_id, status="completed", metrics={"total_ms": round((time.perf_counter() - started) * 1000, 2)})
+
+
+def _append_batch_result(job_id: str, *, run: dict[str, object] | None = None, error: dict[str, object] | None = None) -> None:
+    with _BATCH_LOCK:
+        job = _BATCH_JOBS.get(job_id)
+        if not job:
+            return
+        if run is not None:
+            runs = job.setdefault("runs", [])
+            if isinstance(runs, list):
+                runs.append(run)
+        if error is not None:
+            errors = job.setdefault("errors", [])
+            if isinstance(errors, list):
+                errors.append(error)
+        job["done"] = int(job.get("done") or 0) + 1
+        job["updated_at"] = time.time()
+
+
+def _update_batch_job(job_id: str, **fields: object) -> None:
+    with _BATCH_LOCK:
+        job = _BATCH_JOBS.get(job_id)
+        if not job:
+            return
+        job.update(fields)
+        job["updated_at"] = time.time()
 
 
 def _dev_auth_profile(login: str, password: str) -> dict[str, object] | None:

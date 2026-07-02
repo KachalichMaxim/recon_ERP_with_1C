@@ -49,14 +49,16 @@ class MariaDbReconciliationLogRepository:
                                 run_id, oper_id, erp_doc_id,
                                 erp_code1c, erp_number, erp_date_iso, erp_sum, erp_type,
                                 onec_code1c, onec_number, onec_date_iso, onec_sum, onec_type,
-                                status, mismatch_fields_json, note
+                                status, primary_reason, severity, match_confidence,
+                                mismatch_fields_json, details_json, note
                             )
                         VALUES
                             (
                                 %(run_id)s, %(oper_id)s, %(erp_doc_id)s,
                                 %(erp_code1c)s, %(erp_number)s, %(erp_date_iso)s, %(erp_sum)s, %(erp_type)s,
                                 %(onec_code1c)s, %(onec_number)s, %(onec_date_iso)s, %(onec_sum)s, %(onec_type)s,
-                                %(status)s, %(mismatch_fields_json)s, %(note)s
+                                %(status)s, %(primary_reason)s, %(severity)s, %(match_confidence)s,
+                                %(mismatch_fields_json)s, %(details_json)s, %(note)s
                             )
                         """,
                         {
@@ -74,7 +76,20 @@ class MariaDbReconciliationLogRepository:
                             "onec_sum": _amount(onec_doc),
                             "onec_type": onec_doc.kind.value if onec_doc else None,
                             "status": issue.status.value,
+                            "primary_reason": issue.primary_reason,
+                            "severity": issue.severity,
+                            "match_confidence": issue.match_confidence,
                             "mismatch_fields_json": json.dumps(list(issue.fields), ensure_ascii=False),
+                            "details_json": json.dumps(
+                                {
+                                    "message": issue.message,
+                                    "fields": list(issue.fields),
+                                    "primary_reason": issue.primary_reason,
+                                    "severity": issue.severity,
+                                    "match_confidence": issue.match_confidence,
+                                },
+                                ensure_ascii=False,
+                            ),
                             "note": issue.message[:512],
                         },
                     )

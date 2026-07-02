@@ -43,7 +43,11 @@ CREATE TABLE IF NOT EXISTS veda_reconciliation_items (
     onec_type VARCHAR(64) NULL,
 
     status VARCHAR(32) NOT NULL,
+    primary_reason VARCHAR(64) NULL,
+    severity VARCHAR(32) NULL,
+    match_confidence VARCHAR(32) NULL,
     mismatch_fields_json LONGTEXT NULL,
+    details_json LONGTEXT NULL,
     note VARCHAR(512) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -58,7 +62,7 @@ CREATE TABLE IF NOT EXISTS veda_reconciliation_items (
 CREATE TABLE IF NOT EXISTS veda_reconciliation_comments (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     comment_key VARCHAR(512) NOT NULL,
-    run_external_id VARCHAR(128) NULL,
+    run_external_id VARCHAR(128) NOT NULL DEFAULT '',
     spec_id BIGINT NOT NULL DEFAULT 0,
     status VARCHAR(64) NULL,
     reason_code VARCHAR(64) NULL,
@@ -68,7 +72,7 @@ CREATE TABLE IF NOT EXISTS veda_reconciliation_comments (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_vrc_comment_key (comment_key),
+    UNIQUE KEY uk_vrc_scope_key (run_external_id, spec_id, comment_key),
     KEY idx_vrc_spec_id (spec_id),
     KEY idx_vrc_status (status),
     KEY idx_vrc_reason_code (reason_code),

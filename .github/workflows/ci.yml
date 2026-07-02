@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Python dependencies
+        run: python -m pip install -e .
+
+      - name: Compile Python
+        run: python -m py_compile $(find src tests -name "*.py")
+
+      - name: Check UI JavaScript
+        run: node --check src/recon_erp_1c/interfaces/web/reconciliation.js
+
+      - name: Run tests
+        env:
+          PYTHONPATH: src
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python - <<'PY'
+          import importlib
+          for name in ["tests.test_domain_matching", "tests.test_auth_and_export"]:
+              module = importlib.import_module(name)
+              for attr in sorted(dir(module)):
+                  if attr.startswith("test_"):
+                      getattr(module, attr)()
+                      print(f"OK {name}.{attr}")
+          PY
+
+      - name: Smoke 1C REST adapter
+        run: python tools/smoke_onec_rest_adapter.py
+
+      - name: Check canonical OpenAPI location
+        run: |
+          test -f contracts/onec/openapi.json
+          test -f contracts/onec/openapi.yaml
+          test -f contracts/onec/openapi_ru.md
+          test ! -f onec_reconciliation_openapi.json
+          test ! -f onec_reconciliation_openapi_ru.md
+          test ! -f reference/onec_reconciliation_openapi.json
+          test ! -f reference/onec_reconciliation_openapi.yaml
+          test ! -f reference/onec_reconciliation_openapi_ru.md

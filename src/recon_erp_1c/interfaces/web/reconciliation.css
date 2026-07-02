@@ -275,6 +275,14 @@ textarea::placeholder {
   grid-template-columns: 212px minmax(0, 1fr);
 }
 
+.app.sidebar-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app.sidebar-collapsed .sidebar {
+  display: none;
+}
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -417,6 +425,21 @@ textarea::placeholder {
   margin: 0 0 6px;
   font-size: 18px;
   line-height: 1.2;
+}
+
+.top-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.top-title-row h1 {
+  margin-bottom: 6px;
+}
+
+.icon-btn {
+  width: 34px;
+  padding: 0;
 }
 
 .top-meta {
@@ -657,6 +680,21 @@ textarea::placeholder {
   background: #fff;
   padding: 12px 14px;
   box-shadow: var(--shadow);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+  padding: 10px 14px;
+}
+
+.pager span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .selected-title {

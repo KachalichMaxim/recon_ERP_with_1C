@@ -18,6 +18,9 @@ def reconciliation_run_xlsx(run: dict[str, Any]) -> bytes:
     rows = [
         [
             "Статус",
+            "Основная причина",
+            "Критичность",
+            "Уверенность",
             "Сообщение",
             "Поля",
             "ERP тип",
@@ -40,6 +43,9 @@ def reconciliation_run_xlsx(run: dict[str, Any]) -> bytes:
         rows.append(
             [
                 issue.get("status") or "",
+                issue.get("primary_reason") or "",
+                issue.get("severity") or "",
+                issue.get("match_confidence") or "",
                 issue.get("message") or "",
                 ", ".join(issue.get("fields") or []),
                 erp.get("kind") or "",

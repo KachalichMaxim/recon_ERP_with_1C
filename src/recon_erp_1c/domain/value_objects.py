@@ -42,6 +42,7 @@ class ReconciliationStatus(StrEnum):
     VAT_MISMATCH = "vat_mismatch"
     AGGREGATION_CONFLICT = "aggregation_conflict"
     NOT_COMPARABLE = "not_comparable"
+    CONTRACT_CONTEXT_MISSING = "contract_context_missing"
 
 
 @dataclass(frozen=True, slots=True)
