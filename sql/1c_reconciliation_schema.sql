@@ -54,3 +54,23 @@ CREATE TABLE IF NOT EXISTS veda_reconciliation_items (
     KEY idx_vri_erp_code1c (erp_code1c),
     CONSTRAINT fk_vri_run_id FOREIGN KEY (run_id) REFERENCES veda_reconciliation_runs(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS veda_reconciliation_comments (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    comment_key VARCHAR(512) NOT NULL,
+    run_external_id VARCHAR(128) NULL,
+    spec_id BIGINT NOT NULL DEFAULT 0,
+    status VARCHAR(64) NULL,
+    reason_code VARCHAR(64) NULL,
+    comment_text TEXT NULL,
+    user_login VARCHAR(255) NULL,
+    user_name VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_vrc_comment_key (comment_key),
+    KEY idx_vrc_spec_id (spec_id),
+    KEY idx_vrc_status (status),
+    KEY idx_vrc_reason_code (reason_code),
+    KEY idx_vrc_user_login (user_login)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

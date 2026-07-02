@@ -56,6 +56,16 @@ ORDER BY s.f_dt DESC, s.f_id DESC
 LIMIT %(limit)s OFFSET %(offset)s;
 """
 
+COUNT_DELIVERIES = """
+SELECT COUNT(*) AS total_count
+FROM veda_specs s
+JOIN veda_dogs d ON d.f_id = s.f_dogid
+WHERE (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
+  AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
+  AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
+  AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s);
+"""
+
 SEARCH_CLIENTS = """
 SELECT DISTINCT
     COALESCE(client.f_id, 0) AS client_id,
@@ -69,6 +79,27 @@ WHERE CHAR_LENGTH(%(query)s) >= 3
     OR CAST(client.f_id AS CHAR) LIKE %(query_like)s
   )
 ORDER BY client.f_cname
+LIMIT %(limit)s;
+"""
+
+SEARCH_CONTRACTS = """
+SELECT DISTINCT
+    COALESCE(d.f_id, 0) AS dog_id,
+    COALESCE(d.f_dogname, '') AS contract_number,
+    COALESCE(d.f_kod1c, '') AS contract_code1c,
+    COALESCE(client.f_id, 0) AS client_id,
+    COALESCE(client.f_cname, '') AS client_name,
+    COALESCE(client.f_inn, '') AS client_inn
+FROM veda_dogs d
+LEFT JOIN veda_clients client ON client.f_id = d.f_contrid
+WHERE CHAR_LENGTH(%(query)s) >= 2
+  AND (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
+  AND (
+    LOWER(COALESCE(d.f_dogname, '')) LIKE LOWER(%(query_like)s)
+    OR COALESCE(d.f_kod1c, '') LIKE %(query_like)s
+    OR CAST(d.f_id AS CHAR) LIKE %(query_like)s
+  )
+ORDER BY d.f_dogname
 LIMIT %(limit)s;
 """
 
@@ -104,7 +135,7 @@ LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = schet.f_val
 LEFT JOIN veda_spr nds ON nds.f_type = 10 AND nds.f_num = schet.f_nds
 WHERE schet.f_dogtype = 2
   AND schet.f_dogid = %(spec_id)s
-  AND COALESCE(schet.f_type, 0) = 2;
+  AND COALESCE(schet.f_type, 0) = 1;
 """
 
 DELIVERY_OPERATION_DOCUMENTS = """

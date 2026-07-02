@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import time
+import urllib.error
+import urllib.request
 from decimal import Decimal
 from pathlib import Path
 from http import HTTPStatus
@@ -50,11 +53,17 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/reconciliation/clients":
                 self._search_clients(query)
                 return
+            if parsed.path == "/api/reconciliation/contracts":
+                self._search_contracts(query)
+                return
             if parsed.path == "/api/reconciliation/matrix":
                 self._list_matrix(query)
                 return
             if parsed.path == "/api/reconciliation/matrix.xlsx":
                 self._matrix_xlsx(query)
+                return
+            if parsed.path == "/api/reconciliation/history":
+                self._history(query)
                 return
             if parsed.path == "/api/reconciliation/run":
                 self._run_reconciliation(query)
@@ -85,6 +94,9 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/auth/login":
                 self._login()
                 return
+            if parsed.path == "/api/auth/erp-launch":
+                self._erp_launch()
+                return
             if parsed.path == "/api/reconciliation/run":
                 payload = self._json_body()
                 query = {key: [str(value)] for key, value in payload.items() if value is not None}
@@ -99,6 +111,12 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 payload = self._json_body()
                 matrix_payload = payload.get("matrix") if isinstance(payload.get("matrix"), dict) else payload
                 self._matrix_payload_xlsx(matrix_payload)
+                return
+            if parsed.path == "/api/reconciliation/comments":
+                self._save_comment()
+                return
+            if parsed.path == "/api/reconciliation/batch":
+                self._batch_reconciliation()
                 return
             self._json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found", "message": "Unknown endpoint"})
         except AuthenticationError as exc:
@@ -119,8 +137,10 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 "erp_db_configured": config.erp_db.configured,
                 "onec_rest_configured": onec_rest_status()["configured"],
                 "auth": {
-                    "mode": "erp_token_passthrough_or_direct_erp_login",
+                    "mode": "erp_launch_token",
                     "required": config.require_erp_token,
+                    "direct_login_enabled": config.direct_login_enabled,
+                    "demo": config.ui_demo,
                 },
             },
         )
@@ -134,13 +154,20 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 "erp_db": config.erp_db.safe_status(),
                 "onec_rest": onec_rest_status(),
                 "auth": {
-                    "mode": "erp_token_passthrough_or_direct_erp_login",
+                    "mode": "erp_launch_token",
                     "required": config.require_erp_token,
+                    "direct_login_enabled": config.direct_login_enabled,
+                    "demo": config.ui_demo,
+                    "session_secret_configured": bool(os.environ.get("RECON_SESSION_SECRET", "").strip()),
+                    "launch_token_validation_configured": bool(config.erp_token_validate_url),
                 },
             },
         )
 
     def _login(self) -> None:
+        config = _app_config()
+        if not config.direct_login_enabled:
+            raise AuthenticationError("Direct ERP login is disabled; open reconciliation from ERP launch token")
         payload = self._json_body()
         login = str(payload.get("login") or payload.get("username") or "").strip()
         password = str(payload.get("password") or "")
@@ -166,6 +193,27 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
         profile = _erp_repository().authenticate_user(login, password)
         if profile is None:
             raise AuthenticationError("Invalid ERP login or password")
+        token = create_session_token(profile)
+        self._json(
+            HTTPStatus.OK,
+            {
+                "ok": True,
+                "token": token,
+                "profile": {
+                    "user_id": profile.get("user_id"),
+                    "login": profile.get("login"),
+                    "name": profile.get("name"),
+                    "structure_code": profile.get("structure_code"),
+                },
+            },
+        )
+
+    def _erp_launch(self) -> None:
+        payload = self._json_body()
+        launch_token = str(payload.get("launch_token") or payload.get("token") or "").strip()
+        if not launch_token:
+            raise ValueError("launch_token is required")
+        profile = _validate_erp_launch_token(launch_token)
         token = create_session_token(profile)
         self._json(
             HTTPStatus.OK,
@@ -227,10 +275,27 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             items = _erp_repository().search_clients(text, limit=limit)
         self._json(HTTPStatus.OK, {"ok": True, "items": items, "count": len(items), "min_query_length": 3})
 
+    def _search_contracts(self, query: dict[str, list[str]]) -> None:
+        self._require_context()
+        text = (query.get("q") or [""])[0].strip()
+        limit = max(1, min(_optional_int(query, "limit") or 12, 30))
+        client_id = _optional_int(query, "client_id")
+        if len(text) < 2:
+            self._json(HTTPStatus.OK, {"ok": True, "items": [], "count": 0, "min_query_length": 2})
+            return
+        if _app_config().ui_demo:
+            items = _demo_contract_search(text, limit)
+        else:
+            items = _erp_repository().search_contracts(text, client_id=client_id, limit=limit)
+        self._json(HTTPStatus.OK, {"ok": True, "items": items, "count": len(items), "min_query_length": 2})
+
     def _run_reconciliation(self, query: dict[str, list[str]]) -> None:
         self._require_context()
+        started = time.perf_counter()
         run = _execute_reconciliation(query)
-        self._json(HTTPStatus.OK, {"ok": True, "run": run_to_dict(run)})
+        payload = run_to_dict(run)
+        payload["metrics"] = {"total_ms": round((time.perf_counter() - started) * 1000, 2)}
+        self._json(HTTPStatus.OK, {"ok": True, "run": payload})
 
     def _run_reconciliation_xlsx(self, query: dict[str, list[str]]) -> None:
         self._require_context()
@@ -267,6 +332,154 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             body,
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             filename="akt-sverki-matrix.xlsx",
+        )
+
+    def _save_comment(self) -> None:
+        context = self._require_context()
+        payload = self._json_body()
+        comment_key = str(payload.get("key") or "").strip()
+        if not comment_key:
+            raise ValueError("comment key is required")
+        reason = str(payload.get("reason") or "").strip()
+        comment = str(payload.get("comment") or "").strip()
+        if _app_config().ui_demo:
+            self._json(HTTPStatus.OK, {"ok": True, "mode": "ui_demo"})
+            return
+        with _connection_factory().connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO veda_reconciliation_comments
+                        (comment_key, run_external_id, spec_id, status, reason_code, comment_text, user_login, user_name)
+                    VALUES
+                        (%(comment_key)s, %(run_external_id)s, %(spec_id)s, %(status)s, %(reason_code)s, %(comment_text)s, %(user_login)s, %(user_name)s)
+                    ON DUPLICATE KEY UPDATE
+                        run_external_id = VALUES(run_external_id),
+                        spec_id = VALUES(spec_id),
+                        status = VALUES(status),
+                        reason_code = VALUES(reason_code),
+                        comment_text = VALUES(comment_text),
+                        user_login = VALUES(user_login),
+                        user_name = VALUES(user_name)
+                    """,
+                    {
+                        "comment_key": comment_key,
+                        "run_external_id": str(payload.get("run_id") or "")[:128],
+                        "spec_id": int(payload.get("spec_id") or 0),
+                        "status": str(payload.get("status") or "")[:64],
+                        "reason_code": reason[:64],
+                        "comment_text": comment,
+                        "user_login": context.user_email,
+                        "user_name": context.user_name,
+                    },
+                )
+        self._json(HTTPStatus.OK, {"ok": True})
+
+    def _history(self, query: dict[str, list[str]]) -> None:
+        self._require_context()
+        limit = max(1, min(_optional_int(query, "limit") or 20, 100))
+        spec_id = _optional_int(query, "spec_id")
+        client_id = _optional_int(query, "client_id")
+        if _app_config().ui_demo:
+            self._json(HTTPStatus.OK, {"ok": True, "items": [], "count": 0, "mode": "ui_demo"})
+            return
+        conditions = []
+        params: dict[str, object] = {"limit": limit}
+        if spec_id is not None:
+            conditions.append("spec_id = %(spec_id)s")
+            params["spec_id"] = spec_id
+        if client_id is not None:
+            conditions.append("client_id = %(client_id)s")
+            params["client_id"] = client_id
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        with _connection_factory().connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT
+                        id, scope, scope_id, spec_id, client_id, source_mode,
+                        onec_docs_count, erp_docs_count, status, summary_json, created_at
+                    FROM veda_reconciliation_runs
+                    {where}
+                    ORDER BY id DESC
+                    LIMIT %(limit)s
+                    """,
+                    params,
+                )
+                rows = list(cursor.fetchall())
+        items = []
+        for row in rows:
+            summary = {}
+            try:
+                summary = json.loads(row.get("summary_json") or "{}")
+            except json.JSONDecodeError:
+                summary = {}
+            items.append(
+                {
+                    "id": row.get("id"),
+                    "scope": row.get("scope"),
+                    "scope_id": row.get("scope_id"),
+                    "spec_id": row.get("spec_id"),
+                    "client_id": row.get("client_id"),
+                    "source_mode": row.get("source_mode"),
+                    "onec_docs_count": row.get("onec_docs_count"),
+                    "erp_docs_count": row.get("erp_docs_count"),
+                    "status": row.get("status"),
+                    "summary": summary,
+                    "created_at": str(row.get("created_at") or ""),
+                }
+            )
+        self._json(HTTPStatus.OK, {"ok": True, "items": items, "count": len(items)})
+
+    def _batch_reconciliation(self) -> None:
+        self._require_context()
+        payload = self._json_body()
+        raw_spec_ids = payload.get("spec_ids")
+        if not isinstance(raw_spec_ids, list) or not raw_spec_ids:
+            raise ValueError("spec_ids array is required")
+        spec_ids = []
+        for value in raw_spec_ids:
+            spec_id = int(value)
+            if spec_id > 0 and spec_id not in spec_ids:
+                spec_ids.append(spec_id)
+        if len(spec_ids) > 50:
+            raise ValueError("batch size is limited to 50 spec_ids")
+        date_from = str(payload.get("date_from") or "").strip()
+        date_to = str(payload.get("date_to") or "").strip()
+        if not date_from or not date_to:
+            raise ValueError("date_from and date_to are required")
+        if _app_config().ui_demo:
+            runs = [
+                {
+                    "run_id": f"ui-demo-batch-{spec_id}",
+                    "delivery": {"erp_spec_id": spec_id},
+                    "summary": {"issues_total": 0, "by_status": {"match": 0}},
+                    "issues": [],
+                    "metrics": {"total_ms": 0},
+                }
+                for spec_id in spec_ids
+            ]
+            self._json(HTTPStatus.OK, {"ok": True, "count": len(runs), "runs": runs, "mode": "ui_demo"})
+            return
+        started = time.perf_counter()
+        runs = []
+        for spec_id in spec_ids:
+            query = {
+                "spec_id": [str(spec_id)],
+                "date_from": [date_from],
+                "date_to": [date_to],
+                "persist_log": [str(payload.get("persist_log", "1"))],
+            }
+            run = run_to_dict(_execute_reconciliation(query))
+            runs.append(run)
+        self._json(
+            HTTPStatus.OK,
+            {
+                "ok": True,
+                "count": len(runs),
+                "runs": runs,
+                "metrics": {"total_ms": round((time.perf_counter() - started) * 1000, 2)},
+            },
         )
 
     def _require_context(self):
@@ -348,23 +561,34 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
         return _demo_matrix_payload()
     repository = _erp_repository()
     limit = max(1, min(_optional_int(query, "limit") or 20, 100))
+    offset = _optional_int(query, "offset") or 0
+    client_id = _optional_int(query, "client_id")
+    dog_id = _optional_int(query, "dog_id")
+    date_from = _optional_date(query, "date_from")
+    date_to = _optional_date(query, "date_to")
+    started = time.perf_counter()
     command = ListDeliveriesCommand(
-        client_id=_optional_int(query, "client_id"),
-        dog_id=_optional_int(query, "dog_id"),
-        date_from=_optional_date(query, "date_from"),
-        date_to=_optional_date(query, "date_to"),
+        client_id=client_id,
+        dog_id=dog_id,
+        date_from=date_from,
+        date_to=date_to,
         limit=limit,
-        offset=_optional_int(query, "offset") or 0,
+        offset=offset,
     )
     deliveries = ListDeliveriesUseCase(repository).execute(command)
     items = [_matrix_row(repository, delivery) for delivery in deliveries]
+    total_count = repository.count_deliveries(client_id=client_id, dog_id=dog_id, date_from=date_from, date_to=date_to)
     return {
         "ok": True,
         "mode": "erp_live",
         "items": items,
         "count": len(items),
+        "total_count": total_count,
+        "offset": offset,
+        "has_more": offset + len(items) < total_count,
         "summary": _matrix_summary(items),
         "limit": limit,
+        "metrics": {"erp_sql_ms": round((time.perf_counter() - started) * 1000, 2)},
     }
 
 
@@ -404,6 +628,7 @@ def _matrix_row(repository: MariaDbErpReadRepository, delivery_row: dict[str, ob
         "invoice_numbers": _doc_numbers(invoices),
         "invoice_rows": _doc_rows(invoices),
         "payment_numbers": _doc_numbers(payments),
+        "payment_rows": _doc_rows(payments),
         "sf_numbers": _doc_numbers(sales),
         "sf_rows": _doc_rows(sales),
         "documents_count": len(documents),
@@ -508,7 +733,13 @@ def _demo_matrix_payload() -> dict[str, object]:
                 {"number": "ВА-015697", "amount": "141201.52", "currency": "RUB"},
             ],
             "payment_numbers": ["00БП-010299"],
+            "payment_rows": [
+                {"number": "00БП-010299", "amount": "833921.00", "currency": "RUB", "date": "2025-07-30"},
+            ],
             "sf_numbers": ["00БП-000198"],
+            "sf_rows": [
+                {"number": "00БП-000198", "amount": "67055.99", "currency": "RUB", "date": "2025-01-21"},
+            ],
             "documents_count": 9,
         },
         {
@@ -536,7 +767,13 @@ def _demo_matrix_payload() -> dict[str, object]:
                 {"number": "ВА-007689", "amount": "0.00", "currency": "RUB"},
             ],
             "payment_numbers": ["00БП-003300"],
+            "payment_rows": [
+                {"number": "00БП-003300", "amount": "21000.00", "currency": "RUB", "date": "2025-08-12"},
+            ],
             "sf_numbers": ["00БП-003300"],
+            "sf_rows": [
+                {"number": "00БП-003300", "amount": "494291.36", "currency": "RUB", "date": "2025-08-12"},
+            ],
             "documents_count": 7,
         },
         {
@@ -564,7 +801,13 @@ def _demo_matrix_payload() -> dict[str, object]:
                 {"number": "ВА-007714", "amount": "51100.00", "currency": "RUB"},
             ],
             "payment_numbers": ["00БП-003301"],
+            "payment_rows": [
+                {"number": "00БП-003301", "amount": "390296.92", "currency": "RUB", "date": "2025-08-14"},
+            ],
             "sf_numbers": ["00БП-003301"],
+            "sf_rows": [
+                {"number": "00БП-003301", "amount": "452887.51", "currency": "RUB", "date": "2025-08-14"},
+            ],
             "documents_count": 8,
         },
         {
@@ -591,7 +834,13 @@ def _demo_matrix_payload() -> dict[str, object]:
                 {"number": "ВА-007901", "amount": "124500.00", "currency": "RUB"},
             ],
             "payment_numbers": ["00БП-003410"],
+            "payment_rows": [
+                {"number": "00БП-003410", "amount": "150000.00", "currency": "RUB", "date": "2025-08-16"},
+            ],
             "sf_numbers": ["00БП-003410"],
+            "sf_rows": [
+                {"number": "00БП-003410", "amount": "124500.00", "currency": "RUB", "date": "2025-08-16"},
+            ],
             "documents_count": 5,
         },
     ]
@@ -602,6 +851,10 @@ def _demo_matrix_payload() -> dict[str, object]:
         "count": len(items),
         "summary": _matrix_summary(items),
         "limit": len(items),
+        "total_count": len(items),
+        "offset": 0,
+        "has_more": False,
+        "metrics": {"erp_sql_ms": 0},
     }
 
 
@@ -634,6 +887,39 @@ def _demo_client_search(query: str, limit: int) -> list[dict[str, object]]:
     return result
 
 
+def _demo_contract_search(query: str, limit: int) -> list[dict[str, object]]:
+    needle = query.strip().lower()
+    seen: set[int] = set()
+    result: list[dict[str, object]] = []
+    for item in _demo_matrix_payload()["items"]:
+        dog_id = int(item.get("dog_id") or 0)
+        if dog_id in seen:
+            continue
+        haystack = " ".join(
+            [
+                str(item.get("dog_id") or ""),
+                str(item.get("base_contract_number") or ""),
+                str(item.get("buyer_contract_code") or ""),
+                str(item.get("committent_contract_code") or ""),
+            ]
+        ).lower()
+        if needle in haystack:
+            seen.add(dog_id)
+            result.append(
+                {
+                    "dog_id": dog_id,
+                    "contract_number": item.get("base_contract_number") or "",
+                    "contract_code1c": item.get("buyer_contract_code") or "",
+                    "client_id": item.get("client_id"),
+                    "client_name": item.get("client_name") or "",
+                    "client_inn": item.get("client_inn") or "",
+                }
+            )
+        if len(result) >= limit:
+            break
+    return result
+
+
 def _static_content_type(name: str) -> str:
     if name.endswith(".html"):
         return "text/html; charset=utf-8"
@@ -642,6 +928,65 @@ def _static_content_type(name: str) -> str:
     if name.endswith(".js"):
         return "application/javascript; charset=utf-8"
     return "application/octet-stream"
+
+
+def _validate_erp_launch_token(launch_token: str) -> dict[str, object]:
+    config = _app_config()
+    if config.ui_demo and launch_token in {"demo", "ui-demo", "local-demo"}:
+        return {
+            "user_id": 0,
+            "login": "demo@local.test",
+            "name": "Локальный тест",
+            "structure_code": "DEV",
+        }
+    if not config.erp_token_validate_url:
+        raise RuntimeError("ERP launch token validation endpoint is not configured")
+
+    request_body = json.dumps(
+        {"token": launch_token, "audience": "reconciliation"},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        config.erp_token_validate_url,
+        data=request_body,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=config.erp_token_validate_timeout_seconds) as response:
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        raise AuthenticationError(f"ERP launch token validation failed: HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"ERP launch token validation is unavailable: {exc.reason}") from exc
+
+    try:
+        payload = json.loads(raw or "{}")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("ERP launch token validation returned invalid JSON") from exc
+
+    ok = bool(payload.get("ok", payload.get("success", payload.get("valid", False)))) if isinstance(payload, dict) else False
+    if isinstance(payload, list) and payload:
+        ok = bool(payload[0])
+    if not ok:
+        message = payload.get("message") if isinstance(payload, dict) else ""
+        raise AuthenticationError(str(message or "Invalid ERP launch token"))
+
+    dict_payload = payload if isinstance(payload, dict) else {}
+    profile = dict_payload.get("profile") or dict_payload.get("user") or dict_payload.get("data") or {}
+    if not isinstance(profile, dict):
+        profile = {}
+    login = profile.get("login") or profile.get("email") or dict_payload.get("login") or dict_payload.get("email")
+    name = profile.get("name") or profile.get("fio") or dict_payload.get("name") or dict_payload.get("fio") or login
+    user_id = profile.get("user_id") or profile.get("id") or dict_payload.get("user_id") or dict_payload.get("id")
+    if not login:
+        raise AuthenticationError("ERP launch token validation did not return user login")
+    return {
+        "user_id": user_id,
+        "login": login,
+        "name": name,
+        "structure_code": profile.get("structure_code") or dict_payload.get("structure_code") or "",
+    }
 
 
 def _dev_auth_profile(login: str, password: str) -> dict[str, object] | None:

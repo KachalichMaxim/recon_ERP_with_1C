@@ -1498,7 +1498,7 @@ const ReconciliationMatrixPage = ({ onBack, onOpenReport, lastReport, compareSta
       ? `Загружаем live-матрицу по client_id ${getClientId()}`
       : 'Загружаем данные матрицы';
     const loadingHint = getClientId()
-      ? `Выборка может занимать несколько минут: считаем до ${getMatrixLimit()} поставок через ERP-процедуры и сверяем с 1С Postgre.`
+      ? `Выборка может занимать несколько минут: считаем до ${getMatrixLimit()} поставок через ERP-процедуры и сверяем с 1С.`
       : 'Ждем ответ ERP API.';
     return (
       <div className="page matrix-page">

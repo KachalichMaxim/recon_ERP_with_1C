@@ -2,8 +2,8 @@
 
 Контракт:
 
-- JSON: `onec_reconciliation_openapi.json`
-- YAML: `onec_reconciliation_openapi.yaml`
+- JSON: `contracts/onec/openapi.json`
+- YAML: `contracts/onec/openapi.yaml`
 
 Контракт специально сделан **GET-only**. Python backend ничего не пишет в 1C и не отправляет тело запроса. Все входные данные передаются query-параметрами.
 

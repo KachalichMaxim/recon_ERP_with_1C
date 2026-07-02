@@ -81,13 +81,7 @@ veda_specs.f_kod1cp -> committent_contract_code
 - `contracts/onec/openapi.yaml` - OpenAPI/Swagger YAML;
 - `contracts/onec/openapi_ru.md` - русская документация и маппинг 1C -> DTO.
 
-Для передачи разработчикам также добавлены копии с говорящими именами:
-
-- `onec_reconciliation_openapi.json`;
-- `reference/onec_reconciliation_openapi.json`;
-- `reference/onec_reconciliation_openapi.yaml`;
-- `onec_reconciliation_openapi_ru.md`;
-- `reference/onec_reconciliation_openapi_ru.md`.
+Старые копии контракта удалены, чтобы не было двух источников правды. В ТЗ и разработке использовать только `contracts/onec`.
 
 ## Реализованный каркас до готовности endpoint 1C
 

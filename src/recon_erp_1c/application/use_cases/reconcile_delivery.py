@@ -143,12 +143,8 @@ def _match_keys(document: AccountingDocument) -> list[tuple[tuple[str, ...], str
 
     if code and doc_date and contract:
         keys.append((("exact", kind, code, doc_date, contract), "exact"))
-    if code and doc_date:
-        keys.append((("code_date", kind, code, doc_date), "strong_code_date"))
     if number and doc_date and contract:
         keys.append((("strong", kind, number, doc_date, amount, currency, contract), "strong"))
-    if number:
-        keys.append((("weak", kind, number, amount, currency), "weak"))
     return keys
 
 

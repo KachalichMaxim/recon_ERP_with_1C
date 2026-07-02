@@ -98,7 +98,18 @@ def _extract_token(headers: HTTPMessage) -> str:
 
 
 def _secret() -> bytes:
-    return os.environ.get("RECON_SESSION_SECRET", _PROCESS_SECRET).encode("utf-8")
+    configured = os.environ.get("RECON_SESSION_SECRET", "").strip()
+    if configured:
+        return configured.encode("utf-8")
+    production = os.environ.get("RECON_ENV", "").strip().lower() in {"prod", "production"}
+    require_token = os.environ.get("RECON_REQUIRE_ERP_TOKEN", "0").strip().lower() in {"1", "true", "yes"}
+    demo_or_dev = (
+        os.environ.get("RECON_UI_DEMO", "0").strip().lower() in {"1", "true", "yes"}
+        or os.environ.get("RECON_DEV_AUTH", "0").strip().lower() in {"1", "true", "yes"}
+    )
+    if (production or require_token) and not demo_or_dev:
+        raise RuntimeError("RECON_SESSION_SECRET is required in production")
+    return _PROCESS_SECRET.encode("utf-8")
 
 
 def _sign(body: str) -> str:

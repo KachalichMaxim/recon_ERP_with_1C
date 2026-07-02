@@ -2,12 +2,12 @@
 
 OpenAPI/Swagger-контракт:
 
-- JSON: `onec_reconciliation_openapi.json`
-- YAML: `reference/onec_reconciliation_openapi.yaml`
+- JSON: `contracts/onec/openapi.json`
+- YAML: `contracts/onec/openapi.yaml`
 
 Русская документация и маппинг 1C -> DTO:
 
-- `onec_reconciliation_openapi_ru.md`
+- `contracts/onec/openapi_ru.md`
 
 ## 1. Цель
 
@@ -148,7 +148,7 @@ contract_code / contract_number / counterparty_code / counterparty_inn / documen
 | `account_movements` | `РегистрБухгалтерии.Хозрасчетный` |
 | `balances` | `РегистрБухгалтерии.Хозрасчетный.Остатки` или `ОборотыИОстатки` |
 
-Подробный маппинг каждого поля описан в `onec_reconciliation_openapi_ru.md`.
+Подробный маппинг каждого поля описан в `contracts/onec/openapi_ru.md`.
 
 ## 7. Пагинация
 

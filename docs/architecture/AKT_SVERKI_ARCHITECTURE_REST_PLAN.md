@@ -63,7 +63,7 @@
 
 Контракт 1C описан отдельно:
 
-- `akt_sverki/reference/onec_reconciliation_rest_api_tz.md`
+- `docs/api/onec_reconciliation_rest_api_tz.md`
 
 Главный принцип: 1C отдает подготовленные DTO, а не сырые документы/справочники.
 
@@ -92,9 +92,9 @@ GET /reconciliation/v1/balances
 Добавлен целевой REST connector:
 
 - `onec_rest_client.py`
-- `akt_sverki/reference/onec_reconciliation_openapi.json`
-- `akt_sverki/reference/onec_reconciliation_openapi.yaml`
-- `akt_sverki/reference/onec_reconciliation_openapi_ru.md`
+- `contracts/onec/openapi.json`
+- `contracts/onec/openapi.yaml`
+- `contracts/onec/openapi_ru.md`
 
 Переменные окружения:
 
@@ -327,4 +327,4 @@ Content-Type: application/json
 - `GET /api/reconciliation/1c-rest-status` показывает конфигурацию REST-источника.
 - REST-ответ нормализуется в текущую модель matcher-а.
 - C4 архитектура обновлена под REST.
-- ТЗ 1C REST API добавлено в `akt_sverki/reference/onec_reconciliation_rest_api_tz.md`.
+- ТЗ 1C REST API добавлено в `docs/api/onec_reconciliation_rest_api_tz.md`.

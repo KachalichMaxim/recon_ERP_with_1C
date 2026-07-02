@@ -78,16 +78,36 @@ class OneCRestConfig:
 class AppConfig:
     erp_db: MariaDbConfig
     onec_rest: OneCRestConfig
+    environment: str = "development"
     listen_host: str = "0.0.0.0"
     listen_port: int = 8780
     require_erp_token: bool = False
+    allow_direct_erp_login: bool = False
+    ui_demo: bool = False
+    dev_auth: bool = False
+    erp_token_validate_url: str = ""
+    erp_token_validate_timeout_seconds: int = 10
 
     @classmethod
     def from_env(cls) -> "AppConfig":
         return cls(
             erp_db=MariaDbConfig.from_env(),
             onec_rest=OneCRestConfig.from_env(),
+            environment=os.environ.get("RECON_ENV", "development").strip().lower() or "development",
             listen_host=os.environ.get("RECON_API_HOST", "0.0.0.0"),
             listen_port=int(os.environ.get("RECON_API_PORT", "8780")),
             require_erp_token=os.environ.get("RECON_REQUIRE_ERP_TOKEN", "0").strip().lower() in {"1", "true", "yes"},
+            allow_direct_erp_login=os.environ.get("RECON_ALLOW_DIRECT_ERP_LOGIN", "0").strip().lower() in {"1", "true", "yes"},
+            ui_demo=os.environ.get("RECON_UI_DEMO", "0").strip().lower() in {"1", "true", "yes"},
+            dev_auth=os.environ.get("RECON_DEV_AUTH", "0").strip().lower() in {"1", "true", "yes"},
+            erp_token_validate_url=os.environ.get("RECON_ERP_TOKEN_VALIDATE_URL", "").strip(),
+            erp_token_validate_timeout_seconds=int(os.environ.get("RECON_ERP_TOKEN_VALIDATE_TIMEOUT", "10")),
         )
+
+    @property
+    def production(self) -> bool:
+        return self.environment in {"prod", "production"} or self.require_erp_token
+
+    @property
+    def direct_login_enabled(self) -> bool:
+        return self.allow_direct_erp_login or self.dev_auth

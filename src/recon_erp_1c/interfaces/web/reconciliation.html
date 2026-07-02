@@ -27,19 +27,21 @@
         <span>Read-only сервис сверки · ERP / 1С</span>
       </div>
 
-      <div class="field">
-        <label for="loginInput">Логин ERP</label>
-        <input id="loginInput" autocomplete="username" inputmode="email" placeholder="например, e.sokolova">
-      </div>
-      <div class="field">
-        <label for="passwordInput">Пароль</label>
-        <input id="passwordInput" type="password" autocomplete="current-password" placeholder="••••••••">
+      <div class="login-form" id="loginForm">
+        <div class="field">
+          <label for="loginInput">Логин ERP</label>
+          <input id="loginInput" autocomplete="username" inputmode="email" placeholder="например, e.sokolova">
+        </div>
+        <div class="field">
+          <label for="passwordInput">Пароль</label>
+          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="••••••••">
+        </div>
+        <button class="btn btn-primary full" id="loginBtn">Войти</button>
       </div>
 
       <div class="message" id="loginMessage" role="status" aria-live="polite"></div>
-      <button class="btn btn-primary full" id="loginBtn">Войти</button>
     </div>
-    <div class="login-footnote">Локальная проверка: demo@local.test / demo</div>
+    <div class="login-footnote" id="loginFootnote">Локальная проверка: demo@local.test / demo</div>
   </section>
 
   <div class="app hidden" id="workArea">
@@ -89,8 +91,8 @@
           <h1>Сверка ERP и 1С</h1>
           <div class="top-meta">
             <span id="erpStatusChip">ERP: ожидает запрос</span>
-            <span id="onecStatusChip">1С REST: ожидает настройку</span>
-            <span id="modeStatusChip">Режим: read-only</span>
+            <span id="onecStatusChip">1С: ожидает настройку</span>
+            <span id="modeStatusChip">Режим: только чтение</span>
           </div>
         </div>
         <div class="top-actions">
@@ -119,9 +121,10 @@
             <input id="clientIdInput" autocomplete="off" placeholder="Введите название, ИНН или client_id">
             <div class="suggestions hidden" id="clientSuggestions"></div>
           </div>
-          <div class="field">
+          <div class="field search-field">
             <label for="dogIdInput">Договор ERP</label>
-            <input id="dogIdInput" type="number" placeholder="88">
+            <input id="dogIdInput" autocomplete="off" placeholder="Введите номер или код 1С договора">
+            <div class="suggestions hidden" id="dogSuggestions"></div>
           </div>
           <div class="field">
             <label for="dateFromInput">Период с</label>
@@ -134,6 +137,16 @@
           <div class="field compact">
             <label for="limitInput">Поставок</label>
             <input id="limitInput" type="number" value="20" min="1" max="100">
+          </div>
+          <div class="field compact">
+            <label for="matrixStatusFilter">Статус</label>
+            <select id="matrixStatusFilter">
+              <option value="all">Все</option>
+              <option value="problems">Долг/переплата</option>
+              <option value="debt">Долг</option>
+              <option value="overpayment">Переплата</option>
+              <option value="closed">Закрыто</option>
+            </select>
           </div>
           <div class="filter-actions">
             <button class="btn btn-primary" id="loadMatrixBtn" type="button">Найти поставки</button>
@@ -173,8 +186,8 @@
                 <th class="num">Возмещаемые расходы</th>
                 <th class="num">Невозмещаемые расходы</th>
                 <th>№ счф</th>
-                <th class="num">(+/-)</th>
-                <th>Статус</th>
+                <th class="num sticky-right-balance">(+/-)</th>
+                <th class="sticky-right-status">Статус</th>
               </tr>
             </thead>
             <tbody id="matrixRows">

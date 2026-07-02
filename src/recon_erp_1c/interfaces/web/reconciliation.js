@@ -30,6 +30,7 @@
     selectedSpecId: Number(localStorage.getItem('recon_selected_spec') || 0) || null,
     run: null,
     feedback: JSON.parse(localStorage.getItem('recon_feedback_v1') || '{}'),
+    config: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -39,6 +40,8 @@
     loginInput: $('loginInput'),
     passwordInput: $('passwordInput'),
     loginBtn: $('loginBtn'),
+    loginForm: $('loginForm'),
+    loginFootnote: $('loginFootnote'),
     loginMessage: $('loginMessage'),
     userName: $('userName'),
     userLogin: $('userLogin'),
@@ -59,9 +62,11 @@
     clientIdInput: $('clientIdInput'),
     clientSuggestions: $('clientSuggestions'),
     dogIdInput: $('dogIdInput'),
+    dogSuggestions: $('dogSuggestions'),
     dateFromInput: $('dateFromInput'),
     dateToInput: $('dateToInput'),
     limitInput: $('limitInput'),
+    matrixStatusFilter: $('matrixStatusFilter'),
     loadMatrixBtn: $('loadMatrixBtn'),
     presetYearBtn: $('presetYearBtn'),
     preset90Btn: $('preset90Btn'),
@@ -88,6 +93,8 @@
   };
 
   let clientSearchTimer = 0;
+  let dogSearchTimer = 0;
+  const feedbackSaveTimers = {};
 
   function api(path, options = {}) {
     const headers = Object.assign({ Accept: 'application/json' }, options.headers || {});
@@ -136,8 +143,10 @@
   function normalizeErrorMessage(err) {
     const text = err && err.message ? err.message : String(err || '');
     if (/ERP MariaDB is not configured/i.test(text)) {
-      return 'Сервис не подключен к ERP MariaDB. Для локального UI-теста сервер можно запустить с RECON_UI_DEMO=1.';
+      return 'ERP сейчас недоступна. Проверьте подключение сервиса сверки к ERP.';
     }
+    if (/Direct ERP login is disabled/i.test(text)) return 'Вход по логину и паролю отключен. Откройте модуль из ERP.';
+    if (/ERP launch token validation endpoint is not configured/i.test(text)) return 'Не настроена проверка launch token ERP.';
     if (/Invalid ERP login or password/i.test(text)) return 'Неверный логин или пароль ERP.';
     return text.replace(/1C/g, '1С');
   }
@@ -176,6 +185,64 @@
     els.userAvatar.textContent = name && name !== 'Не авторизован' ? name.slice(0, 1).toUpperCase() : '?';
   }
 
+  async function loadRuntimeConfig() {
+    try {
+      const resp = await fetch('/api/config/status', { headers: { Accept: 'application/json' } });
+      const payload = await resp.json();
+      if (resp.ok && payload.ok) state.config = payload;
+    } catch (_) {
+      state.config = null;
+    }
+    applyRuntimeConfig();
+  }
+
+  function applyRuntimeConfig() {
+    const auth = state.config && state.config.auth ? state.config.auth : {};
+    const demo = Boolean(auth.demo);
+    const directLogin = Boolean(auth.direct_login_enabled);
+    if (els.loginFootnote) els.loginFootnote.classList.toggle('hidden', !demo);
+    if (els.loginForm) els.loginForm.classList.toggle('hidden', !directLogin);
+    if (!state.token && !directLogin) {
+      setMessage(els.loginMessage, 'Откройте модуль из ERP. Доступ выполняется по launch token пользователя.');
+    }
+    if (state.config && state.config.erp_db) {
+      els.erpStatusChip.textContent = state.config.erp_db.configured ? 'ERP: подключена' : 'ERP: не подключена';
+    }
+    if (state.config && state.config.onec_rest) {
+      els.onecStatusChip.textContent = state.config.onec_rest.configured ? '1С: подключена' : '1С: не подключена';
+    }
+    if (auth.required) {
+      els.modeStatusChip.textContent = 'Режим: вход из ERP';
+    }
+  }
+
+  async function consumeLaunchToken() {
+    const params = new URLSearchParams(location.search);
+    const launchToken = params.get('launch_token') || params.get('token') || '';
+    if (!launchToken) return;
+    setMessage(els.loginMessage, 'Проверяем launch token ERP...');
+    try {
+      const resp = await fetch('/api/auth/erp-launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ launch_token: launchToken }),
+      });
+      const payload = await resp.json();
+      if (!resp.ok || payload.ok !== true) throw new Error(payload.message || 'Ошибка входа через ERP');
+      state.token = payload.token;
+      state.profile = payload.profile;
+      localStorage.setItem('recon_session', state.token);
+      localStorage.setItem('recon_profile', JSON.stringify(state.profile));
+      params.delete('launch_token');
+      params.delete('token');
+      const next = `${location.pathname}${params.toString() ? '?' + params.toString() : ''}${location.hash || ''}`;
+      history.replaceState({}, document.title, next);
+      setMessage(els.loginMessage, '');
+    } catch (err) {
+      setMessage(els.loginMessage, normalizeErrorMessage(err), true);
+    }
+  }
+
   async function validateSession() {
     if (!state.token) return;
     try {
@@ -193,6 +260,11 @@
   }
 
   async function login() {
+    const auth = state.config && state.config.auth ? state.config.auth : {};
+    if (!auth.direct_login_enabled) {
+      setMessage(els.loginMessage, 'Вход по логину и паролю отключен. Откройте модуль из ERP.', true);
+      return;
+    }
     const loginValue = els.loginInput.value.trim();
     const password = els.passwordInput.value;
     setMessage(els.loginMessage, 'Проверяем логин в ERP...');
@@ -235,9 +307,10 @@
   function queryParams() {
     const params = new URLSearchParams();
     const clientId = selectedClientId();
+    const dogId = selectedDogId();
     [
       ['client_id', clientId],
-      ['dog_id', els.dogIdInput.value],
+      ['dog_id', dogId],
       ['date_from', els.dateFromInput.value],
       ['date_to', els.dateToInput.value],
       ['limit', els.limitInput.value || '20'],
@@ -254,9 +327,17 @@
     return /^\d+$/.test(text) ? text : '';
   }
 
+  function selectedDogId() {
+    const explicit = els.dogIdInput.dataset.dogId || '';
+    if (explicit) return explicit;
+    const text = (els.dogIdInput.value || '').trim();
+    return /^\d+$/.test(text) ? text : '';
+  }
+
   async function loadMatrix() {
     if (!validateDateRange(els.matrixMessage)) return;
     if (!validateClientFilter(els.matrixMessage)) return;
+    if (!validateDogFilter(els.matrixMessage)) return;
     els.loadMatrixBtn.disabled = true;
     els.matrixRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Загружаем ERP-матрицу...</td></tr>';
     setMessage(els.matrixMessage, 'Получаем поставки и агрегаты из ERP...');
@@ -270,12 +351,13 @@
       if (!state.matrix.some((row) => Number(row.spec_id) === Number(state.selectedSpecId))) {
         state.selectedSpecId = state.matrix.length ? Number(state.matrix[0].spec_id) : null;
       }
-      renderMatrix(payload.summary || buildMatrixSummary(state.matrix));
+      renderMatrix(buildMatrixSummary(matrixVisibleItems()));
       renderSelectedContext();
       updateActionState();
       const modeText = state.matrixMode === 'ui_demo' ? 'Локальный UI-пример, не боевые данные.' : 'Данные ERP загружены.';
-      setMessage(els.matrixMessage, `${modeText} Поставок: ${state.matrix.length}.`);
-      els.erpStatusChip.textContent = state.matrixMode === 'ui_demo' ? 'ERP: UI demo' : 'ERP: live matrix';
+      const totalText = payload.total_count ? ` из ${payload.total_count}` : '';
+      setMessage(els.matrixMessage, `${modeText} Поставок: ${state.matrix.length}${totalText}.`);
+      els.erpStatusChip.textContent = state.matrixMode === 'ui_demo' ? 'ERP: демо-данные' : 'ERP: данные загружены';
     } catch (err) {
       state.matrix = [];
       renderMatrix();
@@ -353,14 +435,86 @@
     els.clientSuggestions.innerHTML = '';
   }
 
+  function scheduleDogSearch() {
+    const text = (els.dogIdInput.value || '').trim();
+    if (els.dogIdInput.dataset.dogLabel && text !== els.dogIdInput.dataset.dogLabel) {
+      delete els.dogIdInput.dataset.dogId;
+      delete els.dogIdInput.dataset.dogLabel;
+    }
+    clearTimeout(dogSearchTimer);
+    if (text.length < 2) {
+      renderDogSuggestions([]);
+      return;
+    }
+    dogSearchTimer = setTimeout(() => searchContracts(text), 250);
+  }
+
+  async function searchContracts(text) {
+    try {
+      const params = new URLSearchParams({ q: text, limit: '12' });
+      const clientId = selectedClientId();
+      if (clientId) params.set('client_id', clientId);
+      const resp = await api('/api/reconciliation/contracts?' + params.toString());
+      const payload = await resp.json();
+      if (!resp.ok || payload.ok !== true) throw new Error(payload.message || 'Не удалось найти договоры');
+      renderDogSuggestions(payload.items || [], text);
+    } catch (err) {
+      els.dogSuggestions.innerHTML = `<div class="suggestion-empty">${escapeHtml(normalizeErrorMessage(err))}</div>`;
+      els.dogSuggestions.classList.remove('hidden');
+    }
+  }
+
+  function renderDogSuggestions(items, searchText = '') {
+    if (!searchText || searchText.length < 2) {
+      els.dogSuggestions.classList.add('hidden');
+      els.dogSuggestions.innerHTML = '';
+      return;
+    }
+    if (!items.length) {
+      els.dogSuggestions.innerHTML = '<div class="suggestion-empty">Договоры не найдены.</div>';
+      els.dogSuggestions.classList.remove('hidden');
+      return;
+    }
+    els.dogSuggestions.innerHTML = items.map((item) => {
+      const label = dogLabel(item);
+      return `<button class="suggestion-item" type="button" data-dog-id="${escapeHtml(item.dog_id)}" data-dog-label="${escapeHtml(label)}">
+        <span class="suggestion-title">${escapeHtml(item.contract_number || `Договор ${item.dog_id || ''}`)}</span>
+        <span class="suggestion-meta">код 1С ${escapeHtml(item.contract_code1c || '—')} · ${escapeHtml(item.client_name || '')}</span>
+      </button>`;
+    }).join('');
+    els.dogSuggestions.classList.remove('hidden');
+    els.dogSuggestions.querySelectorAll('[data-dog-id]').forEach((node) => {
+      node.addEventListener('click', () => selectDogSuggestion(node));
+    });
+  }
+
+  function dogLabel(item) {
+    const name = item.contract_number || `Договор ${item.dog_id || ''}`;
+    const code = item.contract_code1c ? ` · 1С ${item.contract_code1c}` : '';
+    return `${name}${code}`;
+  }
+
+  function selectDogSuggestion(node) {
+    const id = node.getAttribute('data-dog-id') || '';
+    const label = node.getAttribute('data-dog-label') || id;
+    els.dogIdInput.value = label;
+    els.dogIdInput.dataset.dogId = id;
+    els.dogIdInput.dataset.dogLabel = label;
+    els.dogSuggestions.classList.add('hidden');
+    els.dogSuggestions.innerHTML = '';
+  }
+
   function buildMatrixSummary(items) {
+    const balance = sumField(items, 'balance');
     return {
       deliveries: items.length,
       invoice_sum: sumField(items, 'invoice_sum'),
       payment_sum: sumField(items, 'payment_sum'),
       reimbursable_sum: sumField(items, 'reimbursable_sum'),
       non_reimbursable_sum: sumField(items, 'non_reimbursable_sum'),
-      balance: sumField(items, 'balance'),
+      balance,
+      debts: items.filter((row) => balanceKind(row) === 'debt').length,
+      overpayments: items.filter((row) => balanceKind(row) === 'overpayment').length,
     };
   }
 
@@ -383,11 +537,11 @@
   }
 
   function renderMatrix(summary) {
-    const items = state.matrix || [];
+    const items = matrixVisibleItems();
     renderMatrixSummary(summary || buildMatrixSummary(items));
     renderMatrixSelectionPanel();
     if (!items.length) {
-      els.matrixRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Поставки не загружены.</td></tr>';
+      els.matrixRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Поставки не загружены или не подходят под выбранный фильтр.</td></tr>';
       return;
     }
     const byClient = groupBy(items, (row) => `${row.client_id || 0}|${row.client_name || ''}`);
@@ -442,6 +596,9 @@
             specText: row.spec_number || '—',
             specId: row.spec_id,
           }));
+          if (Number(row.spec_id) === Number(state.selectedSpecId)) {
+            html.push(matrixSpecDetailsHtml(row));
+          }
         }
       }
     }
@@ -451,7 +608,7 @@
         const key = tr.getAttribute('data-toggle-key') || '';
         state.matrixExpanded[key] = !isMatrixExpanded(key);
         localStorage.setItem('recon_matrix_expanded_v1', JSON.stringify(state.matrixExpanded));
-        renderMatrix(summary || buildMatrixSummary(state.matrix));
+        renderMatrix(buildMatrixSummary(matrixVisibleItems()));
       });
     });
     els.matrixRows.querySelectorAll('tr[data-spec-id]').forEach((tr) => {
@@ -459,12 +616,25 @@
         state.selectedSpecId = Number(tr.getAttribute('data-spec-id'));
         localStorage.setItem('recon_selected_spec', String(state.selectedSpecId));
         state.run = null;
-        renderMatrix(summary || buildMatrixSummary(state.matrix));
+        renderMatrix(buildMatrixSummary(matrixVisibleItems()));
         renderSelectedContext();
         renderResults();
         updateActionState();
       });
     });
+  }
+
+  function matrixVisibleItems() {
+    const items = state.matrix || [];
+    const filter = els.matrixStatusFilter ? els.matrixStatusFilter.value || 'all' : 'all';
+    if (filter === 'all') return items;
+    if (filter === 'problems') return items.filter((row) => balanceKind(row) !== 'closed');
+    return items.filter((row) => balanceKind(row) === filter);
+  }
+
+  function balanceKind(row) {
+    const balance = Number(row.balance || 0);
+    return row.balance_kind || (balance > 0 ? 'overpayment' : balance < 0 ? 'debt' : 'closed');
   }
 
   function isMatrixExpanded(key) {
@@ -509,9 +679,51 @@
       <td class="num">${escapeHtml(fmtMoneyValue(aggregate.reimbursable_sum))}</td>
       <td class="num">${escapeHtml(fmtMoneyValue(aggregate.non_reimbursable_sum))}</td>
       <td class="wrap-list mono">${escapeHtml(sfText)}</td>
-      <td class="num">${escapeHtml(fmtMoneyValue(aggregate.balance))}</td>
-      <td><span class="badge ${kind}">${escapeHtml(status)}</span></td>
+      <td class="num sticky-right-balance" title="Формула: сумма оплаты - возмещаемые расходы - невозмещаемые расходы">${escapeHtml(fmtMoneyValue(aggregate.balance))}</td>
+      <td class="sticky-right-status"><span class="badge ${kind}">${escapeHtml(status)}</span></td>
     </tr>`;
+  }
+
+  function matrixSpecDetailsHtml(row) {
+    const details = [
+      ...documentDetailRows('Счет покупателю', row.invoice_rows || [], row.invoice_numbers || []),
+      ...documentDetailRows('Оплата покупателя', row.payment_rows || [], row.payment_numbers || []),
+      ...documentDetailRows('Закрывающий документ', row.sf_rows || [], row.sf_numbers || []),
+    ];
+    if (!details.length) return '';
+    return `<tr class="matrix-detail-row">
+      <td colspan="10">
+        <div class="matrix-detail-box">
+          <div class="matrix-detail-title">Документы внутри поставки</div>
+          <div class="matrix-detail-grid">
+            <div class="matrix-detail-head">Тип</div>
+            <div class="matrix-detail-head">Номер / код 1С</div>
+            <div class="matrix-detail-head">Дата</div>
+            <div class="matrix-detail-head">Сумма</div>
+            ${details.map((item) => `
+              <div>${escapeHtml(item.type)}</div>
+              <div class="mono">${escapeHtml(item.number)}</div>
+              <div class="mono">${escapeHtml(fmtDate(item.date))}</div>
+              <div class="mono">${escapeHtml(fmtMoneyValue(item.amount, item.currency || 'RUB'))}</div>
+            `).join('')}
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  function documentDetailRows(type, rows, fallbackNumbers) {
+    if (Array.isArray(rows) && rows.length) {
+      return rows.map((row) => ({
+        type,
+        number: [row.number, row.code1c].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(' / ') || '—',
+        date: row.date || '',
+        amount: row.amount || 0,
+        currency: row.currency || 'RUB',
+      }));
+    }
+    if (!Array.isArray(fallbackNumbers) || !fallbackNumbers.length) return [];
+    return fallbackNumbers.map((number) => ({ type, number, date: '', amount: 0, currency: 'RUB' }));
   }
 
   function joinList(values) {
@@ -633,11 +845,11 @@
       renderResults();
       renderSummary();
       setMessage(els.runMessage, `Сверка завершена. Номер запуска: ${state.run.run_id}`);
-      els.onecStatusChip.textContent = state.matrixMode === 'ui_demo' ? '1С REST: UI demo' : '1С REST: ответ получен';
+      els.onecStatusChip.textContent = state.matrixMode === 'ui_demo' ? '1С: UI demo' : '1С: ответ получен';
     } catch (err) {
       renderProgress('onec', 'onec');
       setMessage(els.runMessage, normalizeErrorMessage(err), true);
-      els.onecStatusChip.textContent = '1С REST: ошибка';
+      els.onecStatusChip.textContent = '1С: ошибка';
     } finally {
       clearInterval(timer);
       renderProgress(null);
@@ -801,6 +1013,38 @@
   function saveFeedback(key, patch) {
     state.feedback[key] = Object.assign({}, state.feedback[key] || {}, patch);
     localStorage.setItem('recon_feedback_v1', JSON.stringify(state.feedback));
+    queueFeedbackSave(key);
+  }
+
+  function queueFeedbackSave(key) {
+    clearTimeout(feedbackSaveTimers[key]);
+    feedbackSaveTimers[key] = setTimeout(() => postFeedback(key), 500);
+  }
+
+  async function postFeedback(key) {
+    const feedback = state.feedback[key] || {};
+    const row = findIssueByFeedbackKey(key);
+    try {
+      await api('/api/reconciliation/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          key,
+          run_id: state.run ? state.run.run_id : '',
+          spec_id: state.selectedSpecId || 0,
+          status: row ? row.status : '',
+          reason: feedback.reason || '',
+          comment: feedback.comment || '',
+        }),
+      });
+    } catch (_) {
+      // Local draft remains in localStorage; backend retry will happen on the next edit.
+    }
+  }
+
+  function findIssueByFeedbackKey(key) {
+    const issues = state.run && Array.isArray(state.run.issues) ? state.run.issues : [];
+    return issues.find((row) => feedbackKey(row) === key) || null;
   }
 
   function feedbackKey(row) {
@@ -901,10 +1145,22 @@
   async function exportMatrixXlsx() {
     if (!state.matrix.length) return;
     if (!validateClientFilter(els.matrixMessage)) return;
+    if (!validateDogFilter(els.matrixMessage)) return;
     setMessage(els.matrixMessage, 'Формируем XLSX по текущей матрице...');
     try {
-      const resp = await api('/api/reconciliation/matrix.xlsx?' + queryParams().toString(), {
-        headers: { Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      const visibleItems = matrixVisibleItems();
+      const matrix = Object.assign({}, state.matrixPayload || {}, {
+        items: visibleItems,
+        count: visibleItems.length,
+        summary: buildMatrixSummary(visibleItems),
+      });
+      const resp = await api('/api/reconciliation/matrix.xlsx', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ matrix }),
       });
       if (!resp.ok) {
         let message = `HTTP ${resp.status}`;
@@ -929,7 +1185,7 @@
   function updateActionState() {
     const hasSpec = Boolean(state.selectedSpecId);
     const hasRun = Boolean(state.run);
-    const hasMatrix = state.matrix.length > 0;
+    const hasMatrix = matrixVisibleItems().length > 0;
     els.matrixToReconBtn.disabled = !hasSpec;
     els.runBtn.disabled = !hasSpec;
     els.exportBtn.disabled = !hasRun;
@@ -940,6 +1196,15 @@
     const text = (els.clientIdInput.value || '').trim();
     if (text && !selectedClientId()) {
       setMessage(messageNode, 'Выберите клиента из выпадающего списка или введите ID клиента.', true);
+      return false;
+    }
+    return true;
+  }
+
+  function validateDogFilter(messageNode) {
+    const text = (els.dogIdInput.value || '').trim();
+    if (text && !selectedDogId()) {
+      setMessage(messageNode, 'Выберите договор из выпадающего списка или введите ID договора.', true);
       return false;
     }
     return true;
@@ -976,6 +1241,10 @@
     delete els.clientIdInput.dataset.clientLabel;
     renderClientSuggestions([]);
     els.dogIdInput.value = '';
+    delete els.dogIdInput.dataset.dogId;
+    delete els.dogIdInput.dataset.dogLabel;
+    renderDogSuggestions([]);
+    if (els.matrixStatusFilter) els.matrixStatusFilter.value = 'all';
     els.limitInput.value = '20';
     setCurrentYear();
     state.matrix = [];
@@ -1003,13 +1272,24 @@
     els.refreshBtn.addEventListener('click', () => state.view === 'matrix' ? loadMatrix() : runReconciliation());
     els.loadMatrixBtn.addEventListener('click', loadMatrix);
     els.clientIdInput.addEventListener('input', scheduleClientSearch);
+    els.dogIdInput.addEventListener('input', scheduleDogSearch);
     els.clientIdInput.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') renderClientSuggestions([]);
+    });
+    els.dogIdInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') renderDogSuggestions([]);
     });
     document.addEventListener('click', (event) => {
       if (!els.clientIdInput.contains(event.target) && !els.clientSuggestions.contains(event.target)) {
         els.clientSuggestions.classList.add('hidden');
       }
+      if (!els.dogIdInput.contains(event.target) && !els.dogSuggestions.contains(event.target)) {
+        els.dogSuggestions.classList.add('hidden');
+      }
+    });
+    els.matrixStatusFilter.addEventListener('change', () => {
+      renderMatrix(buildMatrixSummary(matrixVisibleItems()));
+      updateActionState();
     });
     els.presetYearBtn.addEventListener('click', setCurrentYear);
     els.preset90Btn.addEventListener('click', setLast90Days);
@@ -1029,12 +1309,18 @@
     });
   }
 
-  initDefaults();
-  bind();
-  applyAuthState();
-  setView(state.view === 'recon' ? 'recon' : 'matrix');
-  renderMatrix();
-  renderSelectedContext();
-  renderProgress(null);
-  validateSession();
+  async function boot() {
+    initDefaults();
+    bind();
+    await loadRuntimeConfig();
+    await consumeLaunchToken();
+    applyAuthState();
+    setView(state.view === 'recon' ? 'recon' : 'matrix');
+    renderMatrix();
+    renderSelectedContext();
+    renderProgress(null);
+    validateSession();
+  }
+
+  boot();
 })();

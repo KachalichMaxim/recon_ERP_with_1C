@@ -151,6 +151,11 @@ button {
   background: #2e9e4f;
 }
 
+.login-form {
+  display: grid;
+  gap: 12px;
+}
+
 .field {
   display: grid;
   gap: 5px;
@@ -513,7 +518,7 @@ textarea::placeholder {
 
 .filters {
   display: grid;
-  grid-template-columns: minmax(280px, 380px) minmax(120px, 150px) 135px 135px 92px minmax(320px, 1fr);
+  grid-template-columns: minmax(220px, 2fr) minmax(190px, 1.5fr) repeat(4, minmax(96px, 1fr)) minmax(220px, 1.5fr);
   align-items: end;
   gap: 12px;
   padding: 14px 16px;
@@ -640,6 +645,9 @@ textarea::placeholder {
 }
 
 .selected-delivery-panel {
+  position: sticky;
+  top: 109px;
+  z-index: 18;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -648,6 +656,7 @@ textarea::placeholder {
   border-radius: var(--radius);
   background: #fff;
   padding: 12px 14px;
+  box-shadow: var(--shadow);
 }
 
 .selected-title {
@@ -747,6 +756,53 @@ tr.matrix-spec.selected td {
   background: #fff3f5;
 }
 
+tr.matrix-detail-row td {
+  background: #fff;
+  padding: 0;
+}
+
+.matrix-detail-box {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+.matrix-detail-title {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.matrix-detail-grid {
+  display: grid;
+  grid-template-columns: 150px minmax(180px, 1fr) 120px 130px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.matrix-detail-grid > div {
+  border-bottom: 1px solid var(--line);
+  padding: 7px 9px;
+}
+
+.matrix-detail-grid > div:nth-child(4n) {
+  text-align: right;
+}
+
+.matrix-detail-head {
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .sticky-col {
   position: sticky;
   left: 0;
@@ -757,6 +813,28 @@ tr.matrix-spec.selected td {
 }
 
 th.sticky-col {
+  background: #e6e6e3;
+}
+
+.sticky-right-status {
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  min-width: 112px;
+  background: inherit;
+}
+
+.sticky-right-balance {
+  position: sticky;
+  right: 112px;
+  z-index: 3;
+  min-width: 148px;
+  background: inherit;
+  box-shadow: -1px 0 0 var(--line);
+}
+
+th.sticky-right-status,
+th.sticky-right-balance {
   background: #e6e6e3;
 }
 

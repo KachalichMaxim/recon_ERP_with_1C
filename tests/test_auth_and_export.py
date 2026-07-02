@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from io import BytesIO
 from zipfile import ZipFile
 
@@ -18,6 +19,45 @@ def test_session_token_roundtrip() -> None:
     assert payload["sub"] == "7"
     assert payload["email"] == "user@example.com"
     assert payload["name"] == "User Name"
+
+
+def test_session_secret_required_in_production() -> None:
+    old_values = {key: os.environ.get(key) for key in ["RECON_ENV", "RECON_REQUIRE_ERP_TOKEN", "RECON_SESSION_SECRET", "RECON_UI_DEMO", "RECON_DEV_AUTH"]}
+    try:
+        os.environ["RECON_ENV"] = "production"
+        os.environ["RECON_REQUIRE_ERP_TOKEN"] = "1"
+        os.environ.pop("RECON_SESSION_SECRET", None)
+        os.environ["RECON_UI_DEMO"] = "0"
+        os.environ["RECON_DEV_AUTH"] = "0"
+        try:
+            create_session_token({"user_id": 7, "login": "user@example.com", "name": "User Name"})
+            assert False, "expected RuntimeError"
+        except RuntimeError as exc:
+            assert "RECON_SESSION_SECRET" in str(exc)
+    finally:
+        for key, value in old_values.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def test_session_secret_can_be_omitted_in_demo_mode() -> None:
+    old_values = {key: os.environ.get(key) for key in ["RECON_ENV", "RECON_REQUIRE_ERP_TOKEN", "RECON_SESSION_SECRET", "RECON_UI_DEMO", "RECON_DEV_AUTH"]}
+    try:
+        os.environ["RECON_ENV"] = "production"
+        os.environ["RECON_REQUIRE_ERP_TOKEN"] = "1"
+        os.environ.pop("RECON_SESSION_SECRET", None)
+        os.environ["RECON_UI_DEMO"] = "1"
+        os.environ["RECON_DEV_AUTH"] = "0"
+        token = create_session_token({"user_id": 7, "login": "user@example.com", "name": "User Name"})
+        assert verify_session_token(token) is not None
+    finally:
+        for key, value in old_values.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def test_reconciliation_xlsx_is_valid_zip_package() -> None:

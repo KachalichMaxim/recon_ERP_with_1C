@@ -58,6 +58,25 @@ class MariaDbErpReadRepository:
             for row in rows
         ]
 
+    def count_deliveries(
+        self,
+        *,
+        client_id: int | None = None,
+        dog_id: int | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> int:
+        row = self._fetch_one(
+            queries.COUNT_DELIVERIES,
+            {
+                "client_id": client_id,
+                "dog_id": dog_id,
+                "date_from": date_from,
+                "date_to": date_to,
+            },
+        )
+        return int(row.get("total_count") or 0) if row else 0
+
     def search_clients(self, query: str, *, limit: int = 12) -> list[dict[str, object]]:
         text = query.strip()
         if len(text) < 3:
@@ -72,6 +91,31 @@ class MariaDbErpReadRepository:
         )
         return [
             {
+                "client_id": row.get("client_id"),
+                "client_name": row.get("client_name") or "",
+                "client_inn": row.get("client_inn") or "",
+            }
+            for row in rows
+        ]
+
+    def search_contracts(self, query: str, *, client_id: int | None = None, limit: int = 12) -> list[dict[str, object]]:
+        text = query.strip()
+        if len(text) < 2:
+            return []
+        rows = self._fetch_all(
+            queries.SEARCH_CONTRACTS,
+            {
+                "query": text,
+                "query_like": f"%{text}%",
+                "client_id": client_id,
+                "limit": max(1, min(int(limit or 12), 30)),
+            },
+        )
+        return [
+            {
+                "dog_id": row.get("dog_id"),
+                "contract_number": row.get("contract_number") or "",
+                "contract_code1c": row.get("contract_code1c") or "",
                 "client_id": row.get("client_id"),
                 "client_name": row.get("client_name") or "",
                 "client_inn": row.get("client_inn") or "",

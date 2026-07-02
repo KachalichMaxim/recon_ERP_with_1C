@@ -13,9 +13,9 @@
 - `AKT_SVERKI_ARCHITECTURE_REST_PLAN.md` - целевая REST-архитектура Python backend + ERP MariaDB + 1C read-only REST.
 - `C4_ARCHITECTURE.md` - C4-архитектура production-контура.
 - `sql/1c_reconciliation_schema.sql` - таблицы логирования запусков и расхождений.
-- `akt_sverki/reference/onec_reconciliation_openapi.json` / `.yaml` - OpenAPI contract для 1C read-only REST API.
-- `akt_sverki/reference/onec_reconciliation_openapi_ru.md` - русская документация по контракту 1C REST API.
-- `akt_sverki/reference/onec_reconciliation_rest_api_tz.md` - ТЗ для 1C-разработчика по REST-контракту.
+- `contracts/onec/openapi.json` / `.yaml` - OpenAPI contract для 1C read-only REST API.
+- `contracts/onec/openapi_ru.md` - русская документация по контракту 1C REST API.
+- `docs/api/onec_reconciliation_rest_api_tz.md` - ТЗ для 1C-разработчика по REST-контракту.
 
 ## Production stack
 
