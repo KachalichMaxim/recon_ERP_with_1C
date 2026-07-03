@@ -187,8 +187,7 @@
     document.querySelectorAll('[data-workflow-step]').forEach((node) => {
       const step = node.getAttribute('data-workflow-step');
       const active = (state.view === 'matrix' && !hasMatrix && step === 'matrix')
-        || (state.view === 'matrix' && hasMatrix && !hasSpec && step === 'select')
-        || (state.view === 'matrix' && hasSpec && step === 'recon')
+        || (state.view === 'matrix' && hasMatrix && step === 'select')
         || (state.view === 'recon' && !hasRun && step === 'recon')
         || (state.view === 'recon' && hasRun && step === 'review');
       const done = (step === 'matrix' && hasMatrix)
@@ -208,7 +207,7 @@
     }
     if (!state.selectedSpecId) {
       setView('matrix');
-      setMessage(els.matrixMessage, 'Отметьте поставку слева в таблице для сверки с 1С.', true);
+      setMessage(els.matrixMessage, 'Отметьте кружок ○ в колонке “Выбор”, чтобы сверить поставку с 1С.', true);
       highlightMatrixSelection();
       return false;
     }
@@ -402,7 +401,7 @@
     if (!validateDogFilter(els.matrixMessage)) return;
     state.matrixOffset = Math.max(0, Number(offset == null ? state.matrixOffset : offset) || 0);
     els.loadMatrixBtn.disabled = true;
-    els.matrixRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Загружаем ERP-матрицу...</td></tr>';
+    els.matrixRows.innerHTML = '<tr><td colspan="11" class="empty-cell">Загружаем ERP-матрицу...</td></tr>';
     setMessage(els.matrixMessage, 'Получаем поставки и агрегаты из ERP...');
     try {
       const resp = await api('/api/reconciliation/matrix?' + queryParams().toString());
@@ -424,18 +423,21 @@
         state.matrixDetailsOpen = false;
         localStorage.setItem('recon_matrix_details_open', '0');
       }
-      renderMatrix(buildMatrixSummary(matrixVisibleItems()));
+      const selectionHidden = clearSelectionIfHiddenByFilter();
+      const visibleItems = matrixVisibleItems();
+      renderMatrix(buildMatrixSummary(visibleItems));
       renderSelectedContext();
       renderResults();
       updateActionState();
       const modeText = state.matrixMode === 'ui_demo' ? 'Локальный UI-пример, не боевые данные.' : 'Данные ERP загружены.';
-      const totalText = payload.total_count ? ` из ${payload.total_count}` : '';
+      const totalCount = Number(payload.total_count || 0);
+      const totalText = totalCount && totalCount !== state.matrix.length ? ` Всего найдено: ${totalCount}.` : '';
       const selectionText = state.matrix.length === 1 && state.selectedSpecId
         ? ' Найдена одна поставка — она выбрана автоматически.'
-        : state.matrix.length
-          ? ' Отметьте поставку слева в таблице для сверки с 1С.'
+        : selectionHidden
+          ? ' Выбранная ранее поставка скрыта текущим фильтром.'
           : '';
-      setMessage(els.matrixMessage, `${modeText} Поставок: ${state.matrix.length}${totalText}.${selectionText}`);
+      setMessage(els.matrixMessage, `${modeText} Показано: ${visibleItems.length} из ${state.matrix.length}.${totalText}${selectionText}`);
       updateMatrixPager();
       els.erpStatusChip.textContent = state.matrixMode === 'ui_demo' ? 'ERP: демо-данные' : 'ERP: данные загружены';
     } catch (err) {
@@ -621,7 +623,7 @@
     renderMatrixSummary(summary || buildMatrixSummary(items));
     renderMatrixSelectionPanel();
     if (!items.length) {
-      els.matrixRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Поставки не загружены или не подходят под выбранный фильтр.</td></tr>';
+      els.matrixRows.innerHTML = '<tr><td colspan="11" class="empty-cell">Поставки не загружены или не подходят под выбранный фильтр.</td></tr>';
       updateMatrixPager();
       return;
     }
@@ -751,6 +753,18 @@
     return items.filter((row) => balanceKind(row) === filter);
   }
 
+  function clearSelectionIfHiddenByFilter() {
+    if (!state.selectedSpecId) return false;
+    const visible = matrixVisibleItems().some((row) => Number(row.spec_id) === Number(state.selectedSpecId));
+    if (visible) return false;
+    state.selectedSpecId = null;
+    state.run = null;
+    state.matrixDetailsOpen = false;
+    localStorage.removeItem('recon_selected_spec');
+    localStorage.setItem('recon_matrix_details_open', '0');
+    return true;
+  }
+
   function balanceKind(row) {
     const balance = Number(row.balance || 0);
     return row.balance_kind || (balance > 0 ? 'overpayment' : balance < 0 ? 'debt' : 'closed');
@@ -783,8 +797,12 @@
       : `data-toggle-key="${escapeHtml(toggleKey || '')}"`;
     const marker = toggleKey
       ? `<span class="level-toggle" aria-hidden="true">${expanded ? '⌄' : '›'}</span>`
-      : `<button class="select-spec-btn ${selected ? 'selected' : ''}" type="button" data-select-spec-id="${escapeHtml(specId || '')}" aria-label="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}" title="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}"><span aria-hidden="true">${selected ? '●' : '○'}</span></button>`;
+      : '';
+    const selectControl = specId
+      ? `<button class="select-spec-btn ${selected ? 'selected' : ''}" type="button" data-select-spec-id="${escapeHtml(specId || '')}" aria-label="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}" title="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}"><span aria-hidden="true">${selected ? '●' : '○'}</span></button>`
+      : '';
     return `<tr class="${rowClass}" ${rowAttrs}>
+      <td class="select-col select-cell">${selectControl}</td>
       <td class="sticky-col">
         <div class="hierarchy-cell level-${level}">
           <div class="hierarchy-title">${marker}<span>${escapeHtml(label)}</span></div>
@@ -811,7 +829,7 @@
     ];
     if (!details.length) return '';
     return `<tr class="matrix-detail-row">
-      <td colspan="10">
+      <td colspan="11">
         <div class="matrix-detail-box">
           <div class="matrix-detail-title">Документы по выбранной поставке</div>
           <div class="matrix-detail-grid">
@@ -1294,6 +1312,11 @@
     if (!validateClientFilter(els.matrixMessage)) return;
     if (!validateDogFilter(els.matrixMessage)) return;
     const visibleItems = matrixVisibleItems();
+    if (!visibleItems.length) {
+      setMessage(els.matrixMessage, 'Нет видимых строк для экспорта. Измените фильтр или загрузите поставки.', true);
+      updateActionState();
+      return;
+    }
     await exportMatrixItemsXlsx({
       items: visibleItems,
       filename: `akt-sverki-matrix-${els.clientIdInput.value || 'client'}-${els.dateFromInput.value || 'from'}-${els.dateToInput.value || 'to'}.xlsx`,
@@ -1356,20 +1379,21 @@
     const hasSpec = Boolean(state.selectedSpecId);
     const hasRun = Boolean(state.run);
     const hasMatrix = Boolean(state.matrix.length);
+    const visibleCount = matrixVisibleItems().length;
     const isMatrixView = state.view === 'matrix';
     els.matrixToReconBtn.disabled = !hasSpec;
-    els.matrixToReconBtn.title = hasSpec ? 'Сверить выбранную поставку с 1С' : 'Сначала отметьте поставку слева в таблице';
+    els.matrixToReconBtn.title = hasSpec ? 'Сверить выбранную поставку с 1С' : 'Сначала отметьте кружок в колонке “Выбор”';
     if (els.matrixExportBtn) {
-      els.matrixExportBtn.disabled = !hasMatrix;
-      els.matrixExportBtn.title = hasMatrix
+      els.matrixExportBtn.disabled = !visibleCount;
+      els.matrixExportBtn.title = visibleCount
         ? 'Экспортирует только загруженные и отфильтрованные строки на экране'
-        : 'Сначала найдите поставки';
+        : (hasMatrix ? 'Нет видимых строк для экспорта' : 'Сначала найдите поставки');
     }
     if (els.matrixSelectionExportBtn) {
       els.matrixSelectionExportBtn.disabled = !hasSpec;
       els.matrixSelectionExportBtn.title = hasSpec ? 'Скачать XLSX по выбранной поставке' : 'Сначала отметьте поставку';
     }
-    if (els.matrixHint) els.matrixHint.classList.toggle('hidden', !hasMatrix || hasSpec);
+    if (els.matrixHint) els.matrixHint.classList.toggle('hidden', !visibleCount || hasSpec);
     els.runBtn.disabled = !hasSpec;
     els.runBtn.textContent = hasRun ? 'Обновить сверку' : 'Сверить с 1С';
     els.exportBtn.disabled = !hasRun;
@@ -1501,7 +1525,16 @@
       }
     });
     els.matrixStatusFilter.addEventListener('change', () => {
-      renderMatrix(buildMatrixSummary(matrixVisibleItems()));
+      const selectionHidden = clearSelectionIfHiddenByFilter();
+      const items = matrixVisibleItems();
+      renderMatrix(buildMatrixSummary(items));
+      renderSelectedContext();
+      renderResults();
+      if (selectionHidden) {
+        setMessage(els.matrixMessage, 'Выбранная поставка скрыта текущим фильтром. Выберите поставку из видимых строк.', true);
+      } else {
+        setMessage(els.matrixMessage, `Фильтр применен. Показано: ${items.length} из ${state.matrix.length}.`);
+      }
       updateActionState();
     });
     els.presetYearBtn.addEventListener('click', setCurrentYear);

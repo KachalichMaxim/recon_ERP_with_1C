@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light">
   <title>Сверка ERP и 1С</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23C4122F'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='26' font-family='Arial' font-weight='700' fill='white'%3EV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="reconciliation.css?v=20260702_workflow_polish">
-  <script src="reconciliation.js?v=20260702_workflow_polish" defer></script>
+  <link rel="stylesheet" href="reconciliation.css?v=20260703_matrix_ux">
+  <script src="reconciliation.js?v=20260703_matrix_ux" defer></script>
 </head>
 <body>
   <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
@@ -118,7 +118,7 @@
           </div>
           <div class="button-row">
             <button class="btn btn-outline" id="matrixExportBtn" type="button" disabled>Скачать видимые строки XLSX</button>
-            <button class="btn btn-outline" id="matrixToReconBtn" type="button" disabled>Сверить с 1С</button>
+            <button class="btn btn-outline hidden" id="matrixToReconBtn" type="button" disabled>Сверить выбранную</button>
           </div>
         </div>
 
@@ -163,7 +163,7 @@
           </div>
         </section>
         <div class="message" id="matrixMessage" role="status" aria-live="polite"></div>
-        <div class="matrix-hint hidden" id="matrixHint">Отметьте поставку слева в таблице, чтобы сверить ее с 1С.</div>
+        <div class="matrix-hint hidden" id="matrixHint">Отметьте кружок ○ в колонке “Выбор”, чтобы сверить поставку с 1С.</div>
 
         <div class="kpi-grid" id="matrixSummaryCards">
           <div class="kpi"><span>Поставки</span><b data-key="deliveries">0</b></div>
@@ -187,8 +187,9 @@
           <table class="matrix-table">
             <thead>
               <tr>
+                <th class="select-col">Выбор</th>
                 <th class="sticky-col">Иерархия</th>
-                <th>Поставка / заявка</th>
+                <th>Номер</th>
                 <th>Счет</th>
                 <th class="num">Сумма по счету</th>
                 <th class="num">Сумма оплаты</th>
@@ -200,13 +201,14 @@
               </tr>
             </thead>
             <tbody id="matrixRows">
-              <tr><td colspan="10" class="empty-cell">Задайте фильтры и нажмите “Найти поставки”.</td></tr>
+              <tr><td colspan="11" class="empty-cell">Задайте фильтры и нажмите “Найти поставки”.</td></tr>
             </tbody>
           </table>
         </div>
         <div class="pager" id="matrixPager">
           <button class="btn btn-outline" id="matrixPrevBtn" type="button">Назад</button>
           <span id="matrixPagerText">Поставки не загружены</span>
+          <span class="pager-note">Экспорт видимых строк скачивает только текущую страницу и фильтр.</span>
           <button class="btn btn-outline" id="matrixNextBtn" type="button">Дальше</button>
         </div>
       </section>

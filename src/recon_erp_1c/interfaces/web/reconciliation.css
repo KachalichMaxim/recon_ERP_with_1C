@@ -741,6 +741,10 @@ textarea::placeholder {
   font-size: 12px;
 }
 
+.pager-note {
+  max-width: 360px;
+}
+
 .selected-title {
   color: var(--ink);
   font-weight: 850;
@@ -891,17 +895,34 @@ tr.matrix-detail-row td {
   text-transform: uppercase;
 }
 
-.sticky-col {
+.select-col {
   position: sticky;
   left: 0;
+  z-index: 4;
+  width: 58px;
+  min-width: 58px;
+  max-width: 58px;
+  text-align: center;
+  background: inherit;
+  box-shadow: 1px 0 0 var(--line);
+}
+
+.sticky-col {
+  position: sticky;
+  left: 58px;
   z-index: 3;
   min-width: 320px;
   max-width: 360px;
   background: inherit;
 }
 
+th.select-col,
 th.sticky-col {
   background: #e6e6e3;
+}
+
+.select-cell {
+  vertical-align: middle;
 }
 
 .sticky-right-status {
@@ -962,14 +983,14 @@ th.sticky-right-balance {
 }
 
 .select-spec-btn {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
   display: inline-grid;
   place-items: center;
-  border: 0;
+  border: 1px solid var(--line-strong);
   border-radius: 50%;
-  background: transparent;
+  background: #fff;
   color: var(--muted);
   padding: 0;
   cursor: pointer;
@@ -979,12 +1000,14 @@ th.sticky-right-balance {
 }
 
 .select-spec-btn:hover {
+  border-color: var(--red);
   background: #fff7f8;
   color: var(--red-strong);
 }
 
 .select-spec-btn.selected {
-  background: transparent;
+  border-color: var(--red);
+  background: var(--red-soft);
   color: var(--red);
 }
 
