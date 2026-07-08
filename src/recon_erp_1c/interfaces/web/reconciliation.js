@@ -1583,7 +1583,7 @@
       if (selectionHidden) {
         setMessage(els.matrixMessage, 'Выбранная поставка скрыта текущим фильтром. Выберите поставку из видимых строк.', true);
       } else {
-        setMessage(els.matrixMessage, `Фильтр статуса применен к текущей странице. Показано: ${items.length} из ${state.matrix.length}. Итоги сверху остаются по всему фильтру договора/периода.`);
+        setMessage(els.matrixMessage, `Фильтр статуса применен к текущей странице. Показано: ${items.length} из ${state.matrix.length}.`);
       }
       updateActionState();
     });

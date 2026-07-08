@@ -600,6 +600,7 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
         return _demo_matrix_payload()
     repository = _erp_repository()
     export_all = _optional_bool(query, "all", default=False)
+    include_total = _optional_bool(query, "include_total", default=False)
     requested_limit = _optional_int(query, "limit") or 50
     limit = max(1, min(requested_limit, 2000 if export_all else 500))
     offset = 0 if export_all else (_optional_int(query, "offset") or 0)
@@ -609,11 +610,15 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
     date_to = _optional_date(query, "date_to")
     started = time.perf_counter()
     total_count = repository.count_deliveries(client_id=client_id, dog_id=dog_id, date_from=date_from, date_to=date_to)
-    total_summary = repository.matrix_total_summary(
-        client_id=client_id,
-        dog_id=dog_id,
-        date_from=date_from,
-        date_to=date_to,
+    total_summary = (
+        repository.matrix_total_summary(
+            client_id=client_id,
+            dog_id=dog_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        if include_total
+        else None
     )
     if export_all:
         limit = max(1, min(total_count or limit, 2000))
@@ -643,7 +648,7 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
         "has_more": offset + len(items) < total_count,
         "summary": _matrix_summary(items),
         "total_summary": total_summary,
-        "summary_scope": "all_filtered",
+        "summary_scope": "all_filtered" if total_summary else "page",
         "page_summary": _matrix_summary(items),
         "limit": limit,
         "all_export_limited": export_all and total_count > limit,
