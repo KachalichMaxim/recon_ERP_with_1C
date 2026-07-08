@@ -187,10 +187,16 @@ veda_reconciliation_items
 ## Performance rules
 
 - live-экран всегда использует `limit`;
+- целевое время загрузки live-матрицы: до 10 секунд для страницы до 50 поставок при фильтре по ЮЛ/договору/периоду;
+- целевое время загрузки полного набора одного договора: до 15 секунд для объема до 150 поставок; больший объем переводится в пагинацию или background runner;
+- целевое время XLSX-выгрузки одного договора: до 20 секунд для объема до 150 поставок;
+- API матрицы возвращает `metrics.erp_sql_ms`; этот показатель нужно показывать/логировать для диагностики производительности;
 - полная историческая сверка запускается только через background runner;
 - 1C REST endpoints обязаны поддерживать `limit`, `cursor`, `changed_since`;
 - повторная сверка должна использовать `updated_at` и `hash`;
 - ERP SQL должен использовать индексы по `veda_specs.f_dogid`, `veda_dogs.f_contrid`, `veda_clients.f_contactid`, `veda_spec_invoices.f_specid`, `veda_spec_invoices.f_parenttype`, `veda_acchist_docs.f_docid`, `veda_categs(f_objectid, f_ctgtype, f_objecttype)`.
+
+Текущий production-baseline от 2026-07-08 для договора `client_id=221`, `dog_id=88`, период `2025-01-01..2026-07-08`: 50 поставок загружаются за 7.2 сек, полный набор 126 поставок - за 12.7 сек, XLSX на 126 поставок - за 12.9 сек.
 
 ## Environment variables
 
