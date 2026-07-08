@@ -117,7 +117,8 @@
             <p>Иерархия клиент → ЮЛ → договор → поставка. Это ERP-сальдовка: счета, оплаты, возмещаемые и невозмещаемые суммы.</p>
           </div>
           <div class="button-row">
-            <button class="btn btn-outline" id="matrixExportBtn" type="button" disabled>Скачать видимые строки XLSX</button>
+            <button class="btn btn-outline" id="matrixExportBtn" type="button" disabled>Скачать страницу XLSX</button>
+            <button class="btn btn-outline" id="matrixExportAllBtn" type="button" disabled>Скачать весь фильтр XLSX</button>
             <button class="btn btn-outline hidden" id="matrixToReconBtn" type="button" disabled>Сверить выбранную</button>
           </div>
         </div>
@@ -143,7 +144,7 @@
           </div>
           <div class="field compact">
             <label for="limitInput">Поставок</label>
-            <input id="limitInput" type="number" value="20" min="1" max="100">
+            <input id="limitInput" type="number" value="50" min="1" max="500">
           </div>
           <div class="field compact">
             <label for="matrixStatusFilter">Статус</label>
@@ -173,6 +174,7 @@
           <div class="kpi"><span>Невозмещаемые</span><b data-key="non_reimbursable_sum">0 ₽</b></div>
           <div class="kpi"><span>Долг/переплата</span><b data-key="balance">0 ₽</b></div>
         </div>
+        <div class="matrix-hint">Итоги выше считаются по всему выбранному фильтру договора/периода, а не только по текущей странице.</div>
 
         <div class="selected-delivery-panel hidden" id="matrixSelectionPanel">
           <div id="matrixSelectionText"></div>
@@ -208,7 +210,7 @@
         <div class="pager" id="matrixPager">
           <button class="btn btn-outline" id="matrixPrevBtn" type="button">Назад</button>
           <span id="matrixPagerText">Поставки не загружены</span>
-          <span class="pager-note">Экспорт видимых строк скачивает только текущую страницу и фильтр.</span>
+          <span class="pager-note">“Скачать страницу” выгружает видимые строки; “Скачать весь фильтр” выгружает все найденные поставки по текущим фильтрам.</span>
           <button class="btn btn-outline" id="matrixNextBtn" type="button">Дальше</button>
         </div>
       </section>

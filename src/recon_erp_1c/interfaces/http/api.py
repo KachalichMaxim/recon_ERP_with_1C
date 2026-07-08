@@ -105,6 +105,16 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "erp_not_found", "message": str(exc)})
         except RuntimeError as exc:
             self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "service_unavailable", "message": str(exc)})
+        except Exception as exc:  # noqa: BLE001 - HTTP handler must not drop the connection on infrastructure errors
+            self.log_error("Unhandled GET error: %s", exc)
+            self._json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {
+                    "ok": False,
+                    "error": "service_unavailable",
+                    "message": "ERP temporarily unavailable. Please retry the request.",
+                },
+            )
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib callback name
         parsed = urlparse(self.path)
@@ -143,6 +153,16 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "bad_request", "message": str(exc)})
         except RuntimeError as exc:
             self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "service_unavailable", "message": str(exc)})
+        except Exception as exc:  # noqa: BLE001 - HTTP handler must not drop the connection on infrastructure errors
+            self.log_error("Unhandled POST error: %s", exc)
+            self._json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {
+                    "ok": False,
+                    "error": "service_unavailable",
+                    "message": "ERP temporarily unavailable. Please retry the request.",
+                },
+            )
 
     def _health(self) -> None:
         config = _app_config()
@@ -579,13 +599,24 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
     if os.environ.get("RECON_UI_DEMO", "").strip() == "1":
         return _demo_matrix_payload()
     repository = _erp_repository()
-    limit = max(1, min(_optional_int(query, "limit") or 20, 100))
-    offset = _optional_int(query, "offset") or 0
+    export_all = _optional_bool(query, "all", default=False)
+    requested_limit = _optional_int(query, "limit") or 50
+    limit = max(1, min(requested_limit, 2000 if export_all else 500))
+    offset = 0 if export_all else (_optional_int(query, "offset") or 0)
     client_id = _optional_int(query, "client_id")
     dog_id = _optional_int(query, "dog_id")
     date_from = _optional_date(query, "date_from")
     date_to = _optional_date(query, "date_to")
     started = time.perf_counter()
+    total_count = repository.count_deliveries(client_id=client_id, dog_id=dog_id, date_from=date_from, date_to=date_to)
+    total_summary = repository.matrix_total_summary(
+        client_id=client_id,
+        dog_id=dog_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    if export_all:
+        limit = max(1, min(total_count or limit, 2000))
     command = ListDeliveriesCommand(
         client_id=client_id,
         dog_id=dog_id,
@@ -602,7 +633,6 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
         _matrix_row(repository, delivery, documents_by_spec.get(int(delivery.get("spec_id") or 0), []))
         for delivery in deliveries
     ]
-    total_count = repository.count_deliveries(client_id=client_id, dog_id=dog_id, date_from=date_from, date_to=date_to)
     return {
         "ok": True,
         "mode": "erp_live",
@@ -612,7 +642,11 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
         "offset": offset,
         "has_more": offset + len(items) < total_count,
         "summary": _matrix_summary(items),
+        "total_summary": total_summary,
+        "summary_scope": "all_filtered",
+        "page_summary": _matrix_summary(items),
         "limit": limit,
+        "all_export_limited": export_all and total_count > limit,
         "metrics": {"erp_sql_ms": round((time.perf_counter() - started) * 1000, 2)},
     }
 

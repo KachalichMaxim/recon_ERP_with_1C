@@ -66,6 +66,98 @@ WHERE (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
   AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s);
 """
 
+MATRIX_TOTAL_SUMMARY = """
+SELECT
+    COUNT(*) AS deliveries,
+    COALESCE(SUM(COALESCE(inv.invoice_sum, 0)), 0) AS invoice_sum,
+    COALESCE(SUM(COALESCE(pay.payment_sum, 0)), 0) AS payment_sum,
+    COALESCE(SUM(COALESCE(sales.reimbursable_sum, 0)), 0) AS reimbursable_sum,
+    COALESCE(SUM(COALESCE(sales.non_reimbursable_sum, 0)), 0) AS non_reimbursable_sum,
+    COALESCE(SUM(COALESCE(pay.payment_sum, 0) - COALESCE(sales.reimbursable_sum, 0) - COALESCE(sales.non_reimbursable_sum, 0)), 0) AS balance,
+    SUM(CASE WHEN COALESCE(pay.payment_sum, 0) - COALESCE(sales.reimbursable_sum, 0) - COALESCE(sales.non_reimbursable_sum, 0) < 0 THEN 1 ELSE 0 END) AS debts,
+    SUM(CASE WHEN COALESCE(pay.payment_sum, 0) - COALESCE(sales.reimbursable_sum, 0) - COALESCE(sales.non_reimbursable_sum, 0) > 0 THEN 1 ELSE 0 END) AS overpayments
+FROM (
+    SELECT
+        s.f_id AS spec_id,
+        COALESCE(s.f_kod1cb, '') AS buyer_contract_code
+    FROM veda_specs s
+    JOIN veda_dogs d ON d.f_id = s.f_dogid
+    WHERE (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
+      AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
+      AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
+      AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s)
+) filtered_specs
+LEFT JOIN (
+    SELECT
+        schet.f_dogid AS spec_id,
+        SUM(COALESCE(schet.f_sum, 0)) AS invoice_sum
+    FROM veda_schets schet
+    WHERE schet.f_dogtype = 2
+      AND COALESCE(schet.f_type, 0) = 1
+    GROUP BY schet.f_dogid
+) inv ON inv.spec_id = filtered_specs.spec_id
+LEFT JOIN (
+    SELECT
+        spec.f_id AS spec_id,
+        SUM(COALESCE(d.f_clssum, 0)) AS payment_sum
+    FROM veda_acchist_docs d
+    JOIN veda_acchist h ON h.f_id = d.f_acchistid
+    JOIN veda_spec_invoices oper ON oper.f_id = d.f_docid
+    LEFT JOIN veda_categs oper4_specs
+        ON oper4_specs.f_objectid = oper.f_id
+       AND oper4_specs.f_ctgtype = 24
+       AND oper4_specs.f_objecttype = 5
+    JOIN veda_specs spec
+        ON spec.f_id = CASE oper.f_parenttype
+          WHEN 2 THEN oper.f_specid
+          WHEN 4 THEN CAST(oper4_specs.f_valstr AS SIGNED)
+          ELSE NULL
+        END
+    WHERE d.f_doctype = 3
+      AND oper.f_parenttype IN (2, 4)
+    GROUP BY spec.f_id
+) pay ON pay.spec_id = filtered_specs.spec_id
+LEFT JOIN (
+    SELECT
+        spec.f_id AS spec_id,
+        SUM(
+            CASE
+                WHEN COALESCE(oper.f_isvozm, 0) = 1 THEN COALESCE(akt.f_sum, 0)
+                WHEN COALESCE(oper.f_isvozm, 0) NOT IN (1, 2)
+                 AND COALESCE(spec.f_kod1cb, '') <> ''
+                 AND COALESCE(NULLIF(dog.f_kod1c, ''), NULLIF(spec.f_kod1cp, ''), NULLIF(spec.f_kod1cb, ''), '') <> COALESCE(spec.f_kod1cb, '')
+                    THEN COALESCE(akt.f_sum, 0)
+                ELSE 0
+            END
+        ) AS reimbursable_sum,
+        SUM(
+            CASE
+                WHEN COALESCE(oper.f_isvozm, 0) = 2 THEN COALESCE(akt.f_sum, 0)
+                WHEN COALESCE(oper.f_isvozm, 0) NOT IN (1, 2)
+                 AND COALESCE(spec.f_kod1cb, '') <> ''
+                 AND COALESCE(NULLIF(dog.f_kod1c, ''), NULLIF(spec.f_kod1cp, ''), NULLIF(spec.f_kod1cb, ''), '') = COALESCE(spec.f_kod1cb, '')
+                    THEN COALESCE(akt.f_sum, 0)
+                ELSE 0
+            END
+        ) AS non_reimbursable_sum
+    FROM veda_spec_invoices oper
+    LEFT JOIN veda_categs oper4_specs
+        ON oper4_specs.f_objectid = oper.f_id
+       AND oper4_specs.f_ctgtype = 24
+       AND oper4_specs.f_objecttype = 5
+    JOIN veda_specs spec
+        ON spec.f_id = CASE oper.f_parenttype
+          WHEN 2 THEN oper.f_specid
+          WHEN 4 THEN CAST(oper4_specs.f_valstr AS SIGNED)
+          ELSE NULL
+        END
+    JOIN veda_akts akt ON akt.f_operid = oper.f_id
+    LEFT JOIN veda_dogs dog ON dog.f_id = akt.f_dogid
+    WHERE oper.f_parenttype IN (2, 4)
+    GROUP BY spec.f_id
+) sales ON sales.spec_id = filtered_specs.spec_id;
+"""
+
 SEARCH_CLIENTS = """
 SELECT DISTINCT
     COALESCE(client.f_id, 0) AS client_id,

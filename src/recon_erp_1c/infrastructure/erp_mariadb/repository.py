@@ -28,7 +28,7 @@ class MariaDbErpReadRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, object]]:
-        limit = max(1, min(int(limit or 50), 500))
+        limit = max(1, min(int(limit or 50), 2000))
         offset = max(0, int(offset or 0))
         rows = self._fetch_all(
             queries.LIST_DELIVERIES,
@@ -76,6 +76,45 @@ class MariaDbErpReadRepository:
             },
         )
         return int(row.get("total_count") or 0) if row else 0
+
+    def matrix_total_summary(
+        self,
+        *,
+        client_id: int | None = None,
+        dog_id: int | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> dict[str, object]:
+        row = self._fetch_one(
+            queries.MATRIX_TOTAL_SUMMARY,
+            {
+                "client_id": client_id,
+                "dog_id": dog_id,
+                "date_from": date_from,
+                "date_to": date_to,
+            },
+        )
+        if row is None:
+            return {
+                "deliveries": 0,
+                "invoice_sum": "0.00",
+                "payment_sum": "0.00",
+                "reimbursable_sum": "0.00",
+                "non_reimbursable_sum": "0.00",
+                "balance": "0.00",
+                "debts": 0,
+                "overpayments": 0,
+            }
+        return {
+            "deliveries": int(row.get("deliveries") or 0),
+            "invoice_sum": _decimal_text(row.get("invoice_sum")),
+            "payment_sum": _decimal_text(row.get("payment_sum")),
+            "reimbursable_sum": _decimal_text(row.get("reimbursable_sum")),
+            "non_reimbursable_sum": _decimal_text(row.get("non_reimbursable_sum")),
+            "balance": _decimal_text(row.get("balance")),
+            "debts": int(row.get("debts") or 0),
+            "overpayments": int(row.get("overpayments") or 0),
+        }
 
     def search_clients(self, query: str, *, limit: int = 12) -> list[dict[str, object]]:
         text = query.strip()
@@ -310,6 +349,10 @@ def _as_date(value: object) -> date | None:
 def _date_to_iso(value: object) -> str:
     parsed = _as_date(value)
     return parsed.isoformat() if parsed else ""
+
+
+def _decimal_text(value: object) -> str:
+    return str(Decimal(str(value or "0")).quantize(Decimal("0.01")))
 
 
 def _int_or_none(value: object) -> int | None:

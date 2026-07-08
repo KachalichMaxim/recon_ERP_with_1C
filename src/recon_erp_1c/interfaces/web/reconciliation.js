@@ -82,6 +82,7 @@
     matrixSelectionDetailsBtn: $('matrixSelectionDetailsBtn'),
     matrixSelectionExportBtn: $('matrixSelectionExportBtn'),
     matrixExportBtn: $('matrixExportBtn'),
+    matrixExportAllBtn: $('matrixExportAllBtn'),
     matrixPagerText: $('matrixPagerText'),
     matrixPrevBtn: $('matrixPrevBtn'),
     matrixNextBtn: $('matrixNextBtn'),
@@ -151,6 +152,9 @@
     const text = err && err.message ? err.message : String(err || '');
     if (/ERP MariaDB is not configured/i.test(text)) {
       return 'ERP сейчас недоступна. Проверьте подключение сервиса сверки к ERP.';
+    }
+    if (/ERP temporarily unavailable|service_unavailable|Name or service not known/i.test(text)) {
+      return 'ERP временно недоступна или не отвечает. Повторите запрос через несколько секунд.';
     }
     if (/Direct ERP login is disabled/i.test(text)) return 'Вход по логину и паролю отключен. Откройте модуль из ERP.';
     if (/ERP launch token validation endpoint is not configured/i.test(text)) return 'Не настроена проверка launch token ERP.';
@@ -373,7 +377,7 @@
       ['dog_id', dogId],
       ['date_from', els.dateFromInput.value],
       ['date_to', els.dateToInput.value],
-      ['limit', els.limitInput.value || '20'],
+      ['limit', els.limitInput.value || '50'],
       ['offset', String(state.matrixOffset || 0)],
     ].forEach(([key, value]) => {
       if (String(value || '').trim()) params.set(key, value);
@@ -425,19 +429,20 @@
       }
       const selectionHidden = clearSelectionIfHiddenByFilter();
       const visibleItems = matrixVisibleItems();
-      renderMatrix(buildMatrixSummary(visibleItems));
+      renderMatrix(matrixKpiSummary());
       renderSelectedContext();
       renderResults();
       updateActionState();
       const modeText = state.matrixMode === 'ui_demo' ? 'Локальный UI-пример, не боевые данные.' : 'Данные ERP загружены.';
       const totalCount = Number(payload.total_count || 0);
       const totalText = totalCount && totalCount !== state.matrix.length ? ` Всего найдено: ${totalCount}.` : '';
+      const summaryText = payload.total_summary ? ' Итоги сверху рассчитаны по всему фильтру.' : '';
       const selectionText = state.matrix.length === 1 && state.selectedSpecId
         ? ' Найдена одна поставка — она выбрана автоматически.'
         : selectionHidden
           ? ' Выбранная ранее поставка скрыта текущим фильтром.'
           : '';
-      setMessage(els.matrixMessage, `${modeText} Показано: ${visibleItems.length} из ${state.matrix.length}.${totalText}${selectionText}`);
+      setMessage(els.matrixMessage, `${modeText} Показано: ${visibleItems.length} из ${state.matrix.length}.${totalText}${summaryText}${selectionText}`);
       updateMatrixPager();
       els.erpStatusChip.textContent = state.matrixMode === 'ui_demo' ? 'ERP: демо-данные' : 'ERP: данные загружены';
     } catch (err) {
@@ -600,6 +605,11 @@
     };
   }
 
+  function matrixKpiSummary() {
+    const payload = state.matrixPayload || {};
+    return payload.total_summary || payload.summary || buildMatrixSummary(matrixVisibleItems());
+  }
+
   function sumField(items, field) {
     return items.reduce((sum, row) => sum + Number(row[field] || 0), 0).toFixed(2);
   }
@@ -620,7 +630,7 @@
 
   function renderMatrix(summary) {
     const items = matrixVisibleItems();
-    renderMatrixSummary(summary || buildMatrixSummary(items));
+    renderMatrixSummary(summary || matrixKpiSummary());
     renderMatrixSelectionPanel();
     if (!items.length) {
       els.matrixRows.innerHTML = '<tr><td colspan="11" class="empty-cell">Поставки не загружены или не подходят под выбранный фильтр.</td></tr>';
@@ -691,7 +701,7 @@
         const key = tr.getAttribute('data-toggle-key') || '';
         state.matrixExpanded[key] = !isMatrixExpanded(key);
         localStorage.setItem('recon_matrix_expanded_v1', JSON.stringify(state.matrixExpanded));
-        renderMatrix(buildMatrixSummary(matrixVisibleItems()));
+        renderMatrix(matrixKpiSummary());
       });
     });
     els.matrixRows.querySelectorAll('tr[data-spec-id]').forEach((tr) => {
@@ -716,7 +726,7 @@
     localStorage.setItem('recon_matrix_details_open', '0');
     state.run = null;
     setMessage(els.matrixMessage, 'Поставка выбрана. Можно сверить ее с 1С или скачать поставку XLSX.');
-    renderMatrix(buildMatrixSummary(matrixVisibleItems()));
+    renderMatrix(matrixKpiSummary());
     renderSelectedContext();
     renderResults();
     updateActionState();
@@ -725,7 +735,7 @@
 
   function updateMatrixPager() {
     const payload = state.matrixPayload || {};
-    const limit = Number(payload.limit || els.limitInput.value || 20);
+    const limit = Number(payload.limit || els.limitInput.value || 50);
     const offset = Number(payload.offset || state.matrixOffset || 0);
     const count = Number(payload.count || state.matrix.length || 0);
     const total = Number(payload.total_count || count || 0);
@@ -740,7 +750,7 @@
 
   function matrixPage(delta) {
     const payload = state.matrixPayload || {};
-    const limit = Number(payload.limit || els.limitInput.value || 20);
+    const limit = Number(payload.limit || els.limitInput.value || 50);
     const currentOffset = Number(payload.offset || state.matrixOffset || 0);
     loadMatrix(Math.max(0, currentOffset + delta * limit));
   }
@@ -1325,6 +1335,39 @@
     });
   }
 
+  async function exportMatrixAllXlsx() {
+    if (!validateDateRange(els.matrixMessage)) return;
+    if (!validateClientFilter(els.matrixMessage)) return;
+    if (!validateDogFilter(els.matrixMessage)) return;
+    const params = queryParams();
+    params.set('all', '1');
+    params.set('offset', '0');
+    params.delete('limit');
+    setMessage(els.matrixMessage, 'Формируем XLSX по всем поставкам текущего фильтра...');
+    try {
+      const resp = await api(`/api/reconciliation/matrix.xlsx?${params.toString()}`, {
+        headers: { Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      });
+      if (!resp.ok) {
+        let message = `HTTP ${resp.status}`;
+        try { message = (await resp.json()).message || message; } catch (_) {}
+        throw new Error(message);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `akt-sverki-matrix-all-${els.clientIdInput.value || 'client'}-${els.dateFromInput.value || 'from'}-${els.dateToInput.value || 'to'}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage(els.matrixMessage, 'XLSX по всему фильтру сформирован.');
+    } catch (err) {
+      setMessage(els.matrixMessage, normalizeErrorMessage(err), true);
+    }
+  }
+
   async function exportSelectedSpecXlsx() {
     const row = selectedSpec();
     if (!row) return;
@@ -1386,8 +1429,15 @@
     if (els.matrixExportBtn) {
       els.matrixExportBtn.disabled = !visibleCount;
       els.matrixExportBtn.title = visibleCount
-        ? 'Экспортирует только загруженные и отфильтрованные строки на экране'
+        ? 'Экспортирует текущую загруженную страницу с учетом фильтра статуса'
         : (hasMatrix ? 'Нет видимых строк для экспорта' : 'Сначала найдите поставки');
+    }
+    if (els.matrixExportAllBtn) {
+      const totalCount = Number((state.matrixPayload || {}).total_count || 0);
+      els.matrixExportAllBtn.disabled = !totalCount;
+      els.matrixExportAllBtn.title = totalCount
+        ? `Экспортирует все найденные поставки по фильтру: ${totalCount}`
+        : 'Сначала найдите поставки';
     }
     if (els.matrixSelectionExportBtn) {
       els.matrixSelectionExportBtn.disabled = !hasSpec;
@@ -1420,7 +1470,7 @@
     if (!state.selectedSpecId) return;
     state.matrixDetailsOpen = !state.matrixDetailsOpen;
     localStorage.setItem('recon_matrix_details_open', state.matrixDetailsOpen ? '1' : '0');
-    renderMatrix(buildMatrixSummary(matrixVisibleItems()));
+    renderMatrix(matrixKpiSummary());
   }
 
   function validateClientFilter(messageNode) {
@@ -1476,7 +1526,7 @@
     delete els.dogIdInput.dataset.dogLabel;
     renderDogSuggestions([]);
     if (els.matrixStatusFilter) els.matrixStatusFilter.value = 'all';
-    els.limitInput.value = '20';
+    els.limitInput.value = '50';
     setCurrentYear();
     state.matrix = [];
     state.matrixPayload = null;
@@ -1527,13 +1577,13 @@
     els.matrixStatusFilter.addEventListener('change', () => {
       const selectionHidden = clearSelectionIfHiddenByFilter();
       const items = matrixVisibleItems();
-      renderMatrix(buildMatrixSummary(items));
+      renderMatrix(matrixKpiSummary());
       renderSelectedContext();
       renderResults();
       if (selectionHidden) {
         setMessage(els.matrixMessage, 'Выбранная поставка скрыта текущим фильтром. Выберите поставку из видимых строк.', true);
       } else {
-        setMessage(els.matrixMessage, `Фильтр применен. Показано: ${items.length} из ${state.matrix.length}.`);
+        setMessage(els.matrixMessage, `Фильтр статуса применен к текущей странице. Показано: ${items.length} из ${state.matrix.length}. Итоги сверху остаются по всему фильтру договора/периода.`);
       }
       updateActionState();
     });
@@ -1544,6 +1594,7 @@
     els.matrixSelectionDetailsBtn.addEventListener('click', toggleMatrixDetails);
     els.matrixSelectionExportBtn.addEventListener('click', exportSelectedSpecXlsx);
     els.matrixExportBtn.addEventListener('click', exportMatrixXlsx);
+    if (els.matrixExportAllBtn) els.matrixExportAllBtn.addEventListener('click', exportMatrixAllXlsx);
     els.matrixPrevBtn.addEventListener('click', () => matrixPage(-1));
     els.matrixNextBtn.addEventListener('click', () => matrixPage(1));
     els.runBtn.addEventListener('click', runReconciliation);
