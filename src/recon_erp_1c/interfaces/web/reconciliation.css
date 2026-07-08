@@ -871,7 +871,7 @@ tr.matrix-detail-row td {
 
 .matrix-detail-grid {
   display: grid;
-  grid-template-columns: 150px minmax(180px, 1fr) 120px 130px;
+  grid-template-columns: 150px minmax(180px, 1fr) 120px 130px 140px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -882,8 +882,20 @@ tr.matrix-detail-row td {
   padding: 7px 9px;
 }
 
-.matrix-detail-grid > div:nth-child(4n) {
+.matrix-detail-grid > div:nth-child(5n),
+.matrix-detail-grid > div:nth-child(5n+4) {
   text-align: right;
+}
+
+.matrix-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.matrix-link:hover {
+  color: var(--accent);
 }
 
 .matrix-detail-head {

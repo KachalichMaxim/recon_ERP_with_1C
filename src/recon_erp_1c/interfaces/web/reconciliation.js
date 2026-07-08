@@ -688,6 +688,7 @@
             aggregate: row,
             specText: row.spec_number || '—',
             specId: row.spec_id,
+            erpUrl: row.erp_url,
           }));
           if (Number(row.spec_id) === Number(state.selectedSpecId) && state.matrixDetailsOpen) {
             html.push(matrixSpecDetailsHtml(row));
@@ -794,7 +795,7 @@
     return map;
   }
 
-  function matrixRowHtml({ level, label, subtext, aggregate, specText, specId, toggleKey, expanded }) {
+  function matrixRowHtml({ level, label, subtext, aggregate, specText, specId, toggleKey, expanded, erpUrl }) {
     const balance = Number(aggregate.balance || 0);
     const kind = aggregate.balance_kind || (balance > 0 ? 'overpayment' : balance < 0 ? 'debt' : 'closed');
     const status = aggregate.balance_label || (balance > 0 ? 'Переплата' : balance < 0 ? 'Долг' : 'Закрыто');
@@ -811,11 +812,14 @@
     const selectControl = specId
       ? `<button class="select-spec-btn ${selected ? 'selected' : ''}" type="button" data-select-spec-id="${escapeHtml(specId || '')}" aria-label="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}" title="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}"><span aria-hidden="true">${selected ? '●' : '○'}</span></button>`
       : '';
+    const labelHtml = erpUrl
+      ? `<a class="matrix-link" href="${escapeHtml(erpUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(label)}</a>`
+      : `<span>${escapeHtml(label)}</span>`;
     return `<tr class="${rowClass}" ${rowAttrs}>
       <td class="select-col select-cell">${selectControl}</td>
       <td class="sticky-col">
         <div class="hierarchy-cell level-${level}">
-          <div class="hierarchy-title">${marker}<span>${escapeHtml(label)}</span></div>
+          <div class="hierarchy-title">${marker}${labelHtml}</div>
           <div class="subtext">${escapeHtml(subtext || '')}</div>
         </div>
       </td>
@@ -847,11 +851,13 @@
             <div class="matrix-detail-head">Номер / код 1С</div>
             <div class="matrix-detail-head">Дата</div>
             <div class="matrix-detail-head">Сумма</div>
+            <div class="matrix-detail-head">Оплата по счету</div>
             ${details.map((item) => `
               <div>${escapeHtml(item.type)}</div>
               <div class="mono">${escapeHtml(item.number)}</div>
               <div class="mono">${escapeHtml(fmtDate(item.date))}</div>
               <div class="mono">${escapeHtml(fmtMoneyValue(item.amount, item.currency || 'RUB'))}</div>
+              <div class="mono">${item.paidAmount === '' ? '—' : escapeHtml(fmtMoneyValue(item.paidAmount, item.paidCurrency || 'RUB'))}</div>
             `).join('')}
           </div>
         </div>
@@ -867,6 +873,8 @@
         date: row.date || '',
         amount: row.amount || 0,
         currency: row.currency || 'RUB',
+        paidAmount: type === 'Счет покупателю' && row.operation_id ? (row.paid_amount || 0) : '',
+        paidCurrency: row.paid_currency || 'RUB',
       }));
     }
     if (!Array.isArray(fallbackNumbers) || !fallbackNumbers.length) return [];

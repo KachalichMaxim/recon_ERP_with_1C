@@ -226,9 +226,7 @@ class MariaDbErpReadRepository:
         return contracts
 
     def list_delivery_documents(self, spec_id: int) -> list[AccountingDocument]:
-        rows = self._fetch_all(queries.DELIVERY_CUSTOMER_INVOICES, {"spec_id": spec_id})
-        rows.extend(self._fetch_all(queries.DELIVERY_OPERATION_DOCUMENTS, {"spec_id": spec_id}))
-        return [_row_to_document(row) for row in rows]
+        return self.list_documents_for_deliveries([spec_id]).get(spec_id, [])
 
     def list_documents_for_deliveries(self, spec_ids: list[int]) -> dict[int, list[AccountingDocument]]:
         ids = sorted({int(spec_id) for spec_id in spec_ids if int(spec_id or 0) > 0})
@@ -240,18 +238,92 @@ class MariaDbErpReadRepository:
             queries.DELIVERY_CUSTOMER_INVOICES_BY_SPEC_IDS.format(spec_id_filter=filter_sql),
             params,
         )
-        rows.extend(
-            self._fetch_all(
-                queries.DELIVERY_OPERATION_DOCUMENTS_BY_SPEC_IDS.format(spec_id_filter=filter_sql),
-                params,
-            )
+        operation_rows = self._fetch_all(
+            queries.DELIVERY_OPERATIONS_BASE_BY_SPEC_IDS.format(spec_id_filter=filter_sql),
+            params,
         )
+        operation_ids = [int(row.get("operation_id") or 0) for row in operation_rows if int(row.get("operation_id") or 0) > 0]
+        amounts_by_operation = {
+            int(row.get("operation_id") or 0): row
+            for row in self._fetch_operation_rows(queries.OPERATION_AMOUNTS_BY_OPERATION_IDS, operation_ids)
+        }
+        closing_by_operation = {
+            int(row.get("operation_id") or 0): row
+            for row in self._fetch_operation_rows(queries.OPERATION_CLOSING_DOCS_BY_OPERATION_IDS, operation_ids)
+        }
+        payment_by_operation = {
+            int(row.get("operation_id") or 0): row
+            for row in self._fetch_operation_rows(queries.OPERATION_PAYMENT_DOCS_BY_OPERATION_IDS, operation_ids)
+        }
+        for operation in operation_rows:
+            operation_id = int(operation.get("operation_id") or 0)
+            if not operation_id:
+                continue
+            amounts = amounts_by_operation.get(operation_id, {})
+            closing = closing_by_operation.get(operation_id, {})
+            payment = payment_by_operation.get(operation_id, {})
+            reimbursement_id = int(operation.get("reimbursement_id") or 0)
+            buyer_code = _str(operation.get("buyer_contract_code"))
+            committent_code = _str(operation.get("committent_contract_code"))
+            operation_contract_code = buyer_code if reimbursement_id == 2 else (
+                _str(closing.get("dog_code1c")) or committent_code or buyer_code
+            )
+            reimbursement_type = (
+                "reimbursable" if reimbursement_id == 1 else "non_reimbursable" if reimbursement_id == 2 else "unknown"
+            )
+            rows.append(
+                {
+                    "spec_id": operation.get("spec_id"),
+                    "document_kind": "sale",
+                    "code1c": closing.get("code1c") or "",
+                    "document_number": closing.get("document_number") or "",
+                    "document_date": closing.get("document_date"),
+                    "amount_total": amounts.get("sale_sum") or Decimal("0"),
+                    "currency": closing.get("currency") or "RUB",
+                    "contract_code1c": operation_contract_code,
+                    "source_id": closing.get("source_id") or 0,
+                    "operation_id": operation_id,
+                    "vat_rate": operation.get("vat_rate") or "",
+                    "reimbursement_type": reimbursement_type,
+                    "deleted": closing.get("deleted") or 0,
+                    "paid_amount": None,
+                }
+            )
+            if Decimal(str(amounts.get("payment_sum") or "0")) != Decimal("0"):
+                rows.append(
+                    {
+                        "spec_id": operation.get("spec_id"),
+                        "document_kind": "payment",
+                        "code1c": payment.get("code1c") or "",
+                        "document_number": payment.get("document_number") or "",
+                        "document_date": payment.get("document_date"),
+                        "amount_total": amounts.get("payment_sum") or Decimal("0"),
+                        "currency": payment.get("currency") or "RUB",
+                        "contract_code1c": buyer_code,
+                        "source_id": payment.get("source_id") or 0,
+                        "operation_id": operation_id,
+                        "vat_rate": "",
+                        "reimbursement_type": "",
+                        "deleted": 0,
+                        "paid_amount": None,
+                    }
+                )
         grouped: dict[int, list[AccountingDocument]] = {spec_id: [] for spec_id in ids}
         for row in rows:
             spec_id = int(row.get("spec_id") or 0)
             if spec_id:
                 grouped.setdefault(spec_id, []).append(_row_to_document(row))
         return grouped
+
+    def _fetch_operation_rows(self, query_template: str, operation_ids: list[int]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for chunk in _chunks(sorted(set(operation_ids)), 500):
+            if not chunk:
+                continue
+            params = {f"operation_id_{index}": operation_id for index, operation_id in enumerate(chunk)}
+            filter_sql = ", ".join(f"%(operation_id_{index})s" for index in range(len(chunk)))
+            rows.extend(self._fetch_all(query_template.format(operation_id_filter=filter_sql), params))
+        return rows
 
     def authenticate_user(self, login: str, password: str) -> dict[str, object] | None:
         row = self._fetch_one(queries.USER_BY_LOGIN, {"login": login})
@@ -298,6 +370,9 @@ def _row_to_document(row: dict[str, Any]) -> AccountingDocument:
         operation_id=_int_or_none(row.get("operation_id")),
         vat_rate=_str(row.get("vat_rate")),
         reimbursement_type=_str(row.get("reimbursement_type")),
+        payment_amount=Money.of(row.get("paid_amount") or Decimal("0"), "RUB")
+        if row.get("paid_amount") is not None
+        else None,
     )
 
 
@@ -353,6 +428,10 @@ def _date_to_iso(value: object) -> str:
 
 def _decimal_text(value: object) -> str:
     return str(Decimal(str(value or "0")).quantize(Decimal("0.01")))
+
+
+def _chunks(values: list[int], size: int) -> list[list[int]]:
+    return [values[index : index + size] for index in range(0, len(values), size)]
 
 
 def _int_or_none(value: object) -> int | None:

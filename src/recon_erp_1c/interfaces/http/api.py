@@ -18,7 +18,7 @@ from recon_erp_1c.application.use_cases.list_deliveries import ListDeliveriesCom
 from recon_erp_1c.application.use_cases.reconcile_delivery import ReconcileDeliveryCommand, ReconcileDeliveryUseCase
 from recon_erp_1c.bootstrap.config import AppConfig
 from recon_erp_1c.domain.entities import AccountingDocument
-from recon_erp_1c.domain.value_objects import DateRange, DocumentKind
+from recon_erp_1c.domain.value_objects import DateRange, DocumentKind, Money
 from recon_erp_1c.infrastructure.erp_mariadb.connection import MariaDbConnectionFactory
 from recon_erp_1c.infrastructure.erp_mariadb.repository import ErpDataNotFound, MariaDbErpReadRepository
 from recon_erp_1c.infrastructure.export.xlsx import reconciliation_matrix_xlsx, reconciliation_run_xlsx
@@ -667,6 +667,18 @@ def _matrix_row(
     invoices = [doc for doc in documents if doc.kind == DocumentKind.CUSTOMER_INVOICE]
     payments = [doc for doc in documents if doc.kind == DocumentKind.PAYMENT]
     sales = [doc for doc in documents if doc.kind == DocumentKind.SALE]
+    payments_by_operation: dict[int, Money] = {}
+    for payment in payments:
+        if not payment.operation_id:
+            continue
+        current = payments_by_operation.get(payment.operation_id)
+        if current is None:
+            payments_by_operation[payment.operation_id] = payment.amount
+        else:
+            payments_by_operation[payment.operation_id] = Money.of(
+                current.amount + payment.amount.amount,
+                current.currency if current.currency == payment.amount.currency else "RUB",
+            )
     non_reimbursable = [
         doc
         for doc in sales
@@ -694,12 +706,13 @@ def _matrix_row(
         "balance_kind": _balance_kind(balance),
         "balance_label": _balance_label(balance),
         "invoice_numbers": _doc_numbers(invoices),
-        "invoice_rows": _doc_rows(invoices),
+        "invoice_rows": _doc_rows(invoices, payments_by_operation),
         "payment_numbers": _doc_numbers(payments),
         "payment_rows": _doc_rows(payments),
         "sf_numbers": _doc_numbers(sales),
         "sf_rows": _doc_rows(sales),
         "documents_count": len(documents),
+        "erp_url": f"http://erp.vedagent/veda/?pgid=15&obid={spec_id}&typeid=1#tabs-0" if spec_id else "",
     }
 
 
@@ -736,17 +749,30 @@ def _doc_numbers(documents: list[AccountingDocument]) -> list[str]:
     return numbers
 
 
-def _doc_rows(documents: list[AccountingDocument]) -> list[dict[str, object]]:
-    return [
-        {
-            "number": doc.number or doc.code1c,
-            "code1c": doc.code1c,
-            "date": doc.date.isoformat() if doc.date else "",
-            "amount": _decimal_text(doc.amount.amount),
-            "currency": doc.amount.currency,
-        }
-        for doc in documents
-    ]
+def _doc_rows(
+    documents: list[AccountingDocument],
+    payments_by_operation: dict[int, Money] | None = None,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for doc in documents:
+        linked_payment = payments_by_operation.get(doc.operation_id) if payments_by_operation and doc.operation_id else None
+        rows.append(
+            {
+                "number": doc.number or doc.code1c,
+                "code1c": doc.code1c,
+                "date": doc.date.isoformat() if doc.date else "",
+                "amount": _decimal_text(doc.amount.amount),
+                "currency": doc.amount.currency,
+                "operation_id": doc.operation_id,
+                "paid_amount": _decimal_text(linked_payment.amount)
+                if linked_payment
+                else (_decimal_text(doc.payment_amount.amount) if doc.payment_amount else ""),
+                "paid_currency": linked_payment.currency
+                if linked_payment
+                else (doc.payment_amount.currency if doc.payment_amount else ""),
+            }
+        )
+    return rows
 
 
 def _balance_kind(balance: Decimal) -> str:

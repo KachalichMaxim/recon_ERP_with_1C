@@ -108,6 +108,7 @@ def reconciliation_matrix_xlsx(matrix: dict[str, Any]) -> bytes:
     ]
     merges: list[str] = []
     balances_by_row: dict[int, Decimal] = {}
+    links_by_row: dict[int, str] = {}
 
     current_row = 2
     for item in items:
@@ -115,13 +116,15 @@ def reconciliation_matrix_xlsx(matrix: dict[str, Any]) -> bytes:
         start_row = current_row
         balance = _to_decimal(item.get("balance"))
         for idx, invoice in enumerate(invoice_rows):
+            if idx == 0 and item.get("erp_url"):
+                links_by_row[current_row] = str(item.get("erp_url"))
             rows.append(
                 [
                     _spec_label(item) if idx == 0 else "",
                     "",
                     invoice.get("number") or "—",
                     _to_decimal(invoice.get("amount")) if invoice.get("amount") not in (None, "") else "",
-                    _to_decimal(item.get("payment_sum")) if idx == 0 else "",
+                    _to_decimal(invoice.get("paid_amount")) if invoice.get("paid_amount") not in (None, "") else "",
                     "",
                     _to_decimal(item.get("reimbursable_sum")) if idx == 0 else "",
                     _to_decimal(item.get("non_reimbursable_sum")) if idx == 0 else "",
@@ -134,7 +137,7 @@ def reconciliation_matrix_xlsx(matrix: dict[str, Any]) -> bytes:
             current_row += 1
         end_row = current_row - 1
         if end_row > start_row:
-            for col_idx in [1, 5, 7, 8, 10, 11]:
+            for col_idx in [1, 7, 8, 10, 11]:
                 col = _col(col_idx)
                 merges.append(f"{col}{start_row}:{col}{end_row}")
 
@@ -170,7 +173,7 @@ def reconciliation_matrix_xlsx(matrix: dict[str, Any]) -> bytes:
             "Только счета покупателю; по каждому счету отдельная строка. Если backend не передал invoice_rows, номер берется из invoice_numbers, а агрегатная сумма ставится в первую строку блока.",
         ],
         ["Сумма по счету", "ERP veda_schets.f_sum", "Сумма конкретного счета покупателю."],
-        ["Сумма оплаты", "ERP get_paidsum / veda_acchist_docs.f_clssum", "Сумма оплат клиента по поставке; объединяется по строкам счетов."],
+        ["Сумма оплаты", "ERP get_paidsum(veda_schets.f_operid)", "Сумма оплат по операции счета. Если ERP не связывает оплату со счетом, остаток выводится отдельной строкой 'Оплата без счета'."],
         ["Возмещаемые расходы", "ERP get_realizsum по операциям f_isvozm=1", "Итог по поставке; объединяется по строкам счетов."],
         ["Невозмещаемые расходы", "ERP get_realizsum по операциям f_isvozm=2", "Итог по поставке; объединяется по строкам счетов."],
         ["№ счф", "ERP/1С закрывающие документы", "Каждый номер документа внутри объединенной ячейки с переносом строки."],
@@ -184,6 +187,10 @@ def reconciliation_matrix_xlsx(matrix: dict[str, Any]) -> bytes:
     ws.title = "Выгрузка"
     _append_rows(ws, rows)
     _style_matrix_sheet(ws, merges, balances_by_row, total_row)
+    for row_idx, url in links_by_row.items():
+        cell = ws.cell(row_idx, 1)
+        cell.hyperlink = url
+        cell.font = Font(bold=True, color="0563C1", underline="single")
 
     rules_ws = wb.create_sheet("Правила")
     _append_rows(rules_ws, rules)
@@ -334,14 +341,36 @@ def _spec_label(item: dict[str, Any]) -> str:
 def _invoice_rows(item: dict[str, Any]) -> list[dict[str, Any]]:
     rows = item.get("invoice_rows")
     if isinstance(rows, list) and rows:
-        return [row for row in rows if isinstance(row, dict)] or [{"number": "—", "amount": item.get("invoice_sum")}]
+        prepared = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            prepared.append(
+                {
+                    **row,
+                    "paid_amount": row.get("paid_amount") if row.get("operation_id") else "",
+                }
+            )
+        return _with_unassigned_payment(prepared or [{"number": "—", "amount": item.get("invoice_sum")}], item)
     numbers = item.get("invoice_numbers") if isinstance(item.get("invoice_numbers"), list) else []
     if not numbers:
-        return [{"number": "—", "amount": item.get("invoice_sum")}]
-    return [
+        return _with_unassigned_payment([{"number": "—", "amount": item.get("invoice_sum")}], item)
+    return _with_unassigned_payment([
         {"number": number, "amount": item.get("invoice_sum") if idx == 0 else ""}
         for idx, number in enumerate(numbers)
-    ]
+    ], item)
+
+
+def _with_unassigned_payment(rows: list[dict[str, Any]], item: dict[str, Any]) -> list[dict[str, Any]]:
+    assigned = sum(
+        (_to_decimal(row.get("paid_amount")) for row in rows if row.get("paid_amount") not in (None, "")),
+        Decimal("0.00"),
+    )
+    total = _to_decimal(item.get("payment_sum"))
+    unassigned = total - assigned
+    if unassigned != Decimal("0.00"):
+        rows.append({"number": "Оплата без счета", "amount": "", "paid_amount": str(unassigned)})
+    return rows
 
 
 def _col(index: int) -> str:

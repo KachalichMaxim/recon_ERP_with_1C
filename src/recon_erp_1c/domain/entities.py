@@ -61,6 +61,7 @@ class AccountingDocument:
     operation_id: int | None = None
     vat_rate: str = ""
     reimbursement_type: str = ""
+    payment_amount: Money | None = None
 
 
 @dataclass(frozen=True, slots=True)
