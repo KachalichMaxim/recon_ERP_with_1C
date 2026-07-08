@@ -117,6 +117,7 @@ LIMIT 1;
 
 DELIVERY_CUSTOMER_INVOICES = """
 SELECT DISTINCT
+    %(spec_id)s AS spec_id,
     'customer_invoice' AS document_kind,
     COALESCE(schet.f_kod1c, '') AS code1c,
     COALESCE(schet.f_num, '') AS document_number,
@@ -138,8 +139,33 @@ WHERE schet.f_dogtype = 2
   AND COALESCE(schet.f_type, 0) = 1;
 """
 
+DELIVERY_CUSTOMER_INVOICES_BY_SPEC_IDS = """
+SELECT DISTINCT
+    spec.f_id AS spec_id,
+    'customer_invoice' AS document_kind,
+    COALESCE(schet.f_kod1c, '') AS code1c,
+    COALESCE(schet.f_num, '') AS document_number,
+    schet.f_dt AS document_date,
+    COALESCE(schet.f_sum, 0) AS amount_total,
+    COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
+    COALESCE(spec.f_kod1cb, '') AS contract_code1c,
+    COALESCE(schet.f_id, 0) AS source_id,
+    NULL AS operation_id,
+    COALESCE(nds.f_name, '') AS vat_rate,
+    '' AS reimbursement_type,
+    CASE WHEN schet.f_status = 9 THEN 1 ELSE 0 END AS deleted
+FROM veda_schets schet
+JOIN veda_specs spec ON spec.f_id = schet.f_dogid
+LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = schet.f_val
+LEFT JOIN veda_spr nds ON nds.f_type = 10 AND nds.f_num = schet.f_nds
+WHERE schet.f_dogtype = 2
+  AND COALESCE(schet.f_type, 0) = 1
+  AND spec.f_id IN ({spec_id_filter});
+"""
+
 DELIVERY_OPERATION_DOCUMENTS = """
 SELECT
+    %(spec_id)s AS spec_id,
     'sale' AS document_kind,
     COALESCE(akt.f_kod1c, '') AS code1c,
     COALESCE(akt.f_num, '') AS document_number,
@@ -184,6 +210,7 @@ WHERE oper.f_parenttype IN (2, 4)
 UNION
 
 SELECT
+    %(spec_id)s AS spec_id,
     'payment' AS document_kind,
     COALESCE(h.f_kod1C, '') AS code1c,
     COALESCE(h.f_ppnum, '') AS document_number,
@@ -217,6 +244,87 @@ WHERE d.f_doctype = 3
       ELSE NULL
     END
   ) = %(spec_id)s;
+"""
+
+DELIVERY_OPERATION_DOCUMENTS_BY_SPEC_IDS = """
+SELECT
+    spec.f_id AS spec_id,
+    'sale' AS document_kind,
+    COALESCE(akt.f_kod1c, '') AS code1c,
+    COALESCE(akt.f_num, '') AS document_number,
+    CASE
+        WHEN akt.f_dt1c IS NOT NULL AND akt.f_dt1c <> '0000-00-00' THEN akt.f_dt1c
+        ELSE akt.f_dt
+    END AS document_date,
+    COALESCE(akt.f_sum, 0) AS amount_total,
+    COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
+    CASE
+        WHEN COALESCE(oper.f_isvozm, 0) = 2 THEN COALESCE(spec.f_kod1cb, '')
+        ELSE COALESCE(NULLIF(dog.f_kod1c, ''), NULLIF(spec.f_kod1cp, ''), NULLIF(spec.f_kod1cb, ''), '')
+    END AS contract_code1c,
+    COALESCE(akt.f_id, 0) AS source_id,
+    COALESCE(oper.f_id, 0) AS operation_id,
+    COALESCE(nds.f_name, '') AS vat_rate,
+    CASE
+        WHEN COALESCE(oper.f_isvozm, 0) = 1 THEN 'reimbursable'
+        WHEN COALESCE(oper.f_isvozm, 0) = 2 THEN 'non_reimbursable'
+        ELSE 'unknown'
+    END AS reimbursement_type,
+    CASE WHEN akt.f_status = 9 THEN 1 ELSE 0 END AS deleted
+FROM veda_spec_invoices oper
+LEFT JOIN veda_categs oper4_specs
+    ON oper4_specs.f_objectid = oper.f_id
+   AND oper4_specs.f_ctgtype = 24
+   AND oper4_specs.f_objecttype = 5
+JOIN veda_specs spec
+    ON spec.f_id = CASE oper.f_parenttype
+      WHEN 2 THEN oper.f_specid
+      WHEN 4 THEN CAST(oper4_specs.f_valstr AS SIGNED)
+      ELSE NULL
+    END
+JOIN veda_akts akt ON akt.f_operid = oper.f_id
+LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = akt.f_val
+LEFT JOIN veda_spr nds ON nds.f_type = 10 AND nds.f_num = oper.f_nds
+LEFT JOIN veda_dogs dog ON dog.f_id = akt.f_dogid
+WHERE oper.f_parenttype IN (2, 4)
+  AND spec.f_id IN ({spec_id_filter})
+
+UNION
+
+SELECT
+    spec.f_id AS spec_id,
+    'payment' AS document_kind,
+    COALESCE(h.f_kod1C, '') AS code1c,
+    COALESCE(h.f_ppnum, '') AS document_number,
+    CASE
+        WHEN h.f_dt1C IS NOT NULL AND h.f_dt1C <> '0000-00-00 00:00:00' THEN h.f_dt1C
+        ELSE h.f_ppdt
+    END AS document_date,
+    COALESCE(d.f_clssum, 0) AS amount_total,
+    COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
+    COALESCE(spec.f_kod1cb, '') AS contract_code1c,
+    COALESCE(h.f_id, 0) AS source_id,
+    COALESCE(oper.f_id, 0) AS operation_id,
+    '' AS vat_rate,
+    '' AS reimbursement_type,
+    0 AS deleted
+FROM veda_acchist_docs d
+JOIN veda_acchist h ON h.f_id = d.f_acchistid
+JOIN veda_spec_invoices oper ON oper.f_id = d.f_docid
+LEFT JOIN veda_categs oper4_specs
+    ON oper4_specs.f_objectid = oper.f_id
+   AND oper4_specs.f_ctgtype = 24
+   AND oper4_specs.f_objecttype = 5
+JOIN veda_specs spec
+    ON spec.f_id = CASE oper.f_parenttype
+      WHEN 2 THEN oper.f_specid
+      WHEN 4 THEN CAST(oper4_specs.f_valstr AS SIGNED)
+      ELSE NULL
+    END
+LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = h.f_val
+WHERE d.f_doctype = 3
+  AND oper.f_parenttype IN (2, 4)
+  AND spec.f_id IN ({spec_id_filter});
 """
 
 DELIVERY_CODE_COVERAGE_AUDIT = """

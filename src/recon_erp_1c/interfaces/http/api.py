@@ -41,7 +41,16 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
         try:
-            if parsed.path in {"/", "/reconciliation.html", "/reconciliation.css", "/reconciliation.js"}:
+            if parsed.path in {
+                "/",
+                "/reconciliation.html",
+                "/reconciliation.css",
+                "/reconciliation.js",
+                "/akt_sverki/index.html",
+                "/akt_sverki/reconciliation.html",
+                "/akt_sverki/reconciliation.css",
+                "/akt_sverki/reconciliation.js",
+            }:
                 self._static(parsed.path)
                 return
             if parsed.path == "/health":
@@ -512,6 +521,10 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             "/reconciliation.html": "reconciliation.html",
             "/reconciliation.css": "reconciliation.css",
             "/reconciliation.js": "reconciliation.js",
+            "/akt_sverki/index.html": "reconciliation.html",
+            "/akt_sverki/reconciliation.html": "reconciliation.html",
+            "/akt_sverki/reconciliation.css": "reconciliation.css",
+            "/akt_sverki/reconciliation.js": "reconciliation.js",
         }
         name = names[path]
         file_path = web_root / name
@@ -582,7 +595,13 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
         offset=offset,
     )
     deliveries = ListDeliveriesUseCase(repository).execute(command)
-    items = [_matrix_row(repository, delivery) for delivery in deliveries]
+    documents_by_spec = repository.list_documents_for_deliveries(
+        [int(delivery.get("spec_id") or 0) for delivery in deliveries]
+    )
+    items = [
+        _matrix_row(repository, delivery, documents_by_spec.get(int(delivery.get("spec_id") or 0), []))
+        for delivery in deliveries
+    ]
     total_count = repository.count_deliveries(client_id=client_id, dog_id=dog_id, date_from=date_from, date_to=date_to)
     return {
         "ok": True,
@@ -598,9 +617,13 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
     }
 
 
-def _matrix_row(repository: MariaDbErpReadRepository, delivery_row: dict[str, object]) -> dict[str, object]:
+def _matrix_row(
+    repository: MariaDbErpReadRepository,
+    delivery_row: dict[str, object],
+    documents: list[AccountingDocument] | None = None,
+) -> dict[str, object]:
     spec_id = int(delivery_row["spec_id"] or 0)
-    documents = repository.list_delivery_documents(spec_id)
+    documents = documents if documents is not None else repository.list_delivery_documents(spec_id)
     buyer_code = str(delivery_row.get("buyer_contract_code") or "")
     invoices = [doc for doc in documents if doc.kind == DocumentKind.CUSTOMER_INVOICE]
     payments = [doc for doc in documents if doc.kind == DocumentKind.PAYMENT]

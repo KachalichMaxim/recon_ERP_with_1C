@@ -191,6 +191,29 @@ class MariaDbErpReadRepository:
         rows.extend(self._fetch_all(queries.DELIVERY_OPERATION_DOCUMENTS, {"spec_id": spec_id}))
         return [_row_to_document(row) for row in rows]
 
+    def list_documents_for_deliveries(self, spec_ids: list[int]) -> dict[int, list[AccountingDocument]]:
+        ids = sorted({int(spec_id) for spec_id in spec_ids if int(spec_id or 0) > 0})
+        if not ids:
+            return {}
+        params = {f"spec_id_{index}": spec_id for index, spec_id in enumerate(ids)}
+        filter_sql = ", ".join(f"%(spec_id_{index})s" for index in range(len(ids)))
+        rows = self._fetch_all(
+            queries.DELIVERY_CUSTOMER_INVOICES_BY_SPEC_IDS.format(spec_id_filter=filter_sql),
+            params,
+        )
+        rows.extend(
+            self._fetch_all(
+                queries.DELIVERY_OPERATION_DOCUMENTS_BY_SPEC_IDS.format(spec_id_filter=filter_sql),
+                params,
+            )
+        )
+        grouped: dict[int, list[AccountingDocument]] = {spec_id: [] for spec_id in ids}
+        for row in rows:
+            spec_id = int(row.get("spec_id") or 0)
+            if spec_id:
+                grouped.setdefault(spec_id, []).append(_row_to_document(row))
+        return grouped
+
     def authenticate_user(self, login: str, password: str) -> dict[str, object] | None:
         row = self._fetch_one(queries.USER_BY_LOGIN, {"login": login})
         if row is None:
