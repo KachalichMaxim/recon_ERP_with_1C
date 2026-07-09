@@ -9,7 +9,136 @@
 
 Backend реализуется на Python. ERP PHP остается рабочей системой и источником пользовательского контекста: при переходе в модуль из ERP, ERP передает короткоживущий launch token, backend валидирует его в ERP и создает внутреннюю сессию. Модуль сверки читает ERP напрямую из MariaDB и читает 1C через read-only GET REST API.
 
-Диаграммы ниже оформлены в C4-уровнях, но используют обычный Mermaid `flowchart`, чтобы линии не пересекались и схема была компактнее.
+Диаграммы ниже представлены в двух формах:
+
+- **Canonical C4 Mermaid notation** - формальная C4-нотация `C4Context`, `C4Container`, `C4Component`;
+- **Compact flowchart views** - те же уровни C4, но в обычном Mermaid `flowchart`, чтобы линии не пересекались и схема была компактнее.
+
+## Canonical C4 Mermaid Notation
+
+### C4 Level 1. System Context
+
+```mermaid
+C4Context
+  title ERP / 1C Reconciliation - System Context
+
+  Person(accountant, "Бухгалтер", "Смотрит сальдовку по поставкам, выгружает XLSX, запускает сверку")
+  Person(integration_owner, "Ответственный за интеграцию", "Разбирает ошибки обмена ERP и 1C")
+
+  System(recon, "Python Reconciliation Service", "Сальдовка ERP по поставкам и документная сверка ERP vs 1C")
+
+  System_Ext(erp, "ERP PHP", "Рабочий интерфейс ERP и источник launch token")
+  SystemDb_Ext(erp_db, "ERP MariaDB", "Поставки, договоры, счета, операции, оплаты, акты, пользователи")
+  System_Ext(onec, "1C Enterprise", "Read-only GET REST API для нормализованных документов сверки")
+
+  Rel(accountant, erp, "Переходит в модуль сверки из ERP")
+  Rel(accountant, recon, "Работает с матрицей, сверкой и XLSX", "HTTPS")
+  Rel(integration_owner, recon, "Анализирует расхождения и журнал", "HTTPS")
+
+  Rel(erp, erp_db, "Читает и пишет бизнес-данные", "PHP / SQL")
+  Rel(erp, recon, "Передает short-lived launch token", "HTTPS")
+  Rel(recon, erp, "Валидирует launch token", "HTTPS")
+  Rel(recon, erp_db, "Читает ERP-данные и пишет журнал сверки", "SQL")
+  Rel(recon, onec, "Получает 1C snapshot", "GET /reconciliation/v1/snapshot")
+```
+
+### C4 Level 2. Containers
+
+```mermaid
+C4Container
+  title ERP / 1C Reconciliation - Containers
+
+  Person(user, "Бухгалтер / интегратор", "Пользователь модуля сверки")
+
+  System_Boundary(recon_system, "Python Reconciliation Service") {
+    Container(web_ui, "Web UI", "HTML / CSS / JavaScript", "Матрица сальдовки, экран сверки ERP vs 1C, XLSX export, фильтры")
+    Container(api, "HTTP API", "Python stdlib HTTP server", "Auth, matrix API, reconciliation API, export API")
+    Container(auth, "Auth / Session", "Python", "Валидация ERP launch token и backend session")
+    Container(erp_reader, "ERP Reader", "Python + PyMySQL", "Читает поставки, счета, операции, get_paidsum/get_realizsum")
+    Container(onec_adapter, "1C REST Adapter", "Python HTTP client", "Читает normalized 1C DTO через GET-only API")
+    Container(matcher, "Matcher", "Python domain logic", "Сопоставляет документы по типу, коду 1C, дате, договору, сумме, НДС")
+    Container(xlsx_exporter, "XLSX Exporter", "Python + openpyxl", "Формирует бухгалтерскую выгрузку")
+  }
+
+  System_Ext(erp_php, "ERP PHP", "Рабочая ERP и launch-token provider")
+  SystemDb_Ext(erp_db, "ERP MariaDB", "Исходные ERP-таблицы и таблицы журнала сверки")
+  System_Ext(onec_api, "1C REST API", "Read-only GET contract")
+
+  Rel(user, web_ui, "Открывает модуль и работает с данными", "Browser")
+  Rel(web_ui, api, "JSON / XLSX requests", "HTTPS")
+
+  Rel(api, auth, "Проверяет доступ")
+  Rel(auth, erp_php, "Validate launch token", "HTTPS")
+  Rel(auth, erp_db, "Читает профиль пользователя", "SQL")
+
+  Rel(api, erp_reader, "Запрашивает ERP matrix / ERP documents")
+  Rel(erp_reader, erp_db, "SELECT исходных таблиц ERP", "SQL")
+
+  Rel(api, onec_adapter, "Запрашивает 1C snapshot")
+  Rel(onec_adapter, onec_api, "GET snapshot / docs / dictionaries", "HTTPS")
+
+  Rel(api, matcher, "Передает ERP и 1C документы")
+  Rel(matcher, erp_db, "Пишет veda_reconciliation_runs/items", "SQL")
+
+  Rel(api, xlsx_exporter, "Передает matrix/run payload")
+  Rel(xlsx_exporter, web_ui, "Возвращает XLSX bytes", "Download")
+```
+
+### C4 Level 3. Backend Components
+
+```mermaid
+C4Component
+  title ERP / 1C Reconciliation - Python Backend Components
+
+  Container_Boundary(api_boundary, "Python HTTP API") {
+    Component(router, "HTTP Router", "BaseHTTPRequestHandler", "Маршруты auth, matrix, reconciliation, comments, xlsx")
+    Component(session, "Session Guard", "Python", "Проверяет backend session и user profile")
+    Component(matrix_uc, "Matrix Use Case", "Application service", "Строит иерархию клиент -> ЮЛ -> договор -> поставка")
+    Component(reconcile_uc, "Reconcile Use Case", "Application service", "Запускает сверку поставки или batch")
+    Component(comment_api, "Comment API", "Python", "Сохраняет пользовательские причины и комментарии разбора")
+  }
+
+  Container_Boundary(domain_boundary, "Domain / Application") {
+    Component(balance_calc, "Balance Calculator", "Domain service", "Считает сальдо: get_paidsum - get_realizsum по возмещаемым и невозмещаемым")
+    Component(key_builder, "Match Key Builder", "Domain service", "Ключ: kind + code1c + date1c + contract_code1c")
+    Component(classifier, "Mismatch Classifier", "Domain service", "OK, нет в 1C, нет в ERP, сумма, дата, договор, НДС, дубли")
+    Component(status_model, "Status Model", "Domain entities", "Типизированные статусы и поля расхождений")
+  }
+
+  Container_Boundary(infra_boundary, "Infrastructure") {
+    Component(erp_repo, "MariaDB ERP Repository", "PyMySQL", "Исходные таблицы ERP, get_paidsum/get_realizsum, veda_users")
+    Component(onec_repo, "1C REST Repository", "HTTP client", "Нормализованный read-only DTO из 1C")
+    Component(log_repo, "Reconciliation Log Repository", "PyMySQL", "veda_reconciliation_runs/items/comments")
+    Component(xlsx, "XLSX Builder", "openpyxl", "Бухгалтерская матрица XLSX")
+  }
+
+  SystemDb_Ext(erp_db_c4, "ERP MariaDB", "ERP data + reconciliation logs")
+  System_Ext(onec_c4, "1C REST API", "GET-only normalized snapshot")
+  System_Ext(erp_auth_c4, "ERP Token Validation", "Validates launch token")
+
+  Rel(router, session, "Проверяет session")
+  Rel(session, erp_auth_c4, "Validate launch token", "HTTPS")
+  Rel(session, erp_repo, "Load user profile")
+
+  Rel(router, matrix_uc, "GET matrix")
+  Rel(matrix_uc, erp_repo, "Load supplies, invoices, payments, sales")
+  Rel(matrix_uc, balance_calc, "Calculate saldo")
+  Rel(matrix_uc, xlsx, "Export visible/all rows")
+
+  Rel(router, reconcile_uc, "GET/POST reconciliation")
+  Rel(reconcile_uc, erp_repo, "Load ERP documents")
+  Rel(reconcile_uc, onec_repo, "Load 1C snapshot")
+  Rel(reconcile_uc, key_builder, "Build matching keys")
+  Rel(key_builder, classifier, "Classify matches and mismatches")
+  Rel(classifier, log_repo, "Persist run and item statuses")
+  Rel(comment_api, log_repo, "Persist user decision / reason")
+
+  Rel(erp_repo, erp_db_c4, "SQL")
+  Rel(log_repo, erp_db_c4, "SQL")
+  Rel(onec_repo, onec_c4, "HTTPS GET")
+```
+
+## Compact Flowchart Views
 
 ## Level 1. System Context
 
