@@ -1,0 +1,1183 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>C4 Architecture · ERP ↔ 1C Reconciliation</title>
+  <style>
+    :root {
+      --bg: #f5f3ee;
+      --paper: #ffffff;
+      --paper-soft: #fbfaf7;
+      --ink: #1f1f1f;
+      --muted: #6f6b63;
+      --line: #ded9cf;
+      --line-strong: #c7c0b5;
+      --brand: #c91f4a;
+      --brand-dark: #8e1835;
+      --erp: #0f766e;
+      --onec: #1f6feb;
+      --python: #7c3aed;
+      --log: #9a5b00;
+      --ok: #16803c;
+      --warn: #ad6500;
+      --bad: #b42318;
+      --shadow: 0 18px 45px rgba(30, 28, 24, 0.08);
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(1440px, calc(100% - 48px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      padding: 24px 28px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(28px, 3vw, 42px);
+      line-height: 1.05;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+    }
+
+    h2 {
+      font-size: 24px;
+      line-height: 1.15;
+    }
+
+    h3 {
+      font-size: 17px;
+      line-height: 1.25;
+    }
+
+    .subtitle {
+      margin-top: 10px;
+      color: var(--muted);
+      max-width: 880px;
+      font-size: 16px;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .doc-meta {
+      display: grid;
+      gap: 8px;
+      justify-items: end;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper-soft);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .tag.brand {
+      background: #fff0f4;
+      border-color: #f3bac8;
+      color: var(--brand-dark);
+    }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .section {
+      margin-top: 22px;
+      padding: 24px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 20px;
+      align-items: start;
+      margin-bottom: 18px;
+    }
+
+    .section-kicker {
+      color: var(--brand-dark);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+    }
+
+    .section-copy {
+      color: var(--muted);
+      margin-top: 7px;
+      max-width: 940px;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .c4-board {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr 1.05fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .lane {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      min-width: 0;
+      padding: 14px;
+      background: #f8f6f1;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    .lane-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 30px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .card {
+      position: relative;
+      padding: 14px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--line-strong);
+      border-radius: 10px;
+      min-width: 0;
+    }
+
+    .card.python {
+      border-left-color: var(--python);
+    }
+
+    .card.erp {
+      border-left-color: var(--erp);
+    }
+
+    .card.onec {
+      border-left-color: var(--onec);
+    }
+
+    .card.log {
+      border-left-color: var(--log);
+    }
+
+    .card.user {
+      border-left-color: var(--brand);
+    }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .card-subtitle {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .card ul {
+      margin: 10px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 7px;
+      border-radius: 999px;
+      background: #eee8dd;
+      color: #4b463f;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge.erp {
+      background: #d9f4ed;
+      color: #075e54;
+    }
+
+    .badge.onec {
+      background: #e5efff;
+      color: #174ea6;
+    }
+
+    .badge.python {
+      background: #efe7ff;
+      color: #5b21b6;
+    }
+
+    .badge.log {
+      background: #fff0d5;
+      color: #8a4b00;
+    }
+
+    .flow-strip {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(92px, 1fr));
+      gap: 8px;
+      margin: 16px 0 18px;
+    }
+
+    .flow-step {
+      position: relative;
+      min-height: 68px;
+      padding: 10px 10px 10px 12px;
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .flow-step strong {
+      display: block;
+      color: var(--ink);
+      font-size: 13px;
+      margin-bottom: 3px;
+    }
+
+    .flow-step::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -8px;
+      width: 8px;
+      height: 1px;
+      background: var(--line-strong);
+    }
+
+    .flow-step:last-child::after {
+      display: none;
+    }
+
+    .component-board {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 18px;
+    }
+
+    .component-column {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f8f6f1;
+    }
+
+    .mini-flow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .mini-flow span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 9px;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+      background: var(--paper-soft);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .flow-table,
+    .mapping-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--paper);
+    }
+
+    .flow-table th,
+    .flow-table td,
+    .mapping-table th,
+    .mapping-table td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .flow-table th,
+    .mapping-table th {
+      background: #dedbd4;
+      color: #403c36;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .flow-table tr:last-child td,
+    .mapping-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      background: var(--brand);
+      color: white;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.92em;
+      padding: 1px 5px;
+      border: 1px solid #e1ddd4;
+      border-radius: 6px;
+      background: #f8f6f1;
+      color: #3d372f;
+    }
+
+    .runtime {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .steps {
+      counter-reset: step;
+      display: grid;
+      gap: 10px;
+    }
+
+    .step {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: 36px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      padding: 11px;
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .step::before {
+      content: counter(step);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      background: #2f2b26;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .step-title {
+      font-weight: 800;
+    }
+
+    .step-text {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .status {
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--paper-soft);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .status.ok {
+      color: var(--ok);
+      border-color: #b8dfc3;
+      background: #f1fbf3;
+    }
+
+    .status.warn {
+      color: var(--warn);
+      border-color: #edd0a2;
+      background: #fff8ec;
+    }
+
+    .status.bad {
+      color: var(--bad);
+      border-color: #efb4ae;
+      background: #fff4f2;
+    }
+
+    .nfr-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      padding: 14px;
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .metric-value {
+      font-size: 24px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .metric-label {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .print-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 1100px) {
+      .c4-board,
+      .component-board,
+      .runtime,
+      .nfr-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .flow-strip {
+        grid-template-columns: repeat(4, minmax(120px, 1fr));
+      }
+
+      .status-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 720px) {
+      main {
+        width: 100%;
+        padding: 16px 12px 56px;
+      }
+
+      header,
+      .section-head {
+        display: block;
+        grid-template-columns: 1fr;
+      }
+
+      header,
+      .section {
+        width: 100%;
+        overflow: hidden;
+      }
+
+      .doc-meta,
+      .legend {
+        justify-items: start;
+        justify-content: flex-start;
+      }
+
+      .doc-meta {
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+
+      .subtitle,
+      .section-copy,
+      .card-title,
+      .card-subtitle,
+      .step-text {
+        overflow-wrap: anywhere;
+      }
+
+      .flow-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .flow-step::after {
+        display: none;
+      }
+
+      .flow-table,
+      .mapping-table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+
+    @media print {
+      body {
+        background: white;
+      }
+
+      main {
+        width: 100%;
+        padding: 0;
+      }
+
+      header,
+      .section {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <span class="tag brand">C4 Architecture</span>
+        <h1>ERP ↔ 1C Reconciliation Service</h1>
+        <p class="subtitle">
+          HTML-версия архитектуры без пересекающихся линий. Схема читается слева направо:
+          C4 Context, Containers, Components, runtime workflow, журнал сверки и требования по скорости.
+        </p>
+      </div>
+      <div class="doc-meta">
+        <span>Python backend · ERP MariaDB · 1C read-only REST</span>
+        <span>Сальдовка ERP отдельно от документной сверки ERP ↔ 1C</span>
+      </div>
+    </header>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Level 1 · System Context</div>
+          <h2>Контекст системы</h2>
+          <p class="section-copy">
+            Сервис не заменяет ERP и не пишет в 1C. Он читает ERP-данные из MariaDB, читает 1C через
+            согласованный REST-контракт и сохраняет журнал результатов сверки в ERP-контуре.
+          </p>
+        </div>
+        <div class="legend">
+          <span class="tag">User</span>
+          <span class="tag">Python</span>
+          <span class="tag">ERP</span>
+          <span class="tag">1C</span>
+          <span class="tag">Audit log</span>
+        </div>
+      </div>
+
+      <div class="flow-strip" aria-label="Сквозной поток контекста">
+        <div class="flow-step"><strong>1. Переход из ERP</strong>ERP передает short-lived launch token</div>
+        <div class="flow-step"><strong>2. Сессия</strong>Python валидирует token и пользователя</div>
+        <div class="flow-step"><strong>3. ERP matrix</strong>Сальдо по поставкам из MariaDB</div>
+        <div class="flow-step"><strong>4. 1C snapshot</strong>GET REST API только на чтение</div>
+        <div class="flow-step"><strong>5. Matching</strong>Код 1C + дата + договор + тип</div>
+        <div class="flow-step"><strong>6. Log</strong>Запуск и item-level статусы</div>
+        <div class="flow-step"><strong>7. UI</strong>Матрица, фильтры, комментарии</div>
+        <div class="flow-step"><strong>8. XLSX</strong>Бухгалтерская выгрузка</div>
+      </div>
+
+      <div class="c4-board">
+        <div class="lane">
+          <div class="lane-title">Пользователи</div>
+          <div class="card user">
+            <div class="card-title"><span class="badge">U1</span> Бухгалтер</div>
+            <div class="card-subtitle">Смотрит сальдовку по поставкам, выгружает XLSX, запускает сверку с 1C.</div>
+          </div>
+          <div class="card user">
+            <div class="card-title"><span class="badge">U2</span> Ответственный за интеграцию</div>
+            <div class="card-subtitle">Разбирает расхождения, дубли, ошибки обмена и повторяемость проблем.</div>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title">Система сверки</div>
+          <div class="card python">
+            <div class="card-title"><span class="badge python">S</span> Python Reconciliation Service</div>
+            <div class="card-subtitle">
+              Два сценария: ERP-сальдовка по поставкам и документная сверка ERP ↔ 1C.
+            </div>
+            <ul>
+              <li>Авторизация через ERP launch token.</li>
+              <li>Матрица взаиморасчетов по поставкам.</li>
+              <li>Сверка документов с типизированными статусами.</li>
+              <li>Экспорт бухгалтерского XLSX.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title">Внешние системы</div>
+          <div class="card erp">
+            <div class="card-title"><span class="badge erp">ERP</span> ERP PHP + MariaDB</div>
+            <div class="card-subtitle">Рабочий контур, источник поставок, документов, пользователей и launch token.</div>
+          </div>
+          <div class="card onec">
+            <div class="card-title"><span class="badge onec">1C</span> 1C Enterprise REST API</div>
+            <div class="card-subtitle">Read-only GET API, отдающий нормализованные DTO для сверки.</div>
+          </div>
+          <div class="card log">
+            <div class="card-title"><span class="badge log">LOG</span> Reconciliation audit tables</div>
+            <div class="card-subtitle">Журнал запусков, расхождений, комментариев и причин разбора.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mini-flow">
+        <span><span class="num">1</span> ERP UI открывает модуль с launch token</span>
+        <span><span class="num">2</span> Backend читает ERP MariaDB</span>
+        <span><span class="num">3</span> Backend получает 1C snapshot</span>
+        <span><span class="num">4</span> Backend пишет журнал сверки</span>
+        <span><span class="num">5</span> UI показывает статусы и XLSX</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Level 2 · Containers</div>
+          <h2>Контейнеры и границы ответственности</h2>
+          <p class="section-copy">
+            Контейнеры разложены по слоям, чтобы было видно, где UI, где application API,
+            где чтение ERP, где адаптер 1C, где matching и где журнал.
+          </p>
+        </div>
+      </div>
+
+      <div class="c4-board">
+        <div class="lane">
+          <div class="lane-title">Browser</div>
+          <div class="card">
+            <div class="card-title"><span class="badge">UI</span> Web UI</div>
+            <div class="card-subtitle">
+              Матрица сальдовки, экран сверки ERP ↔ 1C, комментарии, фильтры, XLSX export.
+            </div>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title">Python backend</div>
+          <div class="card python">
+            <div class="card-title"><span class="badge python">API</span> HTTP API</div>
+            <div class="card-subtitle">Маршруты auth, matrix, reconciliation, comments, XLSX.</div>
+          </div>
+          <div class="card python">
+            <div class="card-title"><span class="badge python">AUTH</span> Auth / Session</div>
+            <div class="card-subtitle">Валидация ERP launch token, backend session, профиль пользователя.</div>
+          </div>
+          <div class="card python">
+            <div class="card-title"><span class="badge python">ERP</span> ERP Reader</div>
+            <div class="card-subtitle">Чтение поставок, счетов, оплат, актов, <code>get_paidsum</code>, <code>get_realizsum</code>.</div>
+          </div>
+          <div class="card python">
+            <div class="card-title"><span class="badge python">1C</span> 1C REST Adapter</div>
+            <div class="card-subtitle">GET-only клиент к REST-контракту 1C, пагинация, hash/updated_at.</div>
+          </div>
+          <div class="card python">
+            <div class="card-title"><span class="badge python">M</span> Matcher</div>
+            <div class="card-subtitle">Сопоставление, дубли, неоднозначность, статусы расхождений.</div>
+          </div>
+          <div class="card python">
+            <div class="card-title"><span class="badge python">XLSX</span> XLSX Exporter</div>
+            <div class="card-subtitle">Выгрузка в бухгалтерском формате с группировкой строк поставки.</div>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title">Data & external APIs</div>
+          <div class="card erp">
+            <div class="card-title"><span class="badge erp">DB</span> ERP MariaDB</div>
+            <div class="card-subtitle">Исходные ERP-таблицы, пользователи, документы, поставки, договоры.</div>
+          </div>
+          <div class="card log">
+            <div class="card-title"><span class="badge log">AUDIT</span> Reconciliation tables</div>
+            <div class="card-subtitle"><code>veda_reconciliation_runs</code>, <code>veda_reconciliation_items</code>, comments.</div>
+          </div>
+          <div class="card onec">
+            <div class="card-title"><span class="badge onec">REST</span> 1C REST API</div>
+            <div class="card-subtitle">Нормализованные документы 1C: счета, оплаты, акты, договоры, контрагенты.</div>
+          </div>
+          <div class="card erp">
+            <div class="card-title"><span class="badge erp">TOKEN</span> ERP launch token validation</div>
+            <div class="card-subtitle">Проверка короткоживущего токена при входе из ERP.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Level 3 · Components</div>
+          <h2>Компоненты backend</h2>
+          <p class="section-copy">
+            Компоненты сгруппированы по clean architecture: HTTP/input, application/domain,
+            infrastructure и output. Это заменяет пересекающиеся линии явными зонами ответственности.
+          </p>
+        </div>
+      </div>
+
+      <div class="component-board">
+        <div class="component-column">
+          <div class="lane-title">Input / HTTP</div>
+          <div class="card">
+            <div class="card-title">HTTP Router</div>
+            <div class="card-subtitle">Разбирает параметры, отдает JSON/XLSX, нормализует ошибки ответа.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">Session Guard</div>
+            <div class="card-subtitle">Проверяет backend session, user profile и права доступа из ERP.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">Comment API</div>
+            <div class="card-subtitle">Сохраняет причину и комментарий пользователя по спорному кейсу.</div>
+          </div>
+        </div>
+
+        <div class="component-column">
+          <div class="lane-title">Application / Domain</div>
+          <div class="card python">
+            <div class="card-title">Matrix Use Case</div>
+            <div class="card-subtitle">Строит иерархию клиент → ЮЛ → договор → поставка.</div>
+          </div>
+          <div class="card python">
+            <div class="card-title">Balance Calculator</div>
+            <div class="card-subtitle">Сальдо: <code>get_paidsum</code> минус возмещаемые и невозмещаемые по <code>get_realizsum</code>.</div>
+          </div>
+          <div class="card python">
+            <div class="card-title">Reconcile Use Case</div>
+            <div class="card-subtitle">Готовит ERP context, запрашивает 1C, запускает matching.</div>
+          </div>
+          <div class="card python">
+            <div class="card-title">Match Key Builder</div>
+            <div class="card-subtitle">Ключ: <code>kind + code1c + date1c + contract_code1c</code>. Только code1c запрещен.</div>
+          </div>
+          <div class="card python">
+            <div class="card-title">Mismatch Classifier</div>
+            <div class="card-subtitle">Фиксирует отсутствие, дубли, сумму, дату, номер, договор, НДС.</div>
+          </div>
+        </div>
+
+        <div class="component-column">
+          <div class="lane-title">Infrastructure / Output</div>
+          <div class="card erp">
+            <div class="card-title">MariaDB ERP Repository</div>
+            <div class="card-subtitle">Чтение исходных таблиц ERP без <code>view_specinv</code>, вызов процедур/функций ERP.</div>
+          </div>
+          <div class="card onec">
+            <div class="card-title">1C REST Repository</div>
+            <div class="card-subtitle">GET-запросы к 1C, cursor/limit, retry, контроль updated_at/hash.</div>
+          </div>
+          <div class="card log">
+            <div class="card-title">Reconciliation Log Repository</div>
+            <div class="card-subtitle">Запись запусков, item statuses, mismatch_fields_json, comments.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">XLSX Builder</div>
+            <div class="card-subtitle">Матрица с объединенными ячейками и плоская TSV-совместимость для копирования.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Runtime</div>
+          <h2>Основные пользовательские потоки</h2>
+          <p class="section-copy">
+            Потоки разделены намеренно: матрица взаиморасчетов показывает ERP-сальдовку по поставкам,
+            а документная сверка показывает соответствие ERP и 1C.
+          </p>
+        </div>
+      </div>
+
+      <div class="runtime">
+        <div>
+          <h3>Поток A. Матрица взаиморасчетов ERP</h3>
+          <div class="steps" style="margin-top: 12px;">
+            <div class="step">
+              <div>
+                <div class="step-title">Пользователь выбирает ЮЛ, договор, период и лимит</div>
+                <div class="step-text">UI не считает всю историю по умолчанию, чтобы не блокировать рабочий контур.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <div class="step-title">Backend читает поставки и документы ERP</div>
+                <div class="step-text">Счета, оплаты, реализации, операции, договоры и поставки берутся из исходных таблиц MariaDB.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <div class="step-title">Backend считает сальдо по поставкам</div>
+                <div class="step-text">Оплаты считаются через <code>get_paidsum</code>, расходы через <code>get_realizsum</code>.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <div class="step-title">UI показывает долг или переплату</div>
+                <div class="step-text">На этом экране не показывается “9 из 9 по 1C”: это не документная сверка.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <div class="step-title">Пользователь выгружает XLSX</div>
+                <div class="step-text">Формат повторяет бухгалтерскую матрицу: спецификация, счета, оплаты, расходы, СФ, плюс/минус.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3>Поток B. Документная сверка ERP ↔ 1C</h3>
+          <div class="steps" style="margin-top: 12px;">
+            <div class="step">
+              <div>
+                <div class="step-title">Пользователь запускает сверку по поставке или batch</div>
+                <div class="step-text">Backend фиксирует scope запуска: client, legal entity, contract, supply/spec или batch.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <div class="step-title">Backend собирает ERP context</div>
+                <div class="step-text">Документы ERP включают code1c, date1c, contract_code1c, amount, VAT, currency.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <div class="step-title">Backend запрашивает 1C snapshot</div>
+                <div class="step-text">Только GET: <code>/reconciliation/v1/snapshot</code> с фильтрами периода, договора, контрагента и поставки.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <div class="step-title">Matcher сравнивает документы</div>
+                <div class="step-text">Primary key: kind + code1c + date1c + contract_code1c. Далее проверяются номер, сумма, НДС, валюта.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <div class="step-title">Результат сохраняется в журнал</div>
+                <div class="step-text">Записываются run summary, item statuses, mismatch fields и комментарии пользователя.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Audit log</div>
+          <h2>Журнал сверки и аналитика расхождений</h2>
+          <p class="section-copy">
+            Журнал нужен не для debug, а для управляемого разбора: какие документы расходятся,
+            почему, с какой частотой и какие операции чаще ломают обмен.
+          </p>
+        </div>
+      </div>
+
+      <table class="mapping-table">
+        <thead>
+          <tr>
+            <th>Сущность</th>
+            <th>Что хранит</th>
+            <th>Зачем бухгалтерии и интеграции</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>veda_reconciliation_runs</code></td>
+            <td>scope, период, client_id, dog_id, spec_id, статус запуска, счетчики OK/ошибок, summary_json, время.</td>
+            <td>Понимать, когда запускали сверку, по какому объекту и сколько расхождений найдено.</td>
+          </tr>
+          <tr>
+            <td><code>veda_reconciliation_items</code></td>
+            <td>ERP-документ, 1C-документ, ключ matching, суммы, даты, договоры, статус, mismatch_fields_json.</td>
+            <td>Разбирать конкретный документ: нет в 1C, нет в ERP, сумма, дата, договор, НДС, дубль.</td>
+          </tr>
+          <tr>
+            <td><code>veda_reconciliation_comments</code></td>
+            <td>Причина пользователя, комментарий, автор, дата, выбранный action или business reason.</td>
+            <td>Накапливать знания и статистику причин, а не терять разбор в переписке.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="status-grid" style="margin-top: 14px;">
+        <div class="status ok">OK</div>
+        <div class="status bad">MISSING_IN_1C</div>
+        <div class="status bad">MISSING_IN_ERP</div>
+        <div class="status warn">AMOUNT_MISMATCH</div>
+        <div class="status warn">DATE_MISMATCH</div>
+        <div class="status warn">NUMBER_MISMATCH</div>
+        <div class="status warn">CONTRACT_MISMATCH</div>
+        <div class="status warn">VAT_MISMATCH</div>
+        <div class="status bad">DUPLICATE_IN_1C</div>
+        <div class="status bad">AMBIGUOUS_MATCH</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Data mapping</div>
+          <h2>Минимальный маппинг для matching</h2>
+          <p class="section-copy">
+            Сверка не должна матчить документы только по коду 1C: в данных есть дубли. Минимальный ключ должен включать
+            тип документа, код 1C, дату 1C и код договора 1C. Остальные поля используются для проверки расхождений.
+          </p>
+        </div>
+      </div>
+
+      <table class="flow-table">
+        <thead>
+          <tr>
+            <th>Поле canonical model</th>
+            <th>ERP</th>
+            <th>1C REST DTO</th>
+            <th>Роль в сверке</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>kind</code></td>
+            <td>Тип ERP-документа: счет, оплата, реализация, операция, СФ/УПД.</td>
+            <td><code>document_type</code></td>
+            <td>Часть ключа matching. Разные типы с одинаковым номером не смешиваются.</td>
+          </tr>
+          <tr>
+            <td><code>code1c</code></td>
+            <td>Код/номер 1C в ERP-поле документа: например <code>kod1c</code>, <code>f_kod1c*</code>, <code>dt1c</code> рядом.</td>
+            <td><code>code1c</code> или <code>number</code> по договоренному DTO.</td>
+            <td>Часть ключа matching, но не единственное условие.</td>
+          </tr>
+          <tr>
+            <td><code>date1c</code></td>
+            <td>Дата 1C документа в ERP, проверяется по схеме MariaDB для конкретной таблицы.</td>
+            <td><code>date</code></td>
+            <td>Часть ключа и отдельное поле контроля расхождения даты.</td>
+          </tr>
+          <tr>
+            <td><code>contract_code1c</code></td>
+            <td>Код договора 1C: договор с покупателем / договор с комитентом, например поля семантики CB/CP.</td>
+            <td><code>contract_code1c</code></td>
+            <td>Часть ключа matching, защищает от дублей по одинаковому номеру документа.</td>
+          </tr>
+          <tr>
+            <td><code>amount_total</code></td>
+            <td>Сумма документа ERP в валюте документа.</td>
+            <td><code>amount_total</code></td>
+            <td>Проверка <code>AMOUNT_MISMATCH</code>.</td>
+          </tr>
+          <tr>
+            <td><code>vat_rate / vat_amount</code></td>
+            <td>Ставка/сумма НДС ERP по строке или документу.</td>
+            <td><code>vat_rate</code>, <code>vat_amount</code></td>
+            <td>Проверка <code>VAT_MISMATCH</code>. Не подменяется признаком возмещаемости.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">NFR</div>
+          <h2>Производительность и масштабирование</h2>
+          <p class="section-copy">
+            Live UI должен оставаться быстрым за счет лимитов, фильтров, batch-загрузки и фоновых запусков.
+            Полная историческая сверка не должна выполняться синхронно в браузерном запросе.
+          </p>
+        </div>
+      </div>
+
+      <div class="nfr-grid">
+        <div class="metric">
+          <div class="metric-value">&lt; 2 сек</div>
+          <div class="metric-label">Цель для открытия UI и применения легких фильтров без 1C-запроса.</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value">50–200</div>
+          <div class="metric-label">Рекомендуемый размер страницы матрицы поставок в live-режиме.</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value">cursor</div>
+          <div class="metric-label">Пагинация 1C REST API и batch-загрузка документов по списку поставок.</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value">updated_at/hash</div>
+          <div class="metric-label">Повторная сверка только измененных документов для массового режима.</div>
+        </div>
+      </div>
+
+      <table class="mapping-table" style="margin-top: 14px;">
+        <thead>
+          <tr>
+            <th>Нагрузка</th>
+            <th>Решение</th>
+            <th>Что логировать</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Пользователь открывает договор с сотнями поставок</td>
+            <td>Пагинация, total count, фильтр проблемных, лимит страницы.</td>
+            <td>Время ERP SQL, количество поставок, количество документов.</td>
+          </tr>
+          <tr>
+            <td>Пользователь запускает сверку с 1C по нескольким поставкам</td>
+            <td>Batch endpoint, один 1C snapshot на scope, а не N отдельных запросов.</td>
+            <td>Время 1C REST, размер payload, количество кандидатов matching.</td>
+          </tr>
+          <tr>
+            <td>Нужна историческая сверка по всем клиентам</td>
+            <td>Background runner, статус запуска, повтор только по <code>updated_at/hash</code>.</td>
+            <td>run_id, started_at, finished_at, статус, ошибки источников.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Architecture rules</div>
+          <h2>Ключевые правила реализации</h2>
+        </div>
+      </div>
+
+      <table class="flow-table">
+        <thead>
+          <tr>
+            <th>Правило</th>
+            <th>Формулировка</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Разделение сценариев</td>
+            <td>Матрица взаиморасчетов отвечает за ERP-сальдо по поставкам. Документная сверка отвечает за наличие и совпадение документов ERP ↔ 1C.</td>
+          </tr>
+          <tr>
+            <td>1C read-only</td>
+            <td>Сервис вызывает только GET endpoints 1C REST API. Записи в 1C через этот модуль нет.</td>
+          </tr>
+          <tr>
+            <td>ERP source of user context</td>
+            <td>Доступ открывается из ERP по short-lived launch token. Логин/пароль ERP не являются production-входом.</td>
+          </tr>
+          <tr>
+            <td>Source tables</td>
+            <td>ERP-данные читаются из исходных таблиц и процедур/функций ERP. Зависимость от <code>view_specinv</code> запрещена.</td>
+          </tr>
+          <tr>
+            <td>Matching key</td>
+            <td>Минимум: <code>kind + code1c + date1c + contract_code1c</code>. При дублях фиксируется ambiguous/duplicate status.</td>
+          </tr>
+          <tr>
+            <td>Business audit</td>
+            <td>Все расхождения пишутся в журнал с типом, полями расхождения и пользовательским комментарием.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="print-note">
+        Этот HTML-файл является читаемой версией C4-архитектуры. Формальная Mermaid-нотация сохранена в Markdown-файле рядом.
+      </p>
+    </section>
+  </main>
+</body>
+</html>
