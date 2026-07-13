@@ -38,7 +38,6 @@ GET /reconciliation/v1/invoices
 GET /reconciliation/v1/payments
 GET /reconciliation/v1/sales
 GET /reconciliation/v1/purchases
-GET /reconciliation/v1/document-lines
 GET /reconciliation/v1/account-movements
 GET /reconciliation/v1/balances
 ```
@@ -149,6 +148,31 @@ contract_code / contract_number / counterparty_code / counterparty_inn / documen
 | `balances` | `РегистрБухгалтерии.Хозрасчетный.Остатки` или `ОборотыИОстатки` |
 
 Подробный маппинг каждого поля описан в `contracts/onec/openapi_ru.md`.
+
+`document_lines` не является отдельным поисковым endpoint в MVP. Это блок строк тех документов, которые уже попали в `snapshot` по текущим фильтрам и `include`. Если документ не попал в `customer_invoices` / `sales` / `purchases`, его строки в `document_lines` возвращать не нужно.
+
+Обязательные уточнения по документам:
+
+1. В DTO документа нужно разделять:
+   - `number` - внутренний номер документа 1C;
+   - `incoming_number` - входящий номер / номер платежного поручения / номер документа поставщика;
+   - `incoming_date` - дата входящего документа, если есть.
+
+2. При запросе по `buyer_contract_code` / `committent_contract_code` 1C должна вернуть не только документы с прямым `ДоговорКонтрагента.Код` равным этим кодам, но и документы, которые сама 1C показывает во вкладке "Документы" этой заявки/договора, даже если прямой договор документа является договором поставщика.
+
+3. Для таких связанных документов 1C должна заполнить:
+   - `contract_code` - прямой договор документа;
+   - `linked_contract_codes` - коды договоров заявки/спецификации, через которые документ попал в snapshot.
+
+4. Если один физический документ относится к нескольким поставкам/заявкам, 1C должна вернуть `allocations[]`:
+   - `allocations[].amount` - сумма, относящаяся к конкретной заявке/строке;
+   - `allocations[].contract_code` - прямой договор строки;
+   - `allocations[].linked_contract_code` - договор заявки/спецификации, через который строка попала в snapshot;
+   - `allocations[].document_line_id` - id строки документа, если доступен.
+
+   Без `allocations[]` Python видит только полную сумму документа 1C и будет фиксировать `amount_mismatch`, если ERP сверяет долю документа в рамках одной поставки.
+
+5. Если связанные документы по заявке невозможно получить из аналитики 1C, API должно вернуть предупреждение в `warnings[]`, а не молча отдавать неполный набор.
 
 ## 7. Пагинация
 

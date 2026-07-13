@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import os
+from datetime import date
 from io import BytesIO
 from zipfile import ZipFile
 
 from openpyxl import load_workbook
 
+from recon_erp_1c.domain.entities import AccountingDocument
+from recon_erp_1c.domain.value_objects import DocumentKind, Money, SourceSystem
 from recon_erp_1c.infrastructure.export.xlsx import reconciliation_matrix_xlsx, reconciliation_run_xlsx
+from recon_erp_1c.interfaces.http.api import _matrix_row
 from recon_erp_1c.interfaces.http.auth import create_session_token, verify_session_token
 
 
@@ -148,3 +152,38 @@ def test_matrix_xlsx_is_valid_zip_package() -> None:
     assert ws.max_row > 1
     assert ws["A1"].value == "№ спецификации"
     assert ws["A2"].value == "Поставка №921"
+
+
+def test_matrix_row_uses_procedure_calculation_instead_of_document_totals() -> None:
+    document = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.SALE,
+        code1c="ACT-1",
+        number="ACT-1",
+        date=date(2025, 7, 1),
+        amount=Money.of("10"),
+        contract_code1c="B",
+        reimbursement_type="non_reimbursable",
+    )
+
+    row = _matrix_row(
+        None,  # repository is not used when documents are supplied
+        {
+            "spec_id": 20334,
+            "spec_number": "1051",
+            "buyer_contract_code": "B",
+        },
+        [document],
+        {
+            "payment_sum": "203091.35",
+            "reimbursable_sum": "171364.16",
+            "non_reimbursable_sum": "38394.01",
+            "balance": "-6666.82",
+        },
+    )
+
+    assert row["payment_sum"] == "203091.35"
+    assert row["reimbursable_sum"] == "171364.16"
+    assert row["non_reimbursable_sum"] == "38394.01"
+    assert row["balance"] == "-6666.82"
+    assert row["balance_label"] == "Долг"

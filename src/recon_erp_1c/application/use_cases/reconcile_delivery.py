@@ -4,10 +4,20 @@ from dataclasses import dataclass
 from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
+from time import perf_counter
 from uuid import uuid4
 
 from recon_erp_1c.application.ports.repositories import ErpReadRepository, OneCReadRepository, ReconciliationLogRepository
-from recon_erp_1c.domain.entities import AccountingDocument, Delivery, ReconciliationIssue, ReconciliationRun
+from recon_erp_1c.domain.entities import (
+    AccountingBalance,
+    AccountingDocument,
+    BalanceComparison,
+    Delivery,
+    DocumentLine,
+    PaymentAllocation,
+    ReconciliationIssue,
+    ReconciliationRun,
+)
 from recon_erp_1c.domain.services import compare_documents, normalize_document_number
 from recon_erp_1c.domain.value_objects import DateRange, Money, ReconciliationStatus
 
@@ -31,22 +41,48 @@ class ReconcileDeliveryUseCase:
         self.log_repository = log_repository
 
     def execute(self, command: ReconcileDeliveryCommand) -> ReconciliationRun:
+        total_started = perf_counter()
+        erp_started = perf_counter()
         delivery = self.erp_repository.get_delivery(command.spec_id)
         contracts = self.erp_repository.list_delivery_contracts(command.spec_id)
         erp_documents = self.erp_repository.list_delivery_documents(command.spec_id)
-        onec_documents = self.onec_repository.fetch_snapshot(
+        erp_balance = self.erp_repository.get_delivery_balance(command.spec_id)
+        erp_ms = (perf_counter() - erp_started) * 1000
+        onec_started = perf_counter()
+        onec_snapshot = self.onec_repository.fetch_snapshot(
             delivery=delivery,
             period=command.period,
             contracts=contracts,
             erp_documents=erp_documents,
         )
-
-        issues = match_documents(aggregate_documents(erp_documents), aggregate_documents(onec_documents))
+        onec_ms = (perf_counter() - onec_started) * 1000
+        match_started = perf_counter()
+        issues = match_documents(
+            aggregate_documents(erp_documents),
+            aggregate_documents(list(onec_snapshot.documents)),
+        )
+        balance_comparison = compare_balances(
+            erp_balance,
+            list(onec_snapshot.balances),
+            delivery.contract_codes.all_codes(),
+        )
+        match_ms = (perf_counter() - match_started) * 1000
         run = ReconciliationRun(
             run_id=str(uuid4()),
             delivery=delivery,
             created_at=datetime.now(),
             issues=issues,
+            balance_comparison=balance_comparison,
+            source_warnings=onec_snapshot.warnings,
+            metrics={
+                "erp_read_ms": round(erp_ms, 2),
+                "onec_rest_ms": round(onec_ms, 2),
+                "matching_ms": round(match_ms, 2),
+                "total_ms": round((perf_counter() - total_started) * 1000, 2),
+                "erp_documents": len(erp_documents),
+                "onec_documents": len(onec_snapshot.documents),
+                "onec_balances": len(onec_snapshot.balances),
+            },
         )
         if command.persist_log and self.log_repository is not None:
             self.log_repository.save_run(run)
@@ -57,10 +93,47 @@ def match_documents(erp_documents: list[AccountingDocument], onec_documents: lis
     issues: list[ReconciliationIssue] = []
     onec_index = _build_match_index(onec_documents)
     matched_onec_indexes: set[int] = set()
+    used_detail_resources: set[tuple[int, str, str]] = set()
 
     for erp_doc in erp_documents:
         match = _find_onec_match(erp_doc, onec_index, onec_documents, matched_onec_indexes)
         if match is None:
+            fallback = _find_unlinked_detail_match(erp_doc, onec_documents, used_detail_resources)
+            if fallback is not None:
+                onec_index_value, detail_match = fallback
+                if detail_match.ambiguous:
+                    issues.append(
+                        ReconciliationIssue(
+                            status=ReconciliationStatus.AMBIGUOUS_MATCH,
+                            message="Найдено несколько строк 1С с одинаковой датой, суммой и договором",
+                            erp_document=erp_doc,
+                            fields=("amount", "date", "contract_code1c"),
+                            primary_reason="ambiguous_unlinked_document_line",
+                            severity="critical",
+                            match_confidence="ambiguous",
+                            match_basis=detail_match.basis,
+                        )
+                    )
+                    continue
+                matched_onec_indexes.add(onec_index_value)
+                used_detail_resources.add((onec_index_value, detail_match.basis, detail_match.detail_id))
+                comparable_erp = replace(
+                    erp_doc,
+                    code1c=detail_match.document.code1c,
+                    number=detail_match.document.number,
+                    incoming_number=detail_match.document.incoming_number,
+                )
+                issue = compare_documents(comparable_erp, detail_match.document)
+                issues.append(
+                    replace(
+                        issue,
+                        erp_document=erp_doc,
+                        match_confidence="detail",
+                        match_basis=detail_match.basis,
+                        matched_detail_id=detail_match.detail_id,
+                    )
+                )
+                continue
             issues.append(
                 ReconciliationIssue(
                     status=ReconciliationStatus.NOT_FOUND_IN_1C,
@@ -92,8 +165,37 @@ def match_documents(erp_documents: list[AccountingDocument], onec_documents: lis
 
         onec_index_value = candidate_indexes[0]
         matched_onec_indexes.add(onec_index_value)
-        issue = compare_documents(erp_doc, onec_documents[onec_index_value])
-        issues.append(replace(issue, match_confidence=confidence))
+        onec_doc = onec_documents[onec_index_value]
+        detail_match = _project_matching_detail(erp_doc, onec_doc)
+        if detail_match.ambiguous:
+            issues.append(
+                ReconciliationIssue(
+                    status=ReconciliationStatus.AMBIGUOUS_MATCH,
+                    message="В документе 1С найдено несколько строк/распределений с одинаковой суммой",
+                    erp_document=erp_doc,
+                    onec_document=onec_doc,
+                    fields=("amount", "document_detail"),
+                    primary_reason="ambiguous_document_detail",
+                    severity="critical",
+                    match_confidence="ambiguous",
+                    match_basis=detail_match.basis,
+                )
+            )
+            continue
+        if detail_match.detail_id:
+            used_detail_resources.add((onec_index_value, detail_match.basis, detail_match.detail_id))
+        elif detail_match.basis == "document_header":
+            for line in onec_doc.lines:
+                used_detail_resources.add((onec_index_value, "document_line", line.line_id))
+        issue = compare_documents(erp_doc, detail_match.document)
+        issues.append(
+            replace(
+                issue,
+                match_confidence=confidence,
+                match_basis=detail_match.basis,
+                matched_detail_id=detail_match.detail_id,
+            )
+        )
 
     for index, onec_doc in enumerate(onec_documents):
         if index not in matched_onec_indexes:
@@ -196,11 +298,16 @@ def aggregate_documents(documents: list[AccountingDocument]) -> list[AccountingD
                 date=first.date if same_date else None,
                 amount=Money.of(total, first.amount.currency),
                 contract_code1c=first.contract_code1c if same_contract else "",
+                incoming_number=first.incoming_number,
                 posted=all(row.posted for row in rows),
                 deleted=all(row.deleted for row in rows),
                 source_id=",".join(row.source_id for row in rows if row.source_id),
                 operation_id=None,
                 vat_rate=first.vat_rate if same_vat else "",
+                reimbursement_type=first.reimbursement_type,
+                linked_contract_codes=tuple(dict.fromkeys(code for row in rows for code in row.linked_contract_codes)),
+                lines=tuple(line for row in rows for line in row.lines),
+                allocations=tuple(allocation for row in rows for allocation in row.allocations),
             )
         )
     return result
@@ -214,9 +321,147 @@ def _aggregation_key(document: AccountingDocument) -> tuple[str, ...] | None:
     source_id = document.source_id.strip()
     common = (document.kind.value, document_id, source_id, document.contract_code1c.strip(), document.amount.currency)
     if document.kind.value == "payment":
-        return (*common, date_value)
+        # One bank document may be allocated to several ERP operations and
+        # contracts. It remains one physical payment for reconciliation.
+        return (document.kind.value, document_id, source_id, document.amount.currency, date_value)
     if document.kind.value == "sale":
         return (*common, date_value, document.vat_rate.strip())
     if document.kind.value == "customer_invoice":
         return (*common, date_value, normalize_document_number(document.number))
     return (*common, date_value, document.vat_rate.strip())
+
+
+@dataclass(frozen=True, slots=True)
+class _DetailMatch:
+    document: AccountingDocument
+    basis: str = "document_header"
+    detail_id: str = ""
+    ambiguous: bool = False
+
+
+def _project_matching_detail(erp_doc: AccountingDocument, onec_doc: AccountingDocument) -> _DetailMatch:
+    if erp_doc.amount == onec_doc.amount:
+        if onec_doc.kind.value == "payment" and onec_doc.allocations and erp_doc.contract_code1c:
+            allocation_contracts = {
+                allocation.linked_contract_code1c or allocation.contract_code1c
+                for allocation in onec_doc.allocations
+                if allocation.linked_contract_code1c or allocation.contract_code1c
+            }
+            if erp_doc.contract_code1c in allocation_contracts:
+                return _DetailMatch(
+                    document=replace(onec_doc, contract_code1c=erp_doc.contract_code1c),
+                    basis="payment_header_allocations",
+                )
+        return _DetailMatch(document=onec_doc)
+
+    details: list[tuple[Money, str, str, str]] = []
+    for allocation in onec_doc.allocations:
+        details.append(
+            (
+                allocation.amount,
+                allocation.linked_contract_code1c or allocation.contract_code1c,
+                allocation.document_line_id or allocation.invoice_id or allocation.invoice_number,
+                "payment_allocation" if onec_doc.kind.value == "payment" else "document_allocation",
+            )
+        )
+    for line in onec_doc.lines:
+        details.append(
+            (
+                line.amount,
+                line.linked_contract_code1c or line.contract_code1c,
+                line.line_id,
+                "document_line",
+            )
+        )
+    exact_amount = [item for item in details if item[0] == erp_doc.amount]
+    if not exact_amount:
+        return _DetailMatch(document=onec_doc)
+
+    contract = erp_doc.contract_code1c.strip()
+    same_contract = [item for item in exact_amount if contract and item[1] == contract]
+    candidates = same_contract or exact_amount
+    if len(candidates) != 1:
+        return _DetailMatch(document=onec_doc, basis=candidates[0][3] if candidates else "document_detail", ambiguous=True)
+
+    amount, detail_contract, detail_id, basis = candidates[0]
+    projected = replace(
+        onec_doc,
+        amount=amount,
+        contract_code1c=detail_contract or onec_doc.contract_code1c,
+        vat_rate=_detail_vat_rate(onec_doc, detail_id) or onec_doc.vat_rate,
+    )
+    return _DetailMatch(document=projected, basis=basis, detail_id=detail_id)
+
+
+def _detail_vat_rate(document: AccountingDocument, detail_id: str) -> str:
+    for line in document.lines:
+        if line.line_id == detail_id:
+            return line.vat_rate
+    return ""
+
+
+def _find_unlinked_detail_match(
+    erp_doc: AccountingDocument,
+    onec_documents: list[AccountingDocument],
+    used_detail_resources: set[tuple[int, str, str]],
+) -> tuple[int, _DetailMatch] | None:
+    if erp_doc.code1c or erp_doc.kind.value not in {"sale", "purchase"}:
+        return None
+    candidates: list[tuple[int, _DetailMatch]] = []
+    for index, document in enumerate(onec_documents):
+        if document.kind != erp_doc.kind or document.date != erp_doc.date:
+            continue
+        for line in document.lines:
+            resource = (index, "document_line", line.line_id)
+            if resource in used_detail_resources or line.amount != erp_doc.amount:
+                continue
+            line_contract = line.linked_contract_code1c or line.contract_code1c or document.contract_code1c
+            if erp_doc.contract_code1c and line_contract and erp_doc.contract_code1c != line_contract:
+                continue
+            candidates.append(
+                (
+                    index,
+                    _DetailMatch(
+                        document=replace(
+                            document,
+                            amount=line.amount,
+                            contract_code1c=line_contract,
+                            vat_rate=line.vat_rate or document.vat_rate,
+                        ),
+                        basis="document_line",
+                        detail_id=line.line_id,
+                    ),
+                )
+            )
+    if not candidates:
+        return None
+    if len(candidates) > 1:
+        first_index, first = candidates[0]
+        return first_index, replace(first, ambiguous=True)
+    return candidates[0]
+
+
+def compare_balances(
+    erp_balance: Money,
+    onec_balances: list[AccountingBalance],
+    contract_codes: tuple[str, ...],
+) -> BalanceComparison | None:
+    codes = tuple(code for code in contract_codes if code)
+    relevant = [balance for balance in onec_balances if not codes or balance.contract_code1c in codes]
+    if not relevant:
+        return None
+    currency = erp_balance.currency
+    onec_amount = sum(
+        (balance.signed_closing_balance.amount for balance in relevant if balance.closing_debit.currency == currency),
+        Decimal("0"),
+    )
+    onec_balance = Money.of(onec_amount, currency)
+    difference = Money.of(erp_balance.amount - onec_balance.amount, currency)
+    status = ReconciliationStatus.MATCH if difference.amount == Decimal("0.00") else ReconciliationStatus.AMOUNT_MISMATCH
+    return BalanceComparison(
+        erp_balance=erp_balance,
+        onec_balance=onec_balance,
+        difference=difference,
+        status=status,
+        contract_codes=codes,
+    )

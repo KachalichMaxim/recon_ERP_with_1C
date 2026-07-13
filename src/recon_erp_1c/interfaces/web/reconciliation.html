@@ -243,6 +243,13 @@
         </div>
         <div class="message" id="runMessage" role="status" aria-live="polite"></div>
 
+        <div class="balance-compare hidden" id="balanceCompare" aria-live="polite">
+          <div><span>Сальдо ERP</span><b id="balanceErp">—</b></div>
+          <div><span>Сальдо 1С</span><b id="balanceOnec">—</b></div>
+          <div><span>Разница ERP − 1С</span><b id="balanceDifference">—</b></div>
+          <div><span>Результат</span><b id="balanceStatus">—</b></div>
+        </div>
+
         <div class="kpi-grid recon-kpi" id="summaryCards">
           <button class="kpi kpi-filter active" type="button" data-result-filter="all"><span>Документов</span><b data-key="issues_total">0</b></button>
           <button class="kpi kpi-filter ok" type="button" data-result-filter="match"><span>Совпало</span><b data-status="match">0</b></button>

@@ -14,6 +14,7 @@ class MariaDbConfig:
     connect_timeout_seconds: int = 5
     read_timeout_seconds: int = 30
     write_timeout_seconds: int = 30
+    bind_address: str = ""
 
     @classmethod
     def from_env(cls) -> "MariaDbConfig":
@@ -26,6 +27,7 @@ class MariaDbConfig:
             connect_timeout_seconds=int(os.environ.get("RECON_ERP_DB_CONNECT_TIMEOUT", "5")),
             read_timeout_seconds=int(os.environ.get("RECON_ERP_DB_READ_TIMEOUT", "30")),
             write_timeout_seconds=int(os.environ.get("RECON_ERP_DB_WRITE_TIMEOUT", "30")),
+            bind_address=os.environ.get("RECON_ERP_DB_BIND_ADDRESS", "").strip(),
         )
 
     def missing_fields(self) -> list[str]:
@@ -56,6 +58,7 @@ class MariaDbConfig:
             "connect_timeout_seconds": self.connect_timeout_seconds,
             "read_timeout_seconds": self.read_timeout_seconds,
             "write_timeout_seconds": self.write_timeout_seconds,
+            "bind_address_configured": bool(self.bind_address),
         }
 
 

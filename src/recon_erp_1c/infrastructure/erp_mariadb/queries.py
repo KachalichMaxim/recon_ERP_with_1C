@@ -94,6 +94,7 @@ LEFT JOIN (
     FROM veda_schets schet
     WHERE schet.f_dogtype = 2
       AND COALESCE(schet.f_type, 0) = 1
+      AND COALESCE(schet.f_maininv, 0) = 0
     GROUP BY schet.f_dogid
 ) inv ON inv.spec_id = filtered_specs.spec_id
 LEFT JOIN (
@@ -168,6 +169,84 @@ LEFT JOIN (
 ) sales ON sales.spec_id = filtered_specs.spec_id;
 """
 
+DELIVERY_BALANCE_BY_SPEC_ID = """
+SELECT
+    COALESCE(pay.payment_sum, 0) AS payment_sum,
+    COALESCE(sales.reimbursable_sum, 0) AS reimbursable_sum,
+    COALESCE(sales.non_reimbursable_sum, 0) AS non_reimbursable_sum,
+    COALESCE(pay.payment_sum, 0)
+      - COALESCE(sales.reimbursable_sum, 0)
+      - COALESCE(sales.non_reimbursable_sum, 0) AS balance
+FROM (SELECT %(spec_id)s AS spec_id) selected
+LEFT JOIN (
+    SELECT
+        spec.f_id AS spec_id,
+        SUM(COALESCE(get_paidsum(oper.f_id), 0)) AS payment_sum
+    FROM veda_spec_invoices oper
+    LEFT JOIN veda_categs oper4_specs
+        ON oper4_specs.f_objectid = oper.f_id
+       AND oper4_specs.f_ctgtype = 24
+       AND oper4_specs.f_objecttype = 5
+    JOIN veda_specs spec
+        ON spec.f_id = CASE oper.f_parenttype
+          WHEN 2 THEN oper.f_specid
+          WHEN 4 THEN CAST(oper4_specs.f_valstr AS SIGNED)
+          ELSE NULL
+        END
+    WHERE oper.f_parenttype IN (2, 4)
+      AND spec.f_id = %(spec_id)s
+    GROUP BY spec.f_id
+) pay ON pay.spec_id = selected.spec_id
+LEFT JOIN (
+    SELECT
+        sales_ops.spec_id,
+        SUM(CASE
+            WHEN sales_ops.reimbursement_id = 1 THEN sales_ops.realiz_sum
+            WHEN sales_ops.reimbursement_id NOT IN (1, 2)
+             AND sales_ops.buyer_contract_code <> ''
+             AND sales_ops.operation_contract_code <> sales_ops.buyer_contract_code
+                THEN sales_ops.realiz_sum
+            ELSE 0
+        END) AS reimbursable_sum,
+        SUM(CASE
+            WHEN sales_ops.reimbursement_id = 2 THEN sales_ops.realiz_sum
+            WHEN sales_ops.reimbursement_id NOT IN (1, 2)
+             AND sales_ops.buyer_contract_code <> ''
+             AND sales_ops.operation_contract_code = sales_ops.buyer_contract_code
+                THEN sales_ops.realiz_sum
+            ELSE 0
+        END) AS non_reimbursable_sum
+    FROM (
+        SELECT
+            spec.f_id AS spec_id,
+            COALESCE(oper.f_isvozm, 0) AS reimbursement_id,
+            COALESCE(get_realizsum(oper.f_id), 0) AS realiz_sum,
+            COALESCE(spec.f_kod1cb, '') AS buyer_contract_code,
+            COALESCE(NULLIF(dog.f_kod1c, ''), NULLIF(spec.f_kod1cp, ''), NULLIF(spec.f_kod1cb, ''), '') AS operation_contract_code
+        FROM veda_spec_invoices oper
+        LEFT JOIN veda_categs oper4_specs
+            ON oper4_specs.f_objectid = oper.f_id
+           AND oper4_specs.f_ctgtype = 24
+           AND oper4_specs.f_objecttype = 5
+        JOIN veda_specs spec
+            ON spec.f_id = CASE oper.f_parenttype
+              WHEN 2 THEN oper.f_specid
+              WHEN 4 THEN CAST(oper4_specs.f_valstr AS SIGNED)
+              ELSE NULL
+            END
+        LEFT JOIN (
+            SELECT f_operid, MIN(f_dogid) AS f_dogid
+            FROM veda_akts
+            GROUP BY f_operid
+        ) akt ON akt.f_operid = oper.f_id
+        LEFT JOIN veda_dogs dog ON dog.f_id = akt.f_dogid
+        WHERE oper.f_parenttype IN (2, 4)
+          AND spec.f_id = %(spec_id)s
+    ) sales_ops
+    GROUP BY sales_ops.spec_id
+) sales ON sales.spec_id = selected.spec_id;
+"""
+
 SEARCH_CLIENTS = """
 SELECT DISTINCT
     COALESCE(client.f_id, 0) AS client_id,
@@ -226,7 +305,10 @@ SELECT DISTINCT
     schet.f_dt AS document_date,
     COALESCE(schet.f_sum, 0) AS amount_total,
     COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
-    COALESCE(spec.f_kod1cb, '') AS contract_code1c,
+    CASE
+        WHEN COALESCE(schet.f_vozm, 0) = 1 THEN COALESCE(NULLIF(spec.f_kod1cp, ''), spec.f_kod1cb, '')
+        ELSE COALESCE(spec.f_kod1cb, '')
+    END AS contract_code1c,
     COALESCE(schet.f_id, 0) AS source_id,
     COALESCE(schet.f_operid, 0) AS operation_id,
     COALESCE(nds.f_name, '') AS vat_rate,
@@ -239,7 +321,8 @@ LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = schet.f_val
 LEFT JOIN veda_spr nds ON nds.f_type = 10 AND nds.f_num = schet.f_nds
 WHERE schet.f_dogtype = 2
   AND schet.f_dogid = %(spec_id)s
-  AND COALESCE(schet.f_type, 0) = 1;
+  AND COALESCE(schet.f_type, 0) = 1
+  AND COALESCE(schet.f_maininv, 0) = 0;
 """
 
 DELIVERY_CUSTOMER_INVOICES_BY_SPEC_IDS = """
@@ -251,7 +334,10 @@ SELECT DISTINCT
     schet.f_dt AS document_date,
     COALESCE(schet.f_sum, 0) AS amount_total,
     COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
-    COALESCE(spec.f_kod1cb, '') AS contract_code1c,
+    CASE
+        WHEN COALESCE(schet.f_vozm, 0) = 1 THEN COALESCE(NULLIF(spec.f_kod1cp, ''), spec.f_kod1cb, '')
+        ELSE COALESCE(spec.f_kod1cb, '')
+    END AS contract_code1c,
     COALESCE(schet.f_id, 0) AS source_id,
     COALESCE(schet.f_operid, 0) AS operation_id,
     COALESCE(nds.f_name, '') AS vat_rate,
@@ -264,6 +350,7 @@ LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = schet.f_val
 LEFT JOIN veda_spr nds ON nds.f_type = 10 AND nds.f_num = schet.f_nds
 WHERE schet.f_dogtype = 2
   AND COALESCE(schet.f_type, 0) = 1
+  AND COALESCE(schet.f_maininv, 0) = 0
   AND spec.f_id IN ({spec_id_filter});
 """
 
@@ -473,18 +560,48 @@ WHERE oper.f_id IN ({operation_id_filter});
 OPERATION_CLOSING_DOCS_BY_OPERATION_IDS = """
 SELECT
     akt.f_operid AS operation_id,
-    COALESCE(GROUP_CONCAT(DISTINCT NULLIF(akt.f_kod1c, '') ORDER BY akt.f_kod1c SEPARATOR ', '), '') AS code1c,
-    COALESCE(GROUP_CONCAT(DISTINCT NULLIF(akt.f_num, '') ORDER BY akt.f_num SEPARATOR ', '), '') AS document_number,
-    MAX(CASE WHEN akt.f_dt1c IS NOT NULL AND akt.f_dt1c <> '0000-00-00' THEN akt.f_dt1c ELSE akt.f_dt END) AS document_date,
-    COALESCE(NULLIF(MAX(val.f_dopprstr), ''), NULLIF(MAX(val.f_uslstr), ''), NULLIF(MAX(val.f_namedop), ''), 'RUB') AS currency,
-    COALESCE(MIN(akt.f_id), 0) AS source_id,
-    COALESCE(NULLIF(MAX(dog.f_kod1c), ''), '') AS dog_code1c,
-    MAX(CASE WHEN akt.f_status = 9 THEN 1 ELSE 0 END) AS deleted
+    CASE
+        WHEN COALESCE(akt.f_type, 0) = 7 THEN 'purchase'
+        ELSE 'sale'
+    END AS document_kind,
+    COALESCE(NULLIF(akt.f_kod1c, ''), '') AS code1c,
+    COALESCE(NULLIF(akt.f_num, ''), '') AS document_number,
+    CASE WHEN akt.f_dt1c IS NOT NULL AND akt.f_dt1c <> '0000-00-00' THEN akt.f_dt1c ELSE akt.f_dt END AS document_date,
+    COALESCE(akt.f_sum, 0) AS amount_total,
+    COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
+    COALESCE(akt.f_id, 0) AS source_id,
+    COALESCE(NULLIF(dog.f_kod1c, ''), '') AS dog_code1c,
+    CASE WHEN akt.f_status = 9 THEN 1 ELSE 0 END AS deleted
 FROM veda_akts akt
 LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = akt.f_val
 LEFT JOIN veda_dogs dog ON dog.f_id = akt.f_dogid
 WHERE akt.f_operid IN ({operation_id_filter})
-GROUP BY akt.f_operid;
+  AND COALESCE(akt.f_operid, 0) <> 0
+
+UNION ALL
+
+SELECT
+    details_opers.f_operid AS operation_id,
+    CASE
+        WHEN COALESCE(akt.f_type, 0) = 7 THEN 'purchase'
+        ELSE 'sale'
+    END AS document_kind,
+    COALESCE(NULLIF(akt.f_kod1c, ''), '') AS code1c,
+    COALESCE(NULLIF(akt.f_num, ''), '') AS document_number,
+    CASE WHEN akt.f_dt1c IS NOT NULL AND akt.f_dt1c <> '0000-00-00' THEN akt.f_dt1c ELSE akt.f_dt END AS document_date,
+    COALESCE(details_opers.f_sum, akt.f_sum, 0) AS amount_total,
+    COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
+    COALESCE(akt.f_id, 0) AS source_id,
+    COALESCE(NULLIF(dog.f_kod1c, ''), '') AS dog_code1c,
+    CASE WHEN akt.f_status = 9 THEN 1 ELSE 0 END AS deleted
+FROM veda_akts_details_opers details_opers
+JOIN veda_akts_details details ON details.f_id = details_opers.f_akts_detailsid
+JOIN veda_akts akt ON akt.f_id = details.f_aktid
+LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = akt.f_val
+LEFT JOIN veda_dogs dog ON dog.f_id = akt.f_dogid
+WHERE details_opers.f_operid IN ({operation_id_filter})
+  AND COALESCE(akt.f_operid, 0) <> details_opers.f_operid
+ORDER BY operation_id, document_date, source_id;
 """
 
 OPERATION_PAYMENT_DOCS_BY_OPERATION_IDS = """

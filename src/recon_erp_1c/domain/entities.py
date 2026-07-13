@@ -47,6 +47,50 @@ class Delivery:
 
 
 @dataclass(frozen=True, slots=True)
+class DocumentLine:
+    document_id: str
+    line_id: str
+    amount: Money
+    contract_code1c: str = ""
+    linked_contract_code1c: str = ""
+    line_kind: str = ""
+    nomenclature: str = ""
+    content: str = ""
+    vat_rate: str = ""
+    vat_amount: Money | None = None
+    settlement_account: str = ""
+    cost_account: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class PaymentAllocation:
+    amount: Money
+    contract_code1c: str = ""
+    linked_contract_code1c: str = ""
+    invoice_id: str = ""
+    invoice_number: str = ""
+    document_line_id: str = ""
+    spec_number: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class AccountingBalance:
+    contract_code1c: str
+    opening_debit: Money
+    opening_credit: Money
+    turnover_debit: Money
+    turnover_credit: Money
+    closing_debit: Money
+    closing_credit: Money
+    contract_id: str = ""
+
+    @property
+    def signed_closing_balance(self) -> Money:
+        # Positive value means client overpayment, negative value means client debt.
+        return Money.of(self.closing_credit.amount - self.closing_debit.amount, self.closing_debit.currency)
+
+
+@dataclass(frozen=True, slots=True)
 class AccountingDocument:
     source: SourceSystem
     kind: DocumentKind
@@ -55,6 +99,7 @@ class AccountingDocument:
     date: date | None
     amount: Money
     contract_code1c: str
+    incoming_number: str = ""
     posted: bool = True
     deleted: bool = False
     source_id: str = ""
@@ -62,6 +107,25 @@ class AccountingDocument:
     vat_rate: str = ""
     reimbursement_type: str = ""
     payment_amount: Money | None = None
+    linked_contract_codes: tuple[str, ...] = ()
+    lines: tuple[DocumentLine, ...] = ()
+    allocations: tuple[PaymentAllocation, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class OneCSnapshot:
+    documents: tuple[AccountingDocument, ...]
+    balances: tuple[AccountingBalance, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class BalanceComparison:
+    erp_balance: Money
+    onec_balance: Money
+    difference: Money
+    status: ReconciliationStatus
+    contract_codes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +138,8 @@ class ReconciliationIssue:
     primary_reason: str = ""
     severity: str = "info"
     match_confidence: str = ""
+    match_basis: str = ""
+    matched_detail_id: str = ""
 
 
 @dataclass(slots=True)
@@ -82,7 +148,12 @@ class ReconciliationRun:
     delivery: Delivery
     created_at: datetime
     issues: list[ReconciliationIssue] = field(default_factory=list)
+    balance_comparison: BalanceComparison | None = None
+    source_warnings: tuple[str, ...] = ()
+    metrics: dict[str, float | int] = field(default_factory=dict)
 
     @property
     def matched(self) -> bool:
-        return all(issue.status == ReconciliationStatus.MATCH for issue in self.issues)
+        documents_matched = all(issue.status == ReconciliationStatus.MATCH for issue in self.issues)
+        balance_matched = self.balance_comparison is None or self.balance_comparison.status == ReconciliationStatus.MATCH
+        return documents_matched and balance_matched

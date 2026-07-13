@@ -332,7 +332,10 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
         started = time.perf_counter()
         run = _execute_reconciliation(query)
         payload = run_to_dict(run)
-        payload["metrics"] = {"total_ms": round((time.perf_counter() - started) * 1000, 2)}
+        payload["metrics"] = {
+            **payload.get("metrics", {}),
+            "http_total_ms": round((time.perf_counter() - started) * 1000, 2),
+        }
         self._json(HTTPStatus.OK, {"ok": True, "run": payload})
 
     def _run_reconciliation_xlsx(self, query: dict[str, list[str]]) -> None:
@@ -631,11 +634,16 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
         offset=offset,
     )
     deliveries = ListDeliveriesUseCase(repository).execute(command)
-    documents_by_spec = repository.list_documents_for_deliveries(
+    documents_by_spec, calculations_by_spec = repository.list_documents_and_calculations_for_deliveries(
         [int(delivery.get("spec_id") or 0) for delivery in deliveries]
     )
     items = [
-        _matrix_row(repository, delivery, documents_by_spec.get(int(delivery.get("spec_id") or 0), []))
+        _matrix_row(
+            repository,
+            delivery,
+            documents_by_spec.get(int(delivery.get("spec_id") or 0), []),
+            calculations_by_spec.get(int(delivery.get("spec_id") or 0)),
+        )
         for delivery in deliveries
     ]
     return {
@@ -660,6 +668,7 @@ def _matrix_row(
     repository: MariaDbErpReadRepository,
     delivery_row: dict[str, object],
     documents: list[AccountingDocument] | None = None,
+    calculation: dict[str, str] | None = None,
 ) -> dict[str, object]:
     spec_id = int(delivery_row["spec_id"] or 0)
     documents = documents if documents is not None else repository.list_delivery_documents(spec_id)
@@ -692,10 +701,18 @@ def _matrix_row(
         or (doc.reimbursement_type in {"", "unknown"} and doc not in non_reimbursable)
     ]
     invoice_sum = _sum_docs(invoices)
-    payment_sum = _sum_docs(payments)
-    reimbursable_sum = _sum_docs(reimbursable)
-    non_reimbursable_sum = _sum_docs(non_reimbursable)
-    balance = payment_sum - reimbursable_sum - non_reimbursable_sum
+    payment_sum = _decimal_value(calculation.get("payment_sum")) if calculation else _sum_docs(payments)
+    reimbursable_sum = (
+        _decimal_value(calculation.get("reimbursable_sum")) if calculation else _sum_docs(reimbursable)
+    )
+    non_reimbursable_sum = (
+        _decimal_value(calculation.get("non_reimbursable_sum")) if calculation else _sum_docs(non_reimbursable)
+    )
+    balance = (
+        _decimal_value(calculation.get("balance"))
+        if calculation
+        else payment_sum - reimbursable_sum - non_reimbursable_sum
+    )
     return {
         **delivery_row,
         "invoice_sum": _decimal_text(invoice_sum),

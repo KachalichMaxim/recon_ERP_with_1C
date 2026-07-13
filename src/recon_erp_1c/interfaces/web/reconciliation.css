@@ -644,6 +644,50 @@ textarea::placeholder {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
+.balance-compare {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 1px;
+  margin: 10px 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--line);
+}
+
+.balance-compare > div {
+  min-width: 0;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.balance-compare span,
+.balance-compare b {
+  display: block;
+}
+
+.balance-compare span {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.balance-compare b {
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-compare.problem #balanceDifference,
+.balance-compare.problem #balanceStatus {
+  color: var(--red-strong);
+}
+
+.balance-compare.ok #balanceDifference,
+.balance-compare.ok #balanceStatus {
+  color: var(--green);
+}
+
 .kpi {
   min-width: 0;
   overflow: hidden;
@@ -1304,7 +1348,8 @@ th.sticky-right-balance {
   }
 
   .kpi-grid,
-  .recon-kpi {
+  .recon-kpi,
+  .balance-compare {
     grid-template-columns: repeat(2, minmax(135px, 1fr));
   }
 }
@@ -1326,6 +1371,7 @@ th.sticky-right-balance {
   .filters,
   .kpi-grid,
   .recon-kpi,
+  .balance-compare,
   .progress {
     grid-template-columns: 1fr;
   }

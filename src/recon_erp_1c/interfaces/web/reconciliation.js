@@ -94,6 +94,11 @@
     exportBtn: $('exportBtn'),
     progressBox: $('progressBox'),
     runMessage: $('runMessage'),
+    balanceCompare: $('balanceCompare'),
+    balanceErp: $('balanceErp'),
+    balanceOnec: $('balanceOnec'),
+    balanceDifference: $('balanceDifference'),
+    balanceStatus: $('balanceStatus'),
     summaryCards: $('summaryCards'),
     resultSearchInput: $('resultSearchInput'),
     statusFilter: $('statusFilter'),
@@ -1014,7 +1019,10 @@
       renderProgress('done');
       renderResults();
       renderSummary();
-      setMessage(els.runMessage, `Сверка завершена. Номер запуска: ${state.run.run_id}`);
+      const elapsed = state.run.metrics && state.run.metrics.total_ms
+        ? ` · ${(Number(state.run.metrics.total_ms) / 1000).toFixed(2)} с`
+        : '';
+      setMessage(els.runMessage, `Сверка завершена${elapsed}. Номер запуска: ${state.run.run_id}`);
       els.onecStatusChip.textContent = state.matrixMode === 'ui_demo' ? '1С: UI demo' : '1С: ответ получен';
     } catch (err) {
       renderProgress('onec', 'onec');
@@ -1059,6 +1067,12 @@
       summary: {
         issues_total: 5,
         by_status: { match: 2, amount_mismatch: 1, not_found_in_1c: 1, contract_mismatch: 1 },
+      },
+      balance_comparison: {
+        erp_balance: { amount: '-6666.82', currency: 'RUB' },
+        onec_balance: { amount: '-6066.90', currency: 'RUB' },
+        difference: { amount: '-599.92', currency: 'RUB' },
+        status: 'amount_mismatch',
       },
       issues: [
         issue('match', 'customer_invoice', 'ВА-015695', 'ВА-015695', row.buyer_contract_code, '2025-07-09', '21000.00', 'Документ совпал'),
@@ -1114,7 +1128,27 @@
       'contract_context_missing',
     ].reduce((sum, key) => sum + Number(by[key] || 0), 0);
     els.summaryCards.querySelector('[data-role="mismatches"]').textContent = mismatches;
+    renderBalanceComparison();
     updateWorkflowState();
+  }
+
+  function renderBalanceComparison() {
+    const comparison = state.run && state.run.balance_comparison;
+    if (!comparison) {
+      els.balanceCompare.classList.add('hidden');
+      return;
+    }
+    const erp = comparison.erp_balance || {};
+    const onec = comparison.onec_balance || {};
+    const difference = comparison.difference || {};
+    const matches = comparison.status === 'match';
+    els.balanceCompare.classList.remove('hidden');
+    els.balanceCompare.classList.toggle('ok', matches);
+    els.balanceCompare.classList.toggle('problem', !matches);
+    els.balanceErp.textContent = fmtMoneyValue(erp.amount, erp.currency || 'RUB');
+    els.balanceOnec.textContent = fmtMoneyValue(onec.amount, onec.currency || 'RUB');
+    els.balanceDifference.textContent = fmtMoneyValue(difference.amount, difference.currency || 'RUB');
+    els.balanceStatus.textContent = matches ? 'Сальдо совпало' : 'Сальдо расходится';
   }
 
   function renderResults() {
@@ -1263,7 +1297,16 @@
       vat_rate: 'ставка НДС',
     };
     const fields = (row.fields || []).map((field) => labels[field] || field);
-    if (fields.length) return `Расходятся: ${fields.join(', ')}`;
+    const basisLabels = {
+      document_header: 'по документу',
+      payment_header_allocations: 'по документу и распределениям оплаты',
+      payment_allocation: 'по распределению оплаты',
+      document_allocation: 'по распределению документа',
+      document_line: 'по строке документа',
+    };
+    const basis = basisLabels[row.match_basis] || '';
+    if (fields.length) return `Расходятся: ${fields.join(', ')}${basis ? ` · проверено ${basis}` : ''}`;
+    if (row.status === 'match' && basis) return `Совпало ${basis}`;
     return row.message || 'Без расхождений';
   }
 

@@ -21,6 +21,8 @@ def reconciliation_run_xlsx(run: dict[str, Any]) -> bytes:
             "Основная причина",
             "Критичность",
             "Уверенность",
+            "Основание сопоставления",
+            "ID строки/распределения 1С",
             "Сообщение",
             "Поля",
             "ERP тип",
@@ -46,6 +48,8 @@ def reconciliation_run_xlsx(run: dict[str, Any]) -> bytes:
                 issue.get("primary_reason") or "",
                 issue.get("severity") or "",
                 issue.get("match_confidence") or "",
+                issue.get("match_basis") or "",
+                issue.get("matched_detail_id") or "",
                 issue.get("message") or "",
                 ", ".join(issue.get("fields") or []),
                 erp.get("kind") or "",
@@ -74,6 +78,26 @@ def reconciliation_run_xlsx(run: dict[str, Any]) -> bytes:
         ["Код договора комитента 1С", ((delivery.get("contract_codes") or {}).get("committent_contract_code") or "")],
         ["Всего расхождений", summary.get("issues_total") or 0],
     ]
+    balance = run.get("balance_comparison") if isinstance(run.get("balance_comparison"), dict) else None
+    if balance:
+        params.extend(
+            [
+                ["Сальдо ERP", _nested_money_amount(balance.get("erp_balance"))],
+                ["Сальдо 1С", _nested_money_amount(balance.get("onec_balance"))],
+                ["Разница сальдо ERP - 1С", _nested_money_amount(balance.get("difference"))],
+                ["Статус сальдо", balance.get("status") or ""],
+            ]
+        )
+    metrics = run.get("metrics") if isinstance(run.get("metrics"), dict) else {}
+    if metrics:
+        params.extend(
+            [
+                ["Время чтения ERP, мс", metrics.get("erp_read_ms") or 0],
+                ["Время ответа 1С REST, мс", metrics.get("onec_rest_ms") or 0],
+                ["Время сопоставления, мс", metrics.get("matching_ms") or 0],
+                ["Полное время, мс", metrics.get("total_ms") or 0],
+            ]
+        )
 
     wb = Workbook()
     ws = wb.active
@@ -384,6 +408,12 @@ def _col(index: int) -> str:
 def _money_amount(document: dict[str, Any]) -> str:
     amount = document.get("amount") if isinstance(document.get("amount"), dict) else {}
     return amount.get("amount") or ""
+
+
+def _nested_money_amount(value: object) -> str:
+    if not isinstance(value, dict):
+        return ""
+    return str(value.get("amount") or "")
 
 
 def _money_currency(document: dict[str, Any]) -> str:

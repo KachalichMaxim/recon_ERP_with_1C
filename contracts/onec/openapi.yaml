@@ -12,9 +12,9 @@ servers:
     description: "Test 1C base URL"
 security:
   -
-    bearerAuth:
+    bearerAuth: []
   -
-    basicAuth:
+    basicAuth: []
 tags:
   -
     name: "Health"
@@ -981,146 +981,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         500:
           $ref: "#/components/responses/InternalError"
-  "/reconciliation/v1/document-lines":
-    get:
-      tags:
-        - "Collections"
-      operationId: "listDocumentLines"
-      summary: "Получить document-lines"
-      parameters:
-        -
-          name: "date_from"
-          in: "query"
-          required: false
-          description: "Начало периода документа"
-          schema:
-            type: "string"
-            format: "date"
-        -
-          name: "date_to"
-          in: "query"
-          required: false
-          description: "Конец периода документа"
-          schema:
-            type: "string"
-            format: "date"
-        -
-          name: "organization_code"
-          in: "query"
-          required: false
-          description: "Код организации 1C"
-          schema:
-            type: "string"
-        -
-          name: "organization_inn"
-          in: "query"
-          required: false
-          description: "ИНН организации"
-          schema:
-            type: "string"
-        -
-          name: "counterparty_code"
-          in: "query"
-          required: false
-          description: "Код контрагента 1C"
-          schema:
-            type: "string"
-        -
-          name: "counterparty_inn"
-          in: "query"
-          required: false
-          description: "ИНН контрагента"
-          schema:
-            type: "string"
-        -
-          name: "buyer_contract_code"
-          in: "query"
-          required: false
-          description: "Код договора 1C с покупателем из ERP veda_specs.f_kod1cb. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
-          schema:
-            type: "string"
-        -
-          name: "committent_contract_code"
-          in: "query"
-          required: false
-          description: "Код договора 1C с комитентом / агентского договора из ERP veda_specs.f_kod1cp. Основной точный фильтр поставки по Справочник.ДоговорыКонтрагентов.Код."
-          schema:
-            type: "string"
-        -
-          name: "contract_code"
-          in: "query"
-          required: false
-          description: "Повторяемый список кодов договоров 1C для фильтра по Справочник.ДоговорыКонтрагентов.Код. Для поставки включает f_kod1cb/f_kod1cp; это основной ключ связи ERP с 1C."
-          schema:
-            type: "array"
-            items:
-              type: "string"
-          style: "form"
-          explode: true
-        -
-          name: "contract_number"
-          in: "query"
-          required: false
-          description: "Номер договора. Контрольный или резервный признак; не основной ключ поставки, если переданы коды договоров 1C."
-          schema:
-            type: "array"
-            items:
-              type: "string"
-          style: "form"
-          explode: true
-        -
-          name: "base_contract"
-          in: "query"
-          required: false
-          description: "Номер базового договора. Только контрольная подсказка; не заменяет поиск по коду договора 1C."
-          schema:
-            type: "string"
-        -
-          name: "spec_number"
-          in: "query"
-          required: false
-          description: "Бизнес-номер заявки/спецификации из ERP. Контрольное поле; не заменяет поиск по коду договора 1C."
-          schema:
-            type: "string"
-        -
-          name: "changed_since"
-          in: "query"
-          required: false
-          description: "Вернуть объекты, измененные после указанного времени"
-          schema:
-            type: "string"
-            format: "date-time"
-        -
-          name: "cursor"
-          in: "query"
-          required: false
-          description: "Курсор следующей страницы"
-          schema:
-            type: "string"
-        -
-          name: "limit"
-          in: "query"
-          required: false
-          description: "Размер страницы. По умолчанию 500, максимум 2000."
-          schema:
-            type: "integer"
-            default: 500
-            minimum: 1
-            maximum: 2000
-      responses:
-        200:
-          description: "Страница данных"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DocumentLinesResponse"
-        400:
-          $ref: "#/components/responses/BadRequest"
-        401:
-          $ref: "#/components/responses/Unauthorized"
-        500:
-          $ref: "#/components/responses/InternalError"
-  "/reconciliation/v1/account-movements":
+  /reconciliation/v1/account-movements:
     get:
       tags:
         - "Collections"
@@ -1652,6 +1513,19 @@ components:
               example: "RUB"
             comment:
               type: "string"
+            incoming_number:
+              type: "string"
+              description: "Входящий номер документа/номер платежного поручения/номер документа поставщика. Не равен внутреннему номеру документа 1C."
+            incoming_date:
+              type: "string"
+              format: "date"
+              nullable: true
+              description: "Дата входящего документа, если есть."
+            linked_contract_codes:
+              type: "array"
+              items:
+                type: "string"
+              description: "Коды договоров 1C с покупателем/комитентом, из-за которых документ включен в снимок, если прямой contract_code документа указывает на договор поставщика или другой связанный договор."
     CustomerInvoiceDto:
       allOf:
         -
@@ -1687,6 +1561,15 @@ components:
         spec_number:
           type: "string"
           description: "Бизнес-номер заявки/спецификации; контрольное поле."
+        contract_code:
+          type: "string"
+          description: "Код договора 1C в строке/распределении."
+        linked_contract_code:
+          type: "string"
+          description: "Код договора заявки/спецификации, если распределение относится к нему."
+        document_line_id:
+          type: "string"
+          description: "Идентификатор строки документа 1C, если распределение идет через строку."
       additionalProperties: false
     PaymentDto:
       allOf:
@@ -1722,14 +1605,27 @@ components:
             document_type:
               type: "string"
               enum:
-                - "sale_act"
-                - "sale_upd"
-                - "sale_invoice"
+                - "sale"
+              description: "Документ 1C РеализацияТоваровУслуг. Вид первичного документа act/upd/invoice не кодируется в document_type."
             invoice_number:
               type: "string"
             invoice_date:
               type: "string"
               format: "date"
+            allocations:
+              type: "array"
+              description: "Распределение суммы документа по договорам/заявкам/спецификациям. Нужно, когда один физический документ относится к нескольким поставкам."
+              items:
+                $ref: "#/components/schemas/PaymentAllocationDto"
+            primary_document_kind:
+              type: "string"
+              nullable: true
+              enum:
+                - "act"
+                - "upd"
+                - "invoice"
+                - "unknown"
+              description: "Необязательный вид первичного документа, только если 1C может определить его однозначно. Не используется как основной тип для matching."
     PurchaseDto:
       allOf:
         -
@@ -1740,9 +1636,8 @@ components:
             document_type:
               type: "string"
               enum:
-                - "purchase_act"
-                - "purchase_upd"
-                - "supplier_invoice"
+                - "purchase"
+              description: "Документ 1C ПоступлениеТоваровУслуг. Вид первичного документа act/upd/invoice не кодируется в document_type."
             expense_kind:
               type: "string"
             reimbursement_type:
@@ -1751,6 +1646,20 @@ components:
                 - "reimbursable"
                 - "non_reimbursable"
                 - "unknown"
+            allocations:
+              type: "array"
+              description: "Распределение суммы документа по договорам/заявкам/спецификациям. Нужно, когда один физический документ относится к нескольким поставкам."
+              items:
+                $ref: "#/components/schemas/PaymentAllocationDto"
+            primary_document_kind:
+              type: "string"
+              nullable: true
+              enum:
+                - "act"
+                - "upd"
+                - "invoice"
+                - "unknown"
+              description: "Необязательный вид первичного документа, только если 1C может определить его однозначно. Не используется как основной тип для matching."
     DocumentLineDto:
       allOf:
         -
@@ -1811,6 +1720,7 @@ components:
                 - "reimbursable"
                 - "non_reimbursable"
                 - "unknown"
+          description: "Строка табличной части документа, который уже попал в snapshot. Отдельный поиск только по строкам не требуется."
     AccountMovementDto:
       type: "object"
       properties:

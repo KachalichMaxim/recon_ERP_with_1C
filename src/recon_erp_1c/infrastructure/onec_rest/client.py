@@ -9,11 +9,12 @@ dedicated 1C REST API, not to raw OData objects.
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import os
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 
@@ -28,6 +29,7 @@ class OneCRestConfig:
     username: str = ""
     password: str = ""
     timeout: int = 60
+    bind_address: str = ""
     snapshot_path: str = "/reconciliation/v1/snapshot"
     health_path: str = "/reconciliation/v1/health"
 
@@ -39,6 +41,7 @@ class OneCRestConfig:
             username=os.environ.get("RECON_ONEC_REST_USER", "").strip(),
             password=os.environ.get("RECON_ONEC_REST_PASSWORD", "").strip(),
             timeout=int(os.environ.get("RECON_ONEC_REST_TIMEOUT", "60") or "60"),
+            bind_address=os.environ.get("RECON_ONEC_REST_BIND_ADDRESS", "").strip(),
             snapshot_path=os.environ.get("RECON_ONEC_REST_SNAPSHOT_PATH", "/reconciliation/v1/snapshot").strip()
             or "/reconciliation/v1/snapshot",
             health_path=os.environ.get("RECON_ONEC_REST_HEALTH_PATH", "/reconciliation/v1/health").strip()
@@ -59,6 +62,9 @@ class OneCRestConfig:
 
     def url(self, path: str) -> str:
         normalized = "/" + path.strip("/")
+        contract_root = "/reconciliation/v1"
+        if self.base_url.endswith(contract_root) and normalized.startswith(contract_root + "/"):
+            normalized = normalized[len(contract_root) :]
         return f"{self.base_url}{normalized}"
 
 
@@ -71,6 +77,7 @@ def onec_rest_status(config: OneCRestConfig | None = None) -> dict[str, Any]:
         "token_configured": bool(config.token),
         "basic_auth_configured": bool(config.username and config.password),
         "timeout": config.timeout,
+        "bind_address_configured": bool(config.bind_address),
         "snapshot_path": config.snapshot_path,
         "health_path": config.health_path,
     }
@@ -111,10 +118,16 @@ class OneCRestClient:
             url = f"{url}?{urlencode(payload, doseq=True)}"
         elif payload is not None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        request = Request(url, data=body, headers=self._headers(), method=method.upper())
+        headers = self._headers()
         try:
-            with urlopen(request, timeout=self.config.timeout) as response:
-                raw = response.read().decode("utf-8", errors="replace")
+            if self.config.bind_address:
+                raw = self._request_bound_source(method, url, body, headers)
+            else:
+                request = Request(url, data=body, headers=headers, method=method.upper())
+                with urlopen(request, timeout=self.config.timeout) as response:
+                    raw = response.read().decode("utf-8", errors="replace")
+        except OneCRestError:
+            raise
         except Exception as exc:
             raise OneCRestError(f"1C REST request failed: {exc}") from exc
         try:
@@ -126,6 +139,37 @@ class OneCRestClient:
         if parsed.get("ok") is False:
             raise OneCRestError(str(parsed.get("message") or parsed.get("error") or "1C returned ok=false"))
         return parsed
+
+    def _request_bound_source(self, method: str, url: str, body: bytes | None, headers: dict[str, str]) -> str:
+        """Execute request from a specific local VPN address.
+
+        Some 1C/MariaDB networks are reachable only through a split-tunnel VPN.
+        macOS routing can pick another tunnel for the same 10.x destination, so
+        local smoke tests may need to bind the source address explicitly.
+        """
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise OneCRestError(f"Unsupported 1C REST URL: {url}")
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        connection_class = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+        connection = connection_class(
+            parsed.hostname,
+            port,
+            timeout=self.config.timeout,
+            source_address=(self.config.bind_address, 0),
+        )
+        try:
+            connection.request(method.upper(), path, body=body, headers=headers)
+            response = connection.getresponse()
+            raw = response.read().decode("utf-8-sig", errors="replace")
+            if response.status >= 400:
+                raise OneCRestError(f"1C REST returned HTTP {response.status}: {raw[:500]}")
+            return raw
+        finally:
+            connection.close()
 
     def health(self) -> dict[str, Any]:
         return self._request_json("GET", self.config.health_path)
@@ -150,22 +194,18 @@ def snapshot_query_params(request: dict[str, Any]) -> dict[str, Any]:
 
     params: dict[str, Any] = {
         "request_id": request.get("request_id", ""),
-        "mode": request.get("mode", "delivery_reconciliation"),
-        "contract_version": request.get("contract_version", "reconciliation.v1"),
         "date_from": period.get("date_from", ""),
         "date_to": period.get("date_to", ""),
-        "spec_number": delivery.get("spec_number", ""),
-        "base_contract": delivery.get("base_contract", ""),
         "buyer_contract_code": delivery.get("buyer_contract_code1c", ""),
         "committent_contract_code": delivery.get("committent_contract_code1c", ""),
     }
+    has_contract_filter = bool(params["buyer_contract_code"] or params["committent_contract_code"])
 
     first_org = next((item for item in organizations if isinstance(item, dict)), {})
     params.update(
         {
             "organization_code": first_org.get("code1c", ""),
             "organization_inn": first_org.get("inn", ""),
-            "organization_name": first_org.get("name") or first_org.get("abbr") or "",
         }
     )
 
@@ -174,31 +214,26 @@ def snapshot_query_params(request: dict[str, Any]) -> dict[str, Any]:
         {
             "counterparty_code": first_counterparty.get("code1c", ""),
             "counterparty_inn": first_counterparty.get("inn", ""),
-            "counterparty_name": first_counterparty.get("name") or first_counterparty.get("abbr") or "",
         }
     )
 
     query_lists: dict[str, list[Any]] = {
         "contract_code": [],
-        "contract_number": [],
-        "contract_role": [],
         "document_code": [],
-        "document_number": [],
         "document_type": [],
         "include": [],
     }
     for contract in contracts:
         if not isinstance(contract, dict):
             continue
-        query_lists["contract_code"].append(contract.get("code1c", ""))
-        query_lists["contract_number"].append(contract.get("number", ""))
-        query_lists["contract_role"].append(contract.get("role", ""))
+        if not has_contract_filter:
+            query_lists["contract_code"].append(contract.get("code1c", ""))
     for document in documents:
         if not isinstance(document, dict):
             continue
-        query_lists["document_code"].append(document.get("code1c", ""))
-        query_lists["document_number"].append(document.get("number", ""))
-        query_lists["document_type"].append(document.get("kind", ""))
+        if not has_contract_filter:
+            query_lists["document_code"].append(document.get("code1c") or document.get("number") or "")
+            query_lists["document_type"].append(document.get("kind", ""))
     for key, enabled in include.items():
         if enabled:
             query_lists["include"].append(key)
@@ -206,6 +241,19 @@ def snapshot_query_params(request: dict[str, Any]) -> dict[str, Any]:
     for key, values in query_lists.items():
         clean_values = [value for value in values if value not in (None, "")]
         if clean_values:
-            params[key] = clean_values
+            # Current 1C HTTP service accepts include as one comma-separated value.
+            # Other repeated filters are used only for future contract compatibility;
+            # known documents are queried one by one by the repository.
+            params[key] = ",".join(str(value) for value in clean_values) if key == "include" else clean_values
 
-    return {key: value for key, value in params.items() if value not in (None, "", [])}
+    return {key: value for key, value in params.items() if _meaningful_query_value(value)}
+
+
+def _meaningful_query_value(value: Any) -> bool:
+    if value in (None, "", []):
+        return False
+    if isinstance(value, str) and value.strip() in {"", "-", "—", "0"}:
+        return False
+    if isinstance(value, list):
+        return any(_meaningful_query_value(item) for item in value)
+    return True

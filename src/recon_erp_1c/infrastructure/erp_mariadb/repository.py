@@ -225,13 +225,23 @@ class MariaDbErpReadRepository:
             )
         return contracts
 
+    def get_delivery_balance(self, spec_id: int) -> Money:
+        row = self._fetch_one(queries.DELIVERY_BALANCE_BY_SPEC_ID, {"spec_id": spec_id}) or {}
+        return Money.of(row.get("balance") or Decimal("0"), "RUB")
+
     def list_delivery_documents(self, spec_id: int) -> list[AccountingDocument]:
         return self.list_documents_for_deliveries([spec_id]).get(spec_id, [])
 
     def list_documents_for_deliveries(self, spec_ids: list[int]) -> dict[int, list[AccountingDocument]]:
+        documents, _calculations = self.list_documents_and_calculations_for_deliveries(spec_ids)
+        return documents
+
+    def list_documents_and_calculations_for_deliveries(
+        self, spec_ids: list[int]
+    ) -> tuple[dict[int, list[AccountingDocument]], dict[int, dict[str, str]]]:
         ids = sorted({int(spec_id) for spec_id in spec_ids if int(spec_id or 0) > 0})
         if not ids:
-            return {}
+            return {}, {}
         params = {f"spec_id_{index}": spec_id for index, spec_id in enumerate(ids)}
         filter_sql = ", ".join(f"%(spec_id_{index})s" for index in range(len(ids)))
         rows = self._fetch_all(
@@ -247,48 +257,114 @@ class MariaDbErpReadRepository:
             int(row.get("operation_id") or 0): row
             for row in self._fetch_operation_rows(queries.OPERATION_AMOUNTS_BY_OPERATION_IDS, operation_ids)
         }
-        closing_by_operation = {
-            int(row.get("operation_id") or 0): row
-            for row in self._fetch_operation_rows(queries.OPERATION_CLOSING_DOCS_BY_OPERATION_IDS, operation_ids)
-        }
+        closing_by_operation: dict[int, list[dict[str, Any]]] = {}
+        for row in self._fetch_operation_rows(queries.OPERATION_CLOSING_DOCS_BY_OPERATION_IDS, operation_ids):
+            operation_id = int(row.get("operation_id") or 0)
+            if operation_id:
+                closing_by_operation.setdefault(operation_id, []).append(row)
         payment_by_operation = {
             int(row.get("operation_id") or 0): row
             for row in self._fetch_operation_rows(queries.OPERATION_PAYMENT_DOCS_BY_OPERATION_IDS, operation_ids)
         }
+        calculation_amounts: dict[int, dict[str, Decimal]] = {
+            spec_id: {
+                "payment_sum": Decimal("0"),
+                "reimbursable_sum": Decimal("0"),
+                "non_reimbursable_sum": Decimal("0"),
+            }
+            for spec_id in ids
+        }
+        calculated_operations: set[tuple[int, int]] = set()
         for operation in operation_rows:
+            spec_id = int(operation.get("spec_id") or 0)
             operation_id = int(operation.get("operation_id") or 0)
-            if not operation_id:
+            if not spec_id or not operation_id:
                 continue
             amounts = amounts_by_operation.get(operation_id, {})
-            closing = closing_by_operation.get(operation_id, {})
+            closing_rows = closing_by_operation.get(operation_id, [])
             payment = payment_by_operation.get(operation_id, {})
             reimbursement_id = int(operation.get("reimbursement_id") or 0)
             buyer_code = _str(operation.get("buyer_contract_code"))
             committent_code = _str(operation.get("committent_contract_code"))
-            operation_contract_code = buyer_code if reimbursement_id == 2 else (
-                _str(closing.get("dog_code1c")) or committent_code or buyer_code
-            )
             reimbursement_type = (
                 "reimbursable" if reimbursement_id == 1 else "non_reimbursable" if reimbursement_id == 2 else "unknown"
             )
-            rows.append(
-                {
-                    "spec_id": operation.get("spec_id"),
-                    "document_kind": "sale",
-                    "code1c": closing.get("code1c") or "",
-                    "document_number": closing.get("document_number") or "",
-                    "document_date": closing.get("document_date"),
-                    "amount_total": amounts.get("sale_sum") or Decimal("0"),
-                    "currency": closing.get("currency") or "RUB",
-                    "contract_code1c": operation_contract_code,
-                    "source_id": closing.get("source_id") or 0,
-                    "operation_id": operation_id,
-                    "vat_rate": operation.get("vat_rate") or "",
-                    "reimbursement_type": reimbursement_type,
-                    "deleted": closing.get("deleted") or 0,
-                    "paid_amount": None,
-                }
-            )
+            operation_key = (spec_id, operation_id)
+            if operation_key not in calculated_operations:
+                calculated_operations.add(operation_key)
+                calculation = calculation_amounts.setdefault(
+                    spec_id,
+                    {
+                        "payment_sum": Decimal("0"),
+                        "reimbursable_sum": Decimal("0"),
+                        "non_reimbursable_sum": Decimal("0"),
+                    },
+                )
+                payment_sum = Decimal(str(amounts.get("payment_sum") or "0"))
+                sale_sum = Decimal(str(amounts.get("sale_sum") or "0"))
+                calculation["payment_sum"] += payment_sum
+                if reimbursement_id == 1:
+                    calculation["reimbursable_sum"] += sale_sum
+                elif reimbursement_id == 2:
+                    calculation["non_reimbursable_sum"] += sale_sum
+                else:
+                    sale_contract_codes = {
+                        _str(row.get("dog_code1c"))
+                        for row in closing_rows
+                        if (_str(row.get("document_kind")) or "sale") == "sale" and _str(row.get("dog_code1c"))
+                    }
+                    if buyer_code and sale_contract_codes == {buyer_code}:
+                        calculation["non_reimbursable_sum"] += sale_sum
+                    else:
+                        calculation["reimbursable_sum"] += sale_sum
+            if closing_rows:
+                for closing in closing_rows:
+                    document_kind = _str(closing.get("document_kind")) or "sale"
+                    dog_code = _str(closing.get("dog_code1c"))
+                    if document_kind == "purchase":
+                        operation_contract_code = dog_code
+                    elif reimbursement_id == 2:
+                        operation_contract_code = buyer_code
+                    else:
+                        operation_contract_code = dog_code or committent_code or buyer_code
+                    rows.append(
+                        {
+                            "spec_id": operation.get("spec_id"),
+                            "document_kind": document_kind,
+                            "code1c": closing.get("code1c") or "",
+                            "document_number": closing.get("document_number") or "",
+                            "document_date": closing.get("document_date"),
+                            "amount_total": closing.get("amount_total") or Decimal("0"),
+                            "currency": closing.get("currency") or "RUB",
+                            "contract_code1c": operation_contract_code,
+                            "source_id": closing.get("source_id") or 0,
+                            "operation_id": operation_id,
+                            "vat_rate": operation.get("vat_rate") or "",
+                            "reimbursement_type": reimbursement_type,
+                            "deleted": closing.get("deleted") or 0,
+                            "paid_amount": None,
+                        }
+                    )
+            elif Decimal(str(amounts.get("sale_sum") or "0")) != Decimal("0"):
+                operation_contract_code = buyer_code if reimbursement_id == 2 else (committent_code or buyer_code)
+                rows.append(
+                    {
+                        "spec_id": operation.get("spec_id"),
+                        "document_kind": "sale",
+                        "code1c": "",
+                        "document_number": "",
+                        "document_date": None,
+                        "amount_total": amounts.get("sale_sum") or Decimal("0"),
+                        "currency": "RUB",
+                        "contract_code1c": operation_contract_code,
+                        "source_id": 0,
+                        "operation_id": operation_id,
+                        "vat_rate": operation.get("vat_rate") or "",
+                        "reimbursement_type": reimbursement_type,
+                        "deleted": 0,
+                        "paid_amount": None,
+                    }
+                )
             if Decimal(str(amounts.get("payment_sum") or "0")) != Decimal("0"):
                 rows.append(
                     {
@@ -313,7 +389,16 @@ class MariaDbErpReadRepository:
             spec_id = int(row.get("spec_id") or 0)
             if spec_id:
                 grouped.setdefault(spec_id, []).append(_row_to_document(row))
-        return grouped
+        calculations: dict[int, dict[str, str]] = {}
+        for spec_id, values in calculation_amounts.items():
+            balance = values["payment_sum"] - values["reimbursable_sum"] - values["non_reimbursable_sum"]
+            calculations[spec_id] = {
+                "payment_sum": _decimal_text(values["payment_sum"]),
+                "reimbursable_sum": _decimal_text(values["reimbursable_sum"]),
+                "non_reimbursable_sum": _decimal_text(values["non_reimbursable_sum"]),
+                "balance": _decimal_text(balance),
+            }
+        return grouped, calculations
 
     def _fetch_operation_rows(self, query_template: str, operation_ids: list[int]) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -364,6 +449,7 @@ def _row_to_document(row: dict[str, Any]) -> AccountingDocument:
         date=_as_date(row.get("document_date")),
         amount=Money.of(row.get("amount_total") or Decimal("0"), _currency(row.get("currency"))),
         contract_code1c=_str(row.get("contract_code1c")),
+        incoming_number=_str(row.get("document_number")),
         posted=True,
         deleted=bool(row.get("deleted")),
         source_id=str(row.get("source_id") or ""),

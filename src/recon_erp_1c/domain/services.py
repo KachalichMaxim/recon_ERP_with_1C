@@ -23,12 +23,14 @@ def compare_documents(erp_doc: AccountingDocument, onec_doc: AccountingDocument)
 
     if erp_doc.code1c and onec_doc.code1c and erp_doc.code1c != onec_doc.code1c:
         mismatch_fields.append("code1c")
-    if (
-        erp_doc.number
-        and onec_doc.number
-        and normalize_document_number(erp_doc.number) != normalize_document_number(onec_doc.number)
-    ):
-        mismatch_fields.append("number")
+    same_code1c = bool(erp_doc.code1c and onec_doc.code1c and erp_doc.code1c == onec_doc.code1c)
+    erp_incoming_number = erp_doc.incoming_number or erp_doc.number
+    if erp_incoming_number and onec_doc.incoming_number:
+        if normalize_document_number(erp_incoming_number) != normalize_document_number(onec_doc.incoming_number):
+            mismatch_fields.append("number")
+    elif not same_code1c and erp_doc.number and onec_doc.number:
+        if normalize_document_number(erp_doc.number) != normalize_document_number(onec_doc.number):
+            mismatch_fields.append("number")
     if erp_doc.date and onec_doc.date and erp_doc.date != onec_doc.date:
         mismatch_fields.append("date")
     if not erp_doc.amount.same_currency(onec_doc.amount):

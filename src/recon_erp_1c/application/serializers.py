@@ -39,6 +39,8 @@ def issue_to_dict(issue: ReconciliationIssue) -> dict[str, Any]:
         "primary_reason": issue.primary_reason,
         "severity": issue.severity,
         "match_confidence": issue.match_confidence,
+        "match_basis": issue.match_basis,
+        "matched_detail_id": issue.matched_detail_id,
         "erp_document": document_to_dict(issue.erp_document),
         "onec_document": document_to_dict(issue.onec_document),
     }
@@ -57,5 +59,8 @@ def run_to_dict(run: ReconciliationRun) -> dict[str, Any]:
             "issues_total": len(run.issues),
             "by_status": counts,
         },
+        "balance_comparison": to_jsonable(run.balance_comparison),
+        "source_warnings": list(run.source_warnings),
+        "metrics": to_jsonable(run.metrics),
         "issues": [issue_to_dict(issue) for issue in run.issues],
     }

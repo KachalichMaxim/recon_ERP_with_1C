@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from recon_erp_1c.domain.entities import AccountingDocument, Contract, Delivery
+from recon_erp_1c.domain.entities import (
+    AccountingBalance,
+    AccountingDocument,
+    Contract,
+    Delivery,
+    DocumentLine,
+    OneCSnapshot,
+    PaymentAllocation,
+)
 from recon_erp_1c.domain.value_objects import DateRange, DocumentKind, Money, SourceSystem
 from recon_erp_1c.infrastructure.onec_rest.client import OneCRestClient
 
@@ -20,17 +29,32 @@ class OneCRestReadRepository:
         period: DateRange,
         contracts: list[Contract],
         erp_documents: list[AccountingDocument],
-    ) -> list[AccountingDocument]:
-        response = self.client.get_reconciliation_snapshot(
-            _snapshot_request(
-                delivery=delivery,
-                period=period,
-                contracts=contracts,
-                erp_documents=erp_documents,
-            )
+    ) -> OneCSnapshot:
+        snapshot = _empty_snapshot()
+        base_request = _snapshot_request(
+            delivery=delivery,
+            period=period,
+            contracts=contracts,
+            erp_documents=erp_documents,
         )
-        snapshot = response.get("snapshot") if isinstance(response.get("snapshot"), dict) else {}
-        return _documents_from_snapshot(snapshot)
+        response = self.client.get_reconciliation_snapshot(base_request)
+        base_snapshot = response.get("snapshot") if isinstance(response.get("snapshot"), dict) else {}
+        _merge_full_snapshot(snapshot, base_snapshot)
+        _merge_known_document_lookups(
+            self.client,
+            snapshot,
+            delivery=delivery,
+            period=period,
+            erp_documents=erp_documents,
+        )
+        warnings = tuple(
+            dict.fromkeys(_warning_text(item) for item in snapshot.get("warnings", []) if _warning_text(item))
+        )
+        return OneCSnapshot(
+            documents=tuple(_documents_from_snapshot(snapshot)),
+            balances=tuple(_balances_from_snapshot(snapshot)),
+            warnings=warnings,
+        )
 
 
 def _snapshot_request(
@@ -87,17 +111,151 @@ def _snapshot_request(
             if document.code1c or document.number
         ],
         "include": {
-            "contracts": True,
             "customer_invoices": True,
             "payments": True,
             "sales": True,
             "purchases": True,
-            "account_movements": True,
+            "document_lines": True,
+            "balances": True,
         },
     }
 
 
+def _empty_snapshot() -> dict[str, Any]:
+    return {
+        "metadata": {},
+        "customer_invoices": [],
+        "payments": [],
+        "sales": [],
+        "purchases": [],
+        "document_lines": [],
+        "balances": [],
+        "warnings": [],
+    }
+
+
+def _merge_snapshot_block(target: dict[str, Any], source: dict[str, Any], block_name: str) -> None:
+    metadata = source.get("metadata")
+    if isinstance(metadata, dict):
+        target["metadata"] = metadata
+    rows = source.get(block_name)
+    if isinstance(rows, list):
+        for row in rows:
+            _append_unique_row(target[block_name], row)
+    warnings = source.get("warnings")
+    if isinstance(warnings, list):
+        target["warnings"].extend(warnings)
+
+
+def _merge_full_snapshot(target: dict[str, Any], source: dict[str, Any]) -> None:
+    for block_name in ("customer_invoices", "payments", "sales", "purchases", "document_lines", "balances"):
+        _merge_snapshot_block(target, source, block_name)
+
+
+def _merge_known_document_lookups(
+    client: OneCRestClient,
+    snapshot: dict[str, Any],
+    *,
+    delivery: Delivery,
+    period: DateRange,
+    erp_documents: list[AccountingDocument],
+) -> None:
+    lookups: list[tuple[str, str, dict[str, Any]]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for document in erp_documents:
+        code = document.code1c.strip()
+        if not code:
+            continue
+        block_name = _block_for_kind(document.kind.value)
+        if not block_name:
+            continue
+        key = (block_name, code, document.date.isoformat() if document.date else "")
+        if key in seen:
+            continue
+        seen.add(key)
+        lookups.append(
+            (
+                block_name,
+                code,
+                {
+                    "request_id": f"doc-{delivery.erp_spec_id}-{code}",
+                    "period": {
+                        "date_from": period.date_from.isoformat(),
+                        "date_to": period.date_to.isoformat(),
+                    },
+                    "documents": [
+                        {
+                            "code1c": code,
+                            "kind": document.kind.value,
+                        }
+                    ],
+                    "include": {block_name: True, "document_lines": block_name in {"sales", "purchases"}},
+                },
+            )
+        )
+
+    if not lookups:
+        return
+    with ThreadPoolExecutor(max_workers=min(4, len(lookups))) as pool:
+        futures = {
+            pool.submit(client.get_reconciliation_snapshot, request): (block_name, code)
+            for block_name, code, request in lookups
+        }
+        completed: list[tuple[str, str, dict[str, Any]]] = []
+        for future in as_completed(futures):
+            block_name, code = futures[future]
+            completed.append((block_name, code, future.result()))
+    for block_name, _code, response in sorted(completed, key=lambda item: (item[0], item[1])):
+        block_snapshot = response.get("snapshot") if isinstance(response.get("snapshot"), dict) else {}
+        _merge_snapshot_block(snapshot, block_snapshot, block_name)
+        if block_name in {"sales", "purchases"}:
+            _merge_snapshot_block(snapshot, block_snapshot, "document_lines")
+
+
+def _block_for_kind(kind: str) -> str:
+    if kind == "customer_invoice":
+        return "customer_invoices"
+    if kind == "payment":
+        return "payments"
+    if kind == "sale":
+        return "sales"
+    if kind == "purchase":
+        return "purchases"
+    return ""
+
+
+def _append_unique_row(rows: list[Any], row: Any) -> None:
+    if not isinstance(row, dict):
+        rows.append(row)
+        return
+    key = _row_identity(row)
+    for existing in rows:
+        if isinstance(existing, dict) and _row_identity(existing) == key:
+            return
+    rows.append(row)
+
+
+def _row_identity(row: dict[str, Any]) -> tuple[str, ...]:
+    if row.get("line_id") not in (None, ""):
+        return (
+            "line",
+            _first_text(row, "document_id"),
+            _first_text(row, "document_number"),
+            _first_text(row, "line_id"),
+            _first_text(row, "amount"),
+        )
+    return (
+        _first_text(row, "document_type"),
+        _first_text(row, "source_id"),
+        _first_text(row, "number", "source_ref"),
+        _first_text(row, "date"),
+        _first_text(row, "amount_total", "amount"),
+        _first_text(row, "contract_code", "contract_code1c"),
+    )
+
+
 def _documents_from_snapshot(snapshot: dict[str, Any]) -> list[AccountingDocument]:
+    lines_by_document = _lines_by_document(snapshot.get("document_lines"))
     documents: list[AccountingDocument] = []
     for block_name in ("customer_invoices", "payments", "sales", "purchases", "account_movements"):
         rows = snapshot.get(block_name)
@@ -105,25 +263,130 @@ def _documents_from_snapshot(snapshot: dict[str, Any]) -> list[AccountingDocumen
             continue
         for row in rows:
             if isinstance(row, dict):
-                documents.append(_document_from_1c_row(row, block_name))
+                documents.append(_document_from_1c_row(row, block_name, lines_by_document))
     return documents
 
 
-def _document_from_1c_row(row: dict[str, Any], block_name: str) -> AccountingDocument:
+def _document_from_1c_row(
+    row: dict[str, Any],
+    block_name: str,
+    lines_by_document: dict[str, tuple[DocumentLine, ...]],
+) -> AccountingDocument:
+    source_id = _first_text(row, "source_id")
+    source_number = _first_text(row, "number", "source_ref")
+    incoming_number = _first_text(row, "incoming_number")
+    number = source_number
+    lines = _lookup_document_lines(lines_by_document, source_id, source_number)
     return AccountingDocument(
         source=SourceSystem.ONE_C,
         kind=_kind(row, block_name),
-        code1c=_first_text(row, "code1c", "code", "source_ref", "number"),
-        number=_first_text(row, "number", "source_ref"),
+        code1c=_first_text(row, "code1c", "code", "number", "source_ref"),
+        number=number,
         date=_as_date(row.get("date")),
         amount=Money.of(row.get("amount_total") or row.get("amount") or Decimal("0"), _currency(_first_text(row, "currency"))),
         contract_code1c=_first_text(row, "contract_code", "contract_code1c"),
+        incoming_number=incoming_number,
         posted=bool(row.get("posted", True)),
         deleted=bool(row.get("deleted", False)),
-        source_id=_first_text(row, "source_id"),
+        source_id=source_id,
         operation_id=None,
         vat_rate=_first_text(row, "vat_rate", "vat"),
+        linked_contract_codes=tuple(_text_list(row.get("linked_contract_codes"))),
+        lines=lines,
+        allocations=tuple(_allocation_from_row(item, row) for item in _dict_list(row.get("allocations"))),
     )
+
+
+def _lines_by_document(value: object) -> dict[str, tuple[DocumentLine, ...]]:
+    grouped: dict[str, list[DocumentLine]] = {}
+    for row in _dict_list(value):
+        line = _line_from_row(row)
+        for key in {_first_text(row, "document_id"), _first_text(row, "document_number")}:
+            if key:
+                grouped.setdefault(key, []).append(line)
+    return {key: tuple(rows) for key, rows in grouped.items()}
+
+
+def _lookup_document_lines(
+    lines_by_document: dict[str, tuple[DocumentLine, ...]], source_id: str, number: str
+) -> tuple[DocumentLine, ...]:
+    rows: list[DocumentLine] = []
+    seen: set[tuple[str, str]] = set()
+    for key in (source_id, number):
+        for line in lines_by_document.get(key, ()):
+            identity = (line.document_id, line.line_id)
+            if identity not in seen:
+                rows.append(line)
+                seen.add(identity)
+    return tuple(rows)
+
+
+def _line_from_row(row: dict[str, Any]) -> DocumentLine:
+    currency = _currency(_first_text(row, "currency"))
+    vat_amount = row.get("vat_amount")
+    return DocumentLine(
+        document_id=_first_text(row, "document_id", "source_id"),
+        line_id=_first_text(row, "line_id", "row_number"),
+        amount=Money.of(row.get("amount") or Decimal("0"), currency),
+        contract_code1c=_first_text(row, "contract_code", "commissioner_contract_code"),
+        linked_contract_code1c=_first_text(row, "linked_contract_code"),
+        line_kind=_first_text(row, "line_kind"),
+        nomenclature=_first_text(row, "nomenclature"),
+        content=_first_text(row, "content"),
+        vat_rate=_first_text(row, "vat_rate", "vat"),
+        vat_amount=Money.of(vat_amount, currency) if vat_amount not in (None, "") else None,
+        settlement_account=_first_text(row, "settlement_account"),
+        cost_account=_first_text(row, "cost_account"),
+    )
+
+
+def _allocation_from_row(row: dict[str, Any], parent: dict[str, Any]) -> PaymentAllocation:
+    return PaymentAllocation(
+        amount=Money.of(row.get("amount") or Decimal("0"), _currency(_first_text(row, "currency") or parent.get("currency"))),
+        contract_code1c=_first_text(row, "contract_code", "contract_code1c"),
+        linked_contract_code1c=_first_text(row, "linked_contract_code"),
+        invoice_id=_first_text(row, "invoice_id"),
+        invoice_number=_first_text(row, "invoice_number"),
+        document_line_id=_first_text(row, "document_line_id"),
+        spec_number=_first_text(row, "spec_number"),
+    )
+
+
+def _balances_from_snapshot(snapshot: dict[str, Any]) -> list[AccountingBalance]:
+    balances: list[AccountingBalance] = []
+    for row in _dict_list(snapshot.get("balances")):
+        currency = _currency(_first_text(row, "currency"))
+        balances.append(
+            AccountingBalance(
+                contract_code1c=_first_text(row, "contract_code", "contract_code1c"),
+                contract_id=_first_text(row, "contract_id"),
+                opening_debit=Money.of(row.get("opening_debit") or Decimal("0"), currency),
+                opening_credit=Money.of(row.get("opening_credit") or Decimal("0"), currency),
+                turnover_debit=Money.of(row.get("turnover_debit") or Decimal("0"), currency),
+                turnover_credit=Money.of(row.get("turnover_credit") or Decimal("0"), currency),
+                closing_debit=Money.of(row.get("closing_debit") or Decimal("0"), currency),
+                closing_credit=Money.of(row.get("closing_credit") or Decimal("0"), currency),
+            )
+        )
+    return balances
+
+
+def _dict_list(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _text_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _warning_text(value: object) -> str:
+    if isinstance(value, dict):
+        return _first_text(value, "message", "code")
+    return str(value or "").strip()
 
 
 def _kind(row: dict[str, Any], block_name: str) -> DocumentKind:
@@ -132,9 +395,9 @@ def _kind(row: dict[str, Any], block_name: str) -> DocumentKind:
         return DocumentKind.CUSTOMER_INVOICE
     if block_name == "payments" or document_type in {"incoming_payment", "outgoing_payment", "payment"}:
         return DocumentKind.PAYMENT
-    if block_name == "sales" or document_type.startswith("sale_"):
+    if block_name == "sales" or document_type == "sale" or document_type.startswith("sale_"):
         return DocumentKind.SALE
-    if block_name == "purchases" or document_type.startswith("purchase_"):
+    if block_name == "purchases" or document_type == "purchase" or document_type.startswith("purchase_"):
         return DocumentKind.PURCHASE
     if block_name == "account_movements":
         return DocumentKind.ACCOUNT_MOVEMENT
