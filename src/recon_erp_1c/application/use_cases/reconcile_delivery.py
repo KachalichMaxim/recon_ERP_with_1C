@@ -61,6 +61,9 @@ class ReconcileDeliveryUseCase:
             aggregate_documents(erp_documents),
             aggregate_documents(list(onec_snapshot.documents)),
         )
+        global_lookup_started = perf_counter()
+        issues = _classify_global_erp_presence(issues, self.erp_repository)
+        global_lookup_ms = (perf_counter() - global_lookup_started) * 1000
         balance_comparison = compare_balances(
             erp_balance,
             list(onec_snapshot.balances),
@@ -79,6 +82,7 @@ class ReconcileDeliveryUseCase:
                 "erp_read_ms": round(erp_ms, 2),
                 "onec_rest_ms": round(onec_ms, 2),
                 "matching_ms": round(match_ms, 2),
+                "erp_global_lookup_ms": round(global_lookup_ms, 2),
                 "total_ms": round((perf_counter() - total_started) * 1000, 2),
                 "erp_documents": len(erp_documents),
                 "onec_documents": len(onec_snapshot.documents),
@@ -90,6 +94,42 @@ class ReconcileDeliveryUseCase:
         return run
 
 
+def _classify_global_erp_presence(
+    issues: list[ReconciliationIssue], erp_repository: ErpReadRepository
+) -> list[ReconciliationIssue]:
+    checker = getattr(erp_repository, "document_exists_globally", None)
+    if not callable(checker):
+        return issues
+    result: list[ReconciliationIssue] = []
+    for issue in issues:
+        if issue.status != ReconciliationStatus.NOT_LINKED_TO_DELIVERY_IN_ERP or issue.onec_document is None:
+            result.append(issue)
+            continue
+        if issue.onec_document.amount.amount == Decimal("0.00"):
+            result.append(
+                replace(
+                    issue,
+                    status=ReconciliationStatus.NOT_COMPARABLE,
+                    message="Документ 1С имеет нулевую сумму и не участвует в документной сверке",
+                    primary_reason="zero_amount_onec_document",
+                    severity="warning",
+                )
+            )
+            continue
+        if checker(issue.onec_document):
+            result.append(issue)
+            continue
+        result.append(
+            replace(
+                issue,
+                status=ReconciliationStatus.NOT_FOUND_IN_ERP,
+                message="Документ 1С не найден в исходных таблицах ERP",
+                primary_reason="not_found_in_erp",
+            )
+        )
+    return result
+
+
 def match_documents(erp_documents: list[AccountingDocument], onec_documents: list[AccountingDocument]) -> list[ReconciliationIssue]:
     issues: list[ReconciliationIssue] = []
     onec_index = _build_match_index(onec_documents)
@@ -97,6 +137,10 @@ def match_documents(erp_documents: list[AccountingDocument], onec_documents: lis
     used_detail_resources: set[tuple[int, str, str]] = set()
 
     for erp_doc in erp_documents:
+        precondition_issue = _erp_document_precondition_issue(erp_doc)
+        if precondition_issue is not None:
+            issues.append(precondition_issue)
+            continue
         match = _find_onec_match(erp_doc, onec_index, onec_documents, matched_onec_indexes)
         if match is None:
             fallback = _find_unlinked_detail_match(erp_doc, onec_documents, used_detail_resources)
@@ -202,16 +246,47 @@ def match_documents(erp_documents: list[AccountingDocument], onec_documents: lis
         if index not in matched_onec_indexes:
             issues.append(
                 ReconciliationIssue(
-                    status=ReconciliationStatus.NOT_FOUND_IN_ERP,
-                    message="Документ 1С не найден в ERP по типу, коду/номеру и дате",
+                    status=ReconciliationStatus.NOT_LINKED_TO_DELIVERY_IN_ERP,
+                    message="Документ 1С не связан с выбранной поставкой ERP",
                     onec_document=onec_doc,
                     fields=(),
-                    primary_reason="not_found_in_erp",
+                    primary_reason="not_linked_to_delivery_in_erp",
                     severity="critical",
                 )
             )
 
     return issues
+
+
+def _erp_document_precondition_issue(document: AccountingDocument) -> ReconciliationIssue | None:
+    missing_document = (
+        bool(document.operation_id)
+        and not document.source_id
+        and not document.code1c
+        and not document.number
+        and document.amount.amount != Decimal("0.00")
+    )
+    if not missing_document:
+        return None
+    if document.kind.value == "customer_invoice":
+        return ReconciliationIssue(
+            status=ReconciliationStatus.MISSING_ERP_INVOICE,
+            message="По операции ERP не выставлен или не привязан счет покупателю",
+            erp_document=document,
+            fields=("erp_invoice_link",),
+            primary_reason="missing_erp_invoice",
+            severity="critical",
+        )
+    if document.kind.value == "sale":
+        return ReconciliationIssue(
+            status=ReconciliationStatus.MISSING_ERP_CLOSING_DOCUMENT,
+            message="По операции ERP отсутствует связь с закрывающим документом",
+            erp_document=document,
+            fields=("erp_closing_document_link",),
+            primary_reason="missing_erp_closing_document",
+            severity="critical",
+        )
+    return None
 
 
 def _build_match_index(documents: list[AccountingDocument]) -> dict[tuple[str, ...], list[int]]:

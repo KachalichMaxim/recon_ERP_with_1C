@@ -557,6 +557,24 @@ FROM veda_spec_invoices oper
 WHERE oper.f_id IN ({operation_id_filter});
 """
 
+OPERATION_CUSTOMER_INVOICE_LINKS_BY_OPERATION_IDS = """
+SELECT DISTINCT schet.f_operid AS operation_id
+FROM veda_schets schet
+WHERE schet.f_operid IN ({operation_id_filter})
+  AND schet.f_type = 1
+  AND schet.f_status <> 9
+
+UNION
+
+SELECT DISTINCT details_opers.f_operid AS operation_id
+FROM veda_schets_details_opers details_opers
+JOIN veda_schets_details details ON details.f_id = details_opers.f_schets_detailsid
+JOIN veda_schets schet ON schet.f_id = details.f_schetid
+WHERE details_opers.f_operid IN ({operation_id_filter})
+  AND schet.f_type = 1
+  AND schet.f_status <> 9;
+"""
+
 OPERATION_CLOSING_DOCS_BY_OPERATION_IDS = """
 SELECT
     akt.f_operid AS operation_id,
@@ -651,6 +669,42 @@ LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = h.f_val
 WHERE d.f_doctype = 3
   AND d.f_docid IN ({operation_id_filter})
 GROUP BY d.f_docid;
+"""
+
+GLOBAL_PAYMENT_DOCUMENT_EXISTS = """
+SELECT 1
+FROM veda_acchist payment
+WHERE payment.f_kod1C = %(code1c)s
+  AND payment.f_ppdt = %(document_date)s
+  AND ABS(COALESCE(payment.f_sum, 0) - %(amount)s) < 0.011
+LIMIT 1;
+"""
+
+GLOBAL_CUSTOMER_INVOICE_EXISTS = """
+SELECT 1
+FROM veda_schets invoice
+WHERE invoice.f_kod1c = %(code1c)s
+  AND invoice.f_dt = %(document_date)s
+  AND ABS(COALESCE(invoice.f_sum, 0) - %(amount)s) < 0.011
+  AND invoice.f_status <> 9
+LIMIT 1;
+"""
+
+GLOBAL_CLOSING_DOCUMENT_EXISTS = """
+SELECT 1
+FROM veda_akts document
+LEFT JOIN veda_akts parent ON parent.f_id = NULLIF(document.f_mainakt, 0)
+WHERE COALESCE(NULLIF(document.f_kod1c, ''), NULLIF(parent.f_kod1c, ''), '') = %(code1c)s
+  AND CASE
+        WHEN document.f_dt1c IS NOT NULL AND document.f_dt1c <> '0000-00-00' THEN document.f_dt1c
+        WHEN parent.f_dt1c IS NOT NULL AND parent.f_dt1c <> '0000-00-00' THEN parent.f_dt1c
+        ELSE COALESCE(parent.f_dt, document.f_dt)
+      END = %(document_date)s
+  AND ABS(COALESCE(document.f_sum, 0) - %(amount)s) < 0.011
+  AND document.f_status <> 9
+  AND (%(document_kind)s = 'purchase' AND document.f_type = 7
+       OR %(document_kind)s = 'sale' AND COALESCE(document.f_type, 0) <> 7)
+LIMIT 1;
 """
 
 DELIVERY_CODE_COVERAGE_AUDIT = """

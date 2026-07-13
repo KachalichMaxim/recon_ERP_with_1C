@@ -33,6 +33,9 @@ class ErpReadRepository(Protocol):
     def get_delivery_balance(self, spec_id: int) -> Money:
         ...
 
+    def document_exists_globally(self, document: AccountingDocument) -> bool:
+        ...
+
 
 class OneCReadRepository(Protocol):
     def fetch_snapshot(

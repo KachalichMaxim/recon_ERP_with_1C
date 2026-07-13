@@ -3,7 +3,12 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from recon_erp_1c.application.use_cases.reconcile_delivery import aggregate_documents, compare_balances, match_documents
+from recon_erp_1c.application.use_cases.reconcile_delivery import (
+    _classify_global_erp_presence,
+    aggregate_documents,
+    compare_balances,
+    match_documents,
+)
 from recon_erp_1c.domain.entities import (
     AccountingBalance,
     AccountingDocument,
@@ -584,6 +589,127 @@ def test_operation_link_makes_header_contract_informational() -> None:
     assert issue.match_basis == "document_header"
     assert issue.onec_document is not None
     assert issue.onec_document.contract_code1c == "БП-068418"
+
+
+def test_missing_operation_invoice_is_a_precondition_error() -> None:
+    expected_invoice = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.CUSTOMER_INVOICE,
+        code1c="",
+        number="",
+        date=None,
+        amount=Money.of("599.92"),
+        contract_code1c="БП-068417",
+        operation_id=376754,
+    )
+
+    issue = match_documents([expected_invoice], [])[0]
+
+    assert issue.status == ReconciliationStatus.MISSING_ERP_INVOICE
+    assert issue.primary_reason == "missing_erp_invoice"
+
+
+def test_missing_operation_closing_document_is_a_precondition_error() -> None:
+    expected_sale = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.SALE,
+        code1c="",
+        number="",
+        date=None,
+        amount=Money.of("1200.00"),
+        contract_code1c="БП-068417",
+        operation_id=500001,
+    )
+
+    issue = match_documents([expected_sale], [])[0]
+
+    assert issue.status == ReconciliationStatus.MISSING_ERP_CLOSING_DOCUMENT
+    assert issue.primary_reason == "missing_erp_closing_document"
+
+
+def test_unmatched_onec_document_means_not_linked_to_selected_delivery() -> None:
+    onec_doc = AccountingDocument(
+        source=SourceSystem.ONE_C,
+        kind=DocumentKind.PAYMENT,
+        code1c="00БП-010213",
+        number="374",
+        date=date(2025, 6, 11),
+        amount=Money.of("103953.30", "CNY"),
+        contract_code1c="БП-068417",
+    )
+
+    issue = match_documents([], [onec_doc])[0]
+
+    assert issue.status == ReconciliationStatus.NOT_LINKED_TO_DELIVERY_IN_ERP
+    assert issue.primary_reason == "not_linked_to_delivery_in_erp"
+
+
+def test_zero_onec_document_is_not_reported_as_globally_missing_in_erp() -> None:
+    onec_doc = AccountingDocument(
+        source=SourceSystem.ONE_C,
+        kind=DocumentKind.PAYMENT,
+        code1c="00БП-009994",
+        number="00БП-009994",
+        date=date(2025, 6, 9),
+        amount=Money.of("0.00", "USD"),
+        contract_code1c="БП-068417",
+    )
+    issue = match_documents([], [onec_doc])[0]
+
+    class Repository:
+        @staticmethod
+        def document_exists_globally(_document: AccountingDocument) -> bool:
+            return False
+
+    classified = _classify_global_erp_presence([issue], Repository())
+
+    assert classified[0].status == ReconciliationStatus.NOT_COMPARABLE
+    assert classified[0].primary_reason == "zero_amount_onec_document"
+
+
+def test_onec_document_found_globally_remains_not_linked_to_delivery() -> None:
+    onec_doc = AccountingDocument(
+        source=SourceSystem.ONE_C,
+        kind=DocumentKind.PAYMENT,
+        code1c="00БП-010001",
+        number="00БП-010001",
+        date=date(2025, 6, 9),
+        amount=Money.of("12999.20"),
+        contract_code1c="БП-068417",
+    )
+    issue = match_documents([], [onec_doc])[0]
+
+    class Repository:
+        @staticmethod
+        def document_exists_globally(_document: AccountingDocument) -> bool:
+            return True
+
+    classified = _classify_global_erp_presence([issue], Repository())
+
+    assert classified[0].status == ReconciliationStatus.NOT_LINKED_TO_DELIVERY_IN_ERP
+
+
+def test_onec_document_absent_globally_is_reported_missing_in_erp() -> None:
+    onec_doc = AccountingDocument(
+        source=SourceSystem.ONE_C,
+        kind=DocumentKind.PAYMENT,
+        code1c="00БП-099999",
+        number="00БП-099999",
+        date=date(2025, 6, 9),
+        amount=Money.of("100.00"),
+        contract_code1c="БП-068417",
+    )
+    issue = match_documents([], [onec_doc])[0]
+
+    class Repository:
+        @staticmethod
+        def document_exists_globally(_document: AccountingDocument) -> bool:
+            return False
+
+    classified = _classify_global_erp_presence([issue], Repository())
+
+    assert classified[0].status == ReconciliationStatus.NOT_FOUND_IN_ERP
+    assert classified[0].primary_reason == "not_found_in_erp"
 
 
 def test_balance_includes_allocated_lines_on_external_1c_contracts() -> None:

@@ -229,6 +229,25 @@ class MariaDbErpReadRepository:
         row = self._fetch_one(queries.DELIVERY_BALANCE_BY_SPEC_ID, {"spec_id": spec_id}) or {}
         return Money.of(row.get("balance") or Decimal("0"), "RUB")
 
+    def document_exists_globally(self, document: AccountingDocument) -> bool:
+        if not document.code1c or document.date is None:
+            return False
+        params = {
+            "code1c": document.code1c,
+            "document_date": document.date,
+            "amount": document.amount.amount,
+            "document_kind": document.kind.value,
+        }
+        if document.kind == DocumentKind.PAYMENT:
+            query = queries.GLOBAL_PAYMENT_DOCUMENT_EXISTS
+        elif document.kind == DocumentKind.CUSTOMER_INVOICE:
+            query = queries.GLOBAL_CUSTOMER_INVOICE_EXISTS
+        elif document.kind in {DocumentKind.SALE, DocumentKind.PURCHASE}:
+            query = queries.GLOBAL_CLOSING_DOCUMENT_EXISTS
+        else:
+            return False
+        return self._fetch_one(query, params) is not None
+
     def list_delivery_documents(self, spec_id: int) -> list[AccountingDocument]:
         return self.list_documents_for_deliveries([spec_id]).get(spec_id, [])
 
@@ -256,6 +275,11 @@ class MariaDbErpReadRepository:
         amounts_by_operation = {
             int(row.get("operation_id") or 0): row
             for row in self._fetch_operation_rows(queries.OPERATION_AMOUNTS_BY_OPERATION_IDS, operation_ids)
+        }
+        invoice_linked_operations = {
+            int(row.get("operation_id") or 0)
+            for row in self._fetch_operation_rows(queries.OPERATION_CUSTOMER_INVOICE_LINKS_BY_OPERATION_IDS, operation_ids)
+            if int(row.get("operation_id") or 0) > 0
         }
         closing_by_operation: dict[int, list[dict[str, Any]]] = {}
         for row in self._fetch_operation_rows(queries.OPERATION_CLOSING_DOCS_BY_OPERATION_IDS, operation_ids):
@@ -352,6 +376,27 @@ class MariaDbErpReadRepository:
                     {
                         "spec_id": operation.get("spec_id"),
                         "document_kind": "sale",
+                        "code1c": "",
+                        "document_number": "",
+                        "document_date": None,
+                        "amount_total": amounts.get("sale_sum") or Decimal("0"),
+                        "currency": "RUB",
+                        "contract_code1c": operation_contract_code,
+                        "source_id": 0,
+                        "source_number": "",
+                        "operation_id": operation_id,
+                        "vat_rate": operation.get("vat_rate") or "",
+                        "reimbursement_type": reimbursement_type,
+                        "deleted": 0,
+                        "paid_amount": None,
+                    }
+                )
+            if Decimal(str(amounts.get("sale_sum") or "0")) != Decimal("0") and operation_id not in invoice_linked_operations:
+                operation_contract_code = buyer_code if reimbursement_id == 2 else (committent_code or buyer_code)
+                rows.append(
+                    {
+                        "spec_id": operation.get("spec_id"),
+                        "document_kind": "customer_invoice",
                         "code1c": "",
                         "document_number": "",
                         "document_date": None,
