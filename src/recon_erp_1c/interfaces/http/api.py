@@ -781,6 +781,14 @@ def _doc_rows(
                 "amount": _decimal_text(doc.amount.amount),
                 "currency": doc.amount.currency,
                 "operation_id": doc.operation_id,
+                "source_id": doc.source_id,
+                "kind": doc.kind.value,
+                "erp_url": _erp_document_url(doc),
+                "operation_url": (
+                    f"http://erp.vedagent/veda/?pgid=35&invtb=145&obid={doc.operation_id}#"
+                    if doc.operation_id
+                    else ""
+                ),
                 "paid_amount": _decimal_text(linked_payment.amount)
                 if linked_payment
                 else (_decimal_text(doc.payment_amount.amount) if doc.payment_amount else ""),
@@ -790,6 +798,16 @@ def _doc_rows(
             }
         )
     return rows
+
+
+def _erp_document_url(document: AccountingDocument) -> str:
+    if not document.source_id or not document.source_id.isdigit():
+        return ""
+    if document.kind == DocumentKind.CUSTOMER_INVOICE:
+        return f"http://erp.vedagent/veda/?pgid=17&obid={document.source_id}#"
+    if document.kind in {DocumentKind.SALE, DocumentKind.PURCHASE, DocumentKind.CLOSING_DOCUMENT}:
+        return f"http://erp.vedagent/veda/?pgid=83&obid={document.source_id}"
+    return ""
 
 
 def _balance_kind(balance: Decimal) -> str:

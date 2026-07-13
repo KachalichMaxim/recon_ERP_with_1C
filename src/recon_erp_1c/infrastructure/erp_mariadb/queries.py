@@ -564,15 +564,30 @@ SELECT
         WHEN COALESCE(akt.f_type, 0) = 7 THEN 'purchase'
         ELSE 'sale'
     END AS document_kind,
-    COALESCE(NULLIF(akt.f_kod1c, ''), '') AS code1c,
-    COALESCE(NULLIF(akt.f_num, ''), '') AS document_number,
-    CASE WHEN akt.f_dt1c IS NOT NULL AND akt.f_dt1c <> '0000-00-00' THEN akt.f_dt1c ELSE akt.f_dt END AS document_date,
+    COALESCE(
+        NULLIF(akt.f_kod1c, ''),
+        NULLIF(main_akt.f_kod1c, ''),
+        CASE
+            WHEN main_akt.f_dt1c IS NOT NULL AND main_akt.f_dt1c <> '0000-00-00'
+                THEN NULLIF(main_akt.f_num, '')
+            ELSE NULL
+        END,
+        ''
+    ) AS code1c,
+    COALESCE(NULLIF(main_akt.f_num, ''), NULLIF(akt.f_num, ''), '') AS document_number,
+    CASE
+        WHEN main_akt.f_dt1c IS NOT NULL AND main_akt.f_dt1c <> '0000-00-00' THEN main_akt.f_dt1c
+        WHEN akt.f_dt1c IS NOT NULL AND akt.f_dt1c <> '0000-00-00' THEN akt.f_dt1c
+        ELSE COALESCE(main_akt.f_dt, akt.f_dt)
+    END AS document_date,
     COALESCE(akt.f_sum, 0) AS amount_total,
     COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
     COALESCE(akt.f_id, 0) AS source_id,
+    COALESCE(NULLIF(akt.f_num, ''), '') AS source_number,
     COALESCE(NULLIF(dog.f_kod1c, ''), '') AS dog_code1c,
-    CASE WHEN akt.f_status = 9 THEN 1 ELSE 0 END AS deleted
+    CASE WHEN akt.f_status = 9 OR main_akt.f_status = 9 THEN 1 ELSE 0 END AS deleted
 FROM veda_akts akt
+LEFT JOIN veda_akts main_akt ON main_akt.f_id = NULLIF(akt.f_mainakt, 0)
 LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = akt.f_val
 LEFT JOIN veda_dogs dog ON dog.f_id = akt.f_dogid
 WHERE akt.f_operid IN ({operation_id_filter})
@@ -586,17 +601,32 @@ SELECT
         WHEN COALESCE(akt.f_type, 0) = 7 THEN 'purchase'
         ELSE 'sale'
     END AS document_kind,
-    COALESCE(NULLIF(akt.f_kod1c, ''), '') AS code1c,
-    COALESCE(NULLIF(akt.f_num, ''), '') AS document_number,
-    CASE WHEN akt.f_dt1c IS NOT NULL AND akt.f_dt1c <> '0000-00-00' THEN akt.f_dt1c ELSE akt.f_dt END AS document_date,
+    COALESCE(
+        NULLIF(akt.f_kod1c, ''),
+        NULLIF(main_akt.f_kod1c, ''),
+        CASE
+            WHEN main_akt.f_dt1c IS NOT NULL AND main_akt.f_dt1c <> '0000-00-00'
+                THEN NULLIF(main_akt.f_num, '')
+            ELSE NULL
+        END,
+        ''
+    ) AS code1c,
+    COALESCE(NULLIF(main_akt.f_num, ''), NULLIF(akt.f_num, ''), '') AS document_number,
+    CASE
+        WHEN main_akt.f_dt1c IS NOT NULL AND main_akt.f_dt1c <> '0000-00-00' THEN main_akt.f_dt1c
+        WHEN akt.f_dt1c IS NOT NULL AND akt.f_dt1c <> '0000-00-00' THEN akt.f_dt1c
+        ELSE COALESCE(main_akt.f_dt, akt.f_dt)
+    END AS document_date,
     COALESCE(details_opers.f_sum, akt.f_sum, 0) AS amount_total,
     COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
     COALESCE(akt.f_id, 0) AS source_id,
+    COALESCE(NULLIF(akt.f_num, ''), '') AS source_number,
     COALESCE(NULLIF(dog.f_kod1c, ''), '') AS dog_code1c,
-    CASE WHEN akt.f_status = 9 THEN 1 ELSE 0 END AS deleted
+    CASE WHEN akt.f_status = 9 OR main_akt.f_status = 9 THEN 1 ELSE 0 END AS deleted
 FROM veda_akts_details_opers details_opers
 JOIN veda_akts_details details ON details.f_id = details_opers.f_akts_detailsid
 JOIN veda_akts akt ON akt.f_id = details.f_aktid
+LEFT JOIN veda_akts main_akt ON main_akt.f_id = NULLIF(akt.f_mainakt, 0)
 LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = akt.f_val
 LEFT JOIN veda_dogs dog ON dog.f_id = akt.f_dogid
 WHERE details_opers.f_operid IN ({operation_id_filter})

@@ -103,6 +103,7 @@ class AccountingDocument:
     posted: bool = True
     deleted: bool = False
     source_id: str = ""
+    source_number: str = ""
     operation_id: int | None = None
     vat_rate: str = ""
     reimbursement_type: str = ""
@@ -126,6 +127,8 @@ class BalanceComparison:
     difference: Money
     status: ReconciliationStatus
     contract_codes: tuple[str, ...] = ()
+    direct_onec_balance: Money | None = None
+    allocated_adjustment: Money | None = None
 
 
 @dataclass(frozen=True, slots=True)

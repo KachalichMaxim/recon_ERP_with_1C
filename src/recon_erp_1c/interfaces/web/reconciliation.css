@@ -646,7 +646,7 @@ textarea::placeholder {
 
 .balance-compare {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(6, minmax(135px, 1fr));
   gap: 1px;
   margin: 10px 0;
   overflow: hidden;
@@ -940,6 +940,42 @@ tr.matrix-detail-row td {
 
 .matrix-link:hover {
   color: var(--accent);
+}
+
+.document-links {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 4px;
+  white-space: pre-line;
+}
+
+.source-document-number {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.document-link {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.document-link:hover {
+  color: var(--accent);
+}
+
+.operation-link {
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.operation-link:hover {
+  text-decoration: underline;
 }
 
 .matrix-detail-head {

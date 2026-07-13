@@ -96,6 +96,8 @@
     runMessage: $('runMessage'),
     balanceCompare: $('balanceCompare'),
     balanceErp: $('balanceErp'),
+    balanceOnecDirect: $('balanceOnecDirect'),
+    balanceOnecAdjustment: $('balanceOnecAdjustment'),
     balanceOnec: $('balanceOnec'),
     balanceDifference: $('balanceDifference'),
     balanceStatus: $('balanceStatus'),
@@ -859,7 +861,7 @@
             <div class="matrix-detail-head">Оплата по счету</div>
             ${details.map((item) => `
               <div>${escapeHtml(item.type)}</div>
-              <div class="mono">${escapeHtml(item.number)}</div>
+              <div class="mono">${matrixDetailDocumentHtml(item)}</div>
               <div class="mono">${escapeHtml(fmtDate(item.date))}</div>
               <div class="mono">${escapeHtml(fmtMoneyValue(item.amount, item.currency || 'RUB'))}</div>
               <div class="mono">${item.paidAmount === '' ? '—' : escapeHtml(fmtMoneyValue(item.paidAmount, item.paidCurrency || 'RUB'))}</div>
@@ -880,10 +882,23 @@
         currency: row.currency || 'RUB',
         paidAmount: type === 'Счет покупателю' && row.operation_id ? (row.paid_amount || 0) : '',
         paidCurrency: row.paid_currency || 'RUB',
+        erpUrl: row.erp_url || '',
+        operationUrl: row.operation_url || '',
       }));
     }
     if (!Array.isArray(fallbackNumbers) || !fallbackNumbers.length) return [];
     return fallbackNumbers.map((number) => ({ type, number, date: '', amount: 0, currency: 'RUB' }));
+  }
+
+  function matrixDetailDocumentHtml(item) {
+    const title = escapeHtml(item.number || '—');
+    const documentLink = item.erpUrl
+      ? `<a class="document-link" href="${escapeHtml(item.erpUrl)}" target="_blank" rel="noopener">${title}</a>`
+      : `<span>${title}</span>`;
+    const operationLink = item.operationUrl
+      ? `<a class="operation-link" href="${escapeHtml(item.operationUrl)}" target="_blank" rel="noopener">Операция ERP</a>`
+      : '';
+    return `<div class="document-links">${documentLink}${operationLink}</div>`;
   }
 
   function joinList(values) {
@@ -1139,6 +1154,8 @@
       return;
     }
     const erp = comparison.erp_balance || {};
+    const direct = comparison.direct_onec_balance || comparison.onec_balance || {};
+    const adjustment = comparison.allocated_adjustment || { amount: 0, currency: direct.currency || 'RUB' };
     const onec = comparison.onec_balance || {};
     const difference = comparison.difference || {};
     const matches = comparison.status === 'match';
@@ -1146,6 +1163,8 @@
     els.balanceCompare.classList.toggle('ok', matches);
     els.balanceCompare.classList.toggle('problem', !matches);
     els.balanceErp.textContent = fmtMoneyValue(erp.amount, erp.currency || 'RUB');
+    els.balanceOnecDirect.textContent = fmtMoneyValue(direct.amount, direct.currency || 'RUB');
+    els.balanceOnecAdjustment.textContent = fmtMoneyValue(adjustment.amount, adjustment.currency || 'RUB');
     els.balanceOnec.textContent = fmtMoneyValue(onec.amount, onec.currency || 'RUB');
     els.balanceDifference.textContent = fmtMoneyValue(difference.amount, difference.currency || 'RUB');
     els.balanceStatus.textContent = matches ? 'Сальдо совпало' : 'Сальдо расходится';
@@ -1196,7 +1215,7 @@
     return `<tr>
       <td>${statusBadge(issueRow.status)}</td>
       <td>${escapeHtml(issueType(issueRow))}</td>
-      <td class="mono">${escapeHtml(documentTitle(erp))}</td>
+      <td class="mono">${erpDocumentHtml(erp)}</td>
       <td class="mono">${escapeHtml(documentTitle(onec))}</td>
       <td class="mono">${escapeHtml(fmtDate(erp.date || onec.date))}</td>
       <td class="num">${escapeHtml(fmtDocMoney(erp))}</td>
@@ -1286,7 +1305,24 @@
     return [doc.code1c || doc.number, doc.contract_code1c].filter(Boolean).join('\n') || '—';
   }
 
+  function erpDocumentHtml(doc) {
+    if (!doc || Object.keys(doc).length === 0) return '—';
+    const sourceNumber = doc.source_number && doc.source_number !== doc.number
+      ? `<span class="source-document-number">${escapeHtml(doc.source_number)}</span>`
+      : '';
+    const title = `${sourceNumber}<span>${escapeHtml(documentTitle(doc))}</span>`;
+    const documentLink = doc.erp_url
+      ? `<a class="document-link" href="${escapeHtml(doc.erp_url)}" target="_blank" rel="noopener">${title}</a>`
+      : `<span>${title}</span>`;
+    const operationLink = doc.operation_url
+      ? `<a class="operation-link" href="${escapeHtml(doc.operation_url)}" target="_blank" rel="noopener">Операция ERP</a>`
+      : '';
+    return `<div class="document-links">${documentLink}${operationLink}</div>`;
+  }
+
   function issueReason(row) {
+    if (row.status === 'not_found_in_1c') return 'Документ ERP не найден в 1С';
+    if (row.status === 'not_found_in_erp') return 'Документ 1С не найден в ERP';
     const labels = {
       code1c: 'код 1С',
       date: 'дата',

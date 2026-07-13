@@ -28,7 +28,25 @@ def to_jsonable(value: Any) -> Any:
 def document_to_dict(document: AccountingDocument | None) -> dict[str, Any] | None:
     if document is None:
         return None
-    return to_jsonable(document)
+    payload = to_jsonable(document)
+    if document.source.value == "erp":
+        payload["erp_url"] = _erp_document_url(document)
+        payload["operation_url"] = (
+            f"http://erp.vedagent/veda/?pgid=35&invtb=145&obid={document.operation_id}#"
+            if document.operation_id
+            else ""
+        )
+    return payload
+
+
+def _erp_document_url(document: AccountingDocument) -> str:
+    if not document.source_id or not document.source_id.isdigit():
+        return ""
+    if document.kind.value == "customer_invoice":
+        return f"http://erp.vedagent/veda/?pgid=17&obid={document.source_id}#"
+    if document.kind.value in {"sale", "purchase", "closing_document"}:
+        return f"http://erp.vedagent/veda/?pgid=83&obid={document.source_id}"
+    return ""
 
 
 def issue_to_dict(issue: ReconciliationIssue) -> dict[str, Any]:

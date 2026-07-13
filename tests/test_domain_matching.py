@@ -4,7 +4,13 @@ from datetime import date
 from decimal import Decimal
 
 from recon_erp_1c.application.use_cases.reconcile_delivery import aggregate_documents, compare_balances, match_documents
-from recon_erp_1c.domain.entities import AccountingBalance, AccountingDocument, DocumentLine, PaymentAllocation
+from recon_erp_1c.domain.entities import (
+    AccountingBalance,
+    AccountingDocument,
+    DocumentLine,
+    PaymentAllocation,
+    ReconciliationIssue,
+)
 from recon_erp_1c.domain.services import compare_documents
 from recon_erp_1c.domain.value_objects import DocumentKind, Money, ReconciliationStatus, SourceSystem
 
@@ -459,6 +465,8 @@ def test_balance_comparison_uses_credit_minus_debit_for_1c() -> None:
 
     assert comparison is not None
     assert comparison.onec_balance.amount == Decimal("-6066.90")
+    assert comparison.direct_onec_balance.amount == Decimal("-6066.90")
+    assert comparison.allocated_adjustment.amount == Decimal("0.00")
     assert comparison.difference.amount == Decimal("-599.92")
     assert comparison.status == ReconciliationStatus.AMOUNT_MISMATCH
 
@@ -505,6 +513,109 @@ def test_unlinked_erp_sale_rows_match_distinct_1c_document_lines() -> None:
     assert [issue.status for issue in issues] == [ReconciliationStatus.MATCH, ReconciliationStatus.MATCH]
     assert [issue.matched_detail_id for issue in issues] == ["1", "2"]
     assert all(issue.match_basis == "document_line" for issue in issues)
+
+
+def test_two_erp_rows_with_same_aggregate_code_match_distinct_1c_lines() -> None:
+    erp_docs = [
+        AccountingDocument(
+            source=SourceSystem.ERP,
+            kind=DocumentKind.SALE,
+            code1c="00БП-003228",
+            number="00БП-003228",
+            date=date(2025, 7, 30),
+            amount=Money.of(amount),
+            contract_code1c="БП-068417",
+            operation_id=operation_id,
+        )
+        for amount, operation_id in (("23157.25", 362790), ("599.92", 376754))
+    ]
+    onec_doc = AccountingDocument(
+        source=SourceSystem.ONE_C,
+        kind=DocumentKind.SALE,
+        code1c="00БП-003228",
+        number="00БП-003228",
+        date=date(2025, 7, 30),
+        amount=Money.of("23757.17"),
+        contract_code1c="БП-013397",
+        lines=(
+            DocumentLine("sale-guid", "1", Money.of("23157.25"), contract_code1c="БП-013397"),
+            DocumentLine("sale-guid", "2", Money.of("599.92"), contract_code1c="БП-013397"),
+        ),
+    )
+
+    issues = match_documents(erp_docs, [onec_doc])
+
+    assert [issue.status for issue in issues] == [
+        ReconciliationStatus.CONTRACT_MISMATCH,
+        ReconciliationStatus.CONTRACT_MISMATCH,
+    ]
+    assert [issue.matched_detail_id for issue in issues] == ["1", "2"]
+
+
+def test_balance_includes_allocated_lines_on_external_1c_contracts() -> None:
+    balances = [
+        AccountingBalance(
+            contract_code1c="БП-068417",
+            opening_debit=Money.of("0"),
+            opening_credit=Money.of("0"),
+            turnover_debit=Money.of("0"),
+            turnover_credit=Money.of("0"),
+            closing_debit=Money.of("3327.84"),
+            closing_credit=Money.of("0"),
+        ),
+        AccountingBalance(
+            contract_code1c="БП-068418",
+            opening_debit=Money.of("0"),
+            opening_credit=Money.of("0"),
+            turnover_debit=Money.of("0"),
+            turnover_credit=Money.of("0"),
+            closing_debit=Money.of("2739.06"),
+            closing_credit=Money.of("0"),
+        ),
+    ]
+
+    def external_issue(kind: DocumentKind, amount: str, operation_id: int, basis: str) -> ReconciliationIssue:
+        erp = AccountingDocument(
+            source=SourceSystem.ERP,
+            kind=kind,
+            code1c="DOC",
+            number="DOC",
+            date=date(2025, 7, 30),
+            amount=Money.of(amount),
+            contract_code1c="БП-068417",
+            operation_id=operation_id,
+        )
+        onec = AccountingDocument(
+            source=SourceSystem.ONE_C,
+            kind=kind,
+            code1c="DOC",
+            number="DOC",
+            date=date(2025, 7, 30),
+            amount=Money.of(amount),
+            contract_code1c="БП-013397",
+        )
+        return ReconciliationIssue(
+            status=ReconciliationStatus.CONTRACT_MISMATCH,
+            message="contract",
+            erp_document=erp,
+            onec_document=onec,
+            match_basis=basis,
+        )
+
+    issues = [
+        external_issue(DocumentKind.SALE, "23157.25", 362790, "document_line"),
+        external_issue(DocumentKind.PAYMENT, "23157.25", 362790, "payment_allocation"),
+        external_issue(DocumentKind.SALE, "599.92", 376754, "document_line"),
+    ]
+
+    comparison = compare_balances(Money.of("-6666.82"), balances, ("БП-068417", "БП-068418"), issues)
+
+    assert comparison is not None
+    assert comparison.direct_onec_balance.amount == Decimal("-6066.90")
+    assert comparison.allocated_adjustment.amount == Decimal("-599.92")
+    assert comparison.onec_balance.amount == Decimal("-6666.82")
+    assert comparison.difference.amount == Decimal("0.00")
+    assert comparison.status == ReconciliationStatus.MATCH
 
 
 def test_compare_documents_number_mismatch() -> None:

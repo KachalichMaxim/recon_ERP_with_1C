@@ -65,6 +65,7 @@ class ReconcileDeliveryUseCase:
             erp_balance,
             list(onec_snapshot.balances),
             delivery.contract_codes.all_codes(),
+            issues,
         )
         match_ms = (perf_counter() - match_started) * 1000
         run = ReconciliationRun(
@@ -139,7 +140,7 @@ def match_documents(erp_documents: list[AccountingDocument], onec_documents: lis
                     status=ReconciliationStatus.NOT_FOUND_IN_1C,
                     message="Документ ERP не найден в 1С по типу, коду/номеру и дате",
                     erp_document=erp_doc,
-                    fields=("code1c", "date", "number"),
+                    fields=(),
                     primary_reason="not_found_in_1c",
                     severity="critical",
                 )
@@ -204,7 +205,7 @@ def match_documents(erp_documents: list[AccountingDocument], onec_documents: lis
                     status=ReconciliationStatus.NOT_FOUND_IN_ERP,
                     message="Документ 1С не найден в ERP по типу, коду/номеру и дате",
                     onec_document=onec_doc,
-                    fields=("code1c", "date", "number"),
+                    fields=(),
                     primary_reason="not_found_in_erp",
                     severity="critical",
                 )
@@ -302,6 +303,7 @@ def aggregate_documents(documents: list[AccountingDocument]) -> list[AccountingD
                 posted=all(row.posted for row in rows),
                 deleted=all(row.deleted for row in rows),
                 source_id=",".join(row.source_id for row in rows if row.source_id),
+                source_number=first.source_number,
                 operation_id=None,
                 vat_rate=first.vat_rate if same_vat else "",
                 reimbursement_type=first.reimbursement_type,
@@ -405,19 +407,19 @@ def _find_unlinked_detail_match(
     onec_documents: list[AccountingDocument],
     used_detail_resources: set[tuple[int, str, str]],
 ) -> tuple[int, _DetailMatch] | None:
-    if erp_doc.code1c or erp_doc.kind.value not in {"sale", "purchase"}:
+    if erp_doc.kind.value not in {"sale", "purchase"}:
         return None
     candidates: list[tuple[int, _DetailMatch]] = []
     for index, document in enumerate(onec_documents):
         if document.kind != erp_doc.kind or document.date != erp_doc.date:
+            continue
+        if erp_doc.code1c and document.code1c != erp_doc.code1c:
             continue
         for line in document.lines:
             resource = (index, "document_line", line.line_id)
             if resource in used_detail_resources or line.amount != erp_doc.amount:
                 continue
             line_contract = line.linked_contract_code1c or line.contract_code1c or document.contract_code1c
-            if erp_doc.contract_code1c and line_contract and erp_doc.contract_code1c != line_contract:
-                continue
             candidates.append(
                 (
                     index,
@@ -435,6 +437,11 @@ def _find_unlinked_detail_match(
             )
     if not candidates:
         return None
+    contract = erp_doc.contract_code1c.strip()
+    same_contract = [
+        candidate for candidate in candidates if contract and candidate[1].document.contract_code1c == contract
+    ]
+    candidates = same_contract or candidates
     if len(candidates) > 1:
         first_index, first = candidates[0]
         return first_index, replace(first, ambiguous=True)
@@ -445,6 +452,7 @@ def compare_balances(
     erp_balance: Money,
     onec_balances: list[AccountingBalance],
     contract_codes: tuple[str, ...],
+    issues: list[ReconciliationIssue] | None = None,
 ) -> BalanceComparison | None:
     codes = tuple(code for code in contract_codes if code)
     relevant = [balance for balance in onec_balances if not codes or balance.contract_code1c in codes]
@@ -455,7 +463,9 @@ def compare_balances(
         (balance.signed_closing_balance.amount for balance in relevant if balance.closing_debit.currency == currency),
         Decimal("0"),
     )
-    onec_balance = Money.of(onec_amount, currency)
+    direct_onec_balance = Money.of(onec_amount, currency)
+    allocated_adjustment = Money.of(_allocated_external_adjustment(issues or [], codes, currency), currency)
+    onec_balance = Money.of(direct_onec_balance.amount + allocated_adjustment.amount, currency)
     difference = Money.of(erp_balance.amount - onec_balance.amount, currency)
     status = ReconciliationStatus.MATCH if difference.amount == Decimal("0.00") else ReconciliationStatus.AMOUNT_MISMATCH
     return BalanceComparison(
@@ -464,4 +474,35 @@ def compare_balances(
         difference=difference,
         status=status,
         contract_codes=codes,
+        direct_onec_balance=direct_onec_balance,
+        allocated_adjustment=allocated_adjustment,
     )
+
+
+def _allocated_external_adjustment(
+    issues: list[ReconciliationIssue], contract_codes: tuple[str, ...], currency: str
+) -> Decimal:
+    adjustment = Decimal("0")
+    comparable_statuses = {
+        ReconciliationStatus.MATCH,
+        ReconciliationStatus.CONTRACT_MISMATCH,
+        ReconciliationStatus.DATE_MISMATCH,
+        ReconciliationStatus.NUMBER_MISMATCH,
+        ReconciliationStatus.VAT_MISMATCH,
+    }
+    for issue in issues:
+        erp_doc = issue.erp_document
+        onec_doc = issue.onec_document
+        if not erp_doc or not onec_doc or not erp_doc.operation_id:
+            continue
+        if issue.status not in comparable_statuses:
+            continue
+        if issue.match_basis not in {"document_line", "payment_allocation"}:
+            continue
+        if onec_doc.contract_code1c in contract_codes or onec_doc.amount.currency != currency:
+            continue
+        if erp_doc.kind.value == "payment":
+            adjustment += onec_doc.amount.amount
+        elif erp_doc.kind.value == "sale":
+            adjustment -= onec_doc.amount.amount
+    return adjustment

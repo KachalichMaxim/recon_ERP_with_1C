@@ -40,6 +40,8 @@ GET /api/reconciliation/client-matrix.xlsx?client_id=<id>&dog_id=<id>&limit=<n>
 - `client-matrix` без `compare_1c=1` возвращает ERP-сальдовку по поставкам.
 - `client-matrix` с `compare_1c=1` строит ERP-сальдовку и дополнительно выполняет сверку документов с 1C через REST API.
 - `client-matrix.xlsx` возвращает бухгалтерскую XLSX-выгрузку сальдовки.
+
+В документной сверке ERP-документы должны содержать прямые ссылки на исходные карточки ERP: счет покупателю (`pgid=17`), закрывающий документ (`pgid=83`) и, при наличии `operation_id`, операцию (`pgid=35&invtb=145`). Если ERP хранит дочерние акты под агрегирующим актом, код/дата документа 1C берутся из `veda_akts.f_mainakt`, а сумма и ссылка на карточку — из дочернего акта.
 - `1c-rest-status` показывает готовность production REST-источника 1C.
 
 ## ERP source model
