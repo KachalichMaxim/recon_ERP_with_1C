@@ -1,0 +1,7 @@
+#!/bin/sh
+# Route ERP MariaDB and 1C REST through the corporate PPP tunnel.
+[ -n "$PPP_IFACE" ] || exit 0
+[ -n "$PPP_REMOTE" ] || exit 0
+
+ip route replace 10.54.1.28 via "$PPP_REMOTE" dev "$PPP_IFACE" 2>/dev/null || true
+ip route replace 10.54.1.25 via "$PPP_REMOTE" dev "$PPP_IFACE" 2>/dev/null || true
