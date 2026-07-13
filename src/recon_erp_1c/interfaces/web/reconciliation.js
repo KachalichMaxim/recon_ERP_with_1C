@@ -1342,7 +1342,14 @@
     };
     const basis = basisLabels[row.match_basis] || '';
     if (fields.length) return `Расходятся: ${fields.join(', ')}${basis ? ` · проверено ${basis}` : ''}`;
-    if (row.status === 'match' && basis) return `Совпало ${basis}`;
+    if (row.status === 'match' && basis) {
+      const linkedContract = row.erp_document?.contract_code1c
+        && row.onec_document?.contract_code1c
+        && row.erp_document.contract_code1c !== row.onec_document.contract_code1c;
+      return linkedContract
+        ? `Совпало ${basis} · в 1С проведен по договору ${row.onec_document.contract_code1c}`
+        : `Совпало ${basis}`;
+    }
     return row.message || 'Без расхождений';
   }
 

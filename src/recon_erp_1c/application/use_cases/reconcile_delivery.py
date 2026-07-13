@@ -124,7 +124,7 @@ def match_documents(erp_documents: list[AccountingDocument], onec_documents: lis
                     number=detail_match.document.number,
                     incoming_number=detail_match.document.incoming_number,
                 )
-                issue = compare_documents(comparable_erp, detail_match.document)
+                issue = _compare_matched_detail(comparable_erp, detail_match)
                 issues.append(
                     replace(
                         issue,
@@ -188,7 +188,7 @@ def match_documents(erp_documents: list[AccountingDocument], onec_documents: lis
         elif detail_match.basis == "document_header":
             for line in onec_doc.lines:
                 used_detail_resources.add((onec_index_value, "document_line", line.line_id))
-        issue = compare_documents(erp_doc, detail_match.document)
+        issue = _compare_matched_detail(erp_doc, detail_match)
         issues.append(
             replace(
                 issue,
@@ -339,6 +339,27 @@ class _DetailMatch:
     basis: str = "document_header"
     detail_id: str = ""
     ambiguous: bool = False
+
+
+def _compare_matched_detail(erp_doc: AccountingDocument, detail_match: _DetailMatch) -> ReconciliationIssue:
+    onec_doc = detail_match.document
+    # A contract is candidate-selection context, not a reconciliation error:
+    # one delivery legitimately contains documents posted on related contracts.
+    comparable_onec = (
+        replace(onec_doc, contract_code1c=erp_doc.contract_code1c)
+        if erp_doc.contract_code1c and onec_doc.contract_code1c
+        else onec_doc
+    )
+    issue = compare_documents(erp_doc, comparable_onec)
+    return replace(
+        issue,
+        onec_document=onec_doc,
+        message=(
+            "Документ совпал; договор документа 1С показан справочно"
+            if issue.status == ReconciliationStatus.MATCH
+            else issue.message
+        ),
+    )
 
 
 def _project_matching_detail(erp_doc: AccountingDocument, onec_doc: AccountingDocument) -> _DetailMatch:

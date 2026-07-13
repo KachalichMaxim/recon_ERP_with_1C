@@ -192,7 +192,7 @@ def test_match_documents_detects_duplicate_1c_candidates_by_code_date_contract()
     assert issues[0].match_confidence == "exact"
 
 
-def test_match_documents_reports_contract_mismatch_for_same_code_date_with_different_contract() -> None:
+def test_match_documents_treats_contract_as_context_for_unique_document() -> None:
     erp_doc = AccountingDocument(
         source=SourceSystem.ERP,
         kind=DocumentKind.PAYMENT,
@@ -215,8 +215,10 @@ def test_match_documents_reports_contract_mismatch_for_same_code_date_with_diffe
     issues = match_documents([erp_doc], [onec_doc])
 
     assert len(issues) == 1
-    assert issues[0].status == ReconciliationStatus.CONTRACT_MISMATCH
-    assert issues[0].fields == ("contract_code1c",)
+    assert issues[0].status == ReconciliationStatus.MATCH
+    assert issues[0].fields == ()
+    assert issues[0].onec_document is not None
+    assert issues[0].onec_document.contract_code1c == "БП-999999"
 
 
 def test_match_documents_reports_missing_contract_context() -> None:
@@ -381,7 +383,7 @@ def test_partial_payment_matches_allocation_and_checks_allocation_contract() -> 
     assert issue.matched_detail_id == "ВА-007517"
 
 
-def test_partial_payment_reports_wrong_allocation_contract() -> None:
+def test_partial_payment_treats_linked_allocation_contract_as_context() -> None:
     erp_doc = AccountingDocument(
         source=SourceSystem.ERP,
         kind=DocumentKind.PAYMENT,
@@ -404,8 +406,10 @@ def test_partial_payment_reports_wrong_allocation_contract() -> None:
 
     issue = match_documents([erp_doc], [onec_doc])[0]
 
-    assert issue.status == ReconciliationStatus.CONTRACT_MISMATCH
+    assert issue.status == ReconciliationStatus.MATCH
     assert issue.match_basis == "payment_allocation"
+    assert issue.onec_document is not None
+    assert issue.onec_document.contract_code1c == "БП-068412"
 
 
 def test_payment_aggregation_ignores_operation_contract() -> None:
@@ -546,10 +550,40 @@ def test_two_erp_rows_with_same_aggregate_code_match_distinct_1c_lines() -> None
     issues = match_documents(erp_docs, [onec_doc])
 
     assert [issue.status for issue in issues] == [
-        ReconciliationStatus.CONTRACT_MISMATCH,
-        ReconciliationStatus.CONTRACT_MISMATCH,
+        ReconciliationStatus.MATCH,
+        ReconciliationStatus.MATCH,
     ]
     assert [issue.matched_detail_id for issue in issues] == ["1", "2"]
+    assert all(issue.onec_document and issue.onec_document.contract_code1c == "БП-013397" for issue in issues)
+
+
+def test_operation_link_makes_header_contract_informational() -> None:
+    erp_doc = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.PAYMENT,
+        code1c="00БП-010302",
+        number="29191",
+        date=date(2025, 7, 30),
+        amount=Money.of("176168.31"),
+        contract_code1c="БП-068417",
+        operation_id=362790,
+    )
+    onec_doc = AccountingDocument(
+        source=SourceSystem.ONE_C,
+        kind=DocumentKind.PAYMENT,
+        code1c="00БП-010302",
+        number="29191",
+        date=date(2025, 7, 30),
+        amount=Money.of("176168.31"),
+        contract_code1c="БП-068418",
+    )
+
+    issue = match_documents([erp_doc], [onec_doc])[0]
+
+    assert issue.status == ReconciliationStatus.MATCH
+    assert issue.match_basis == "document_header"
+    assert issue.onec_document is not None
+    assert issue.onec_document.contract_code1c == "БП-068418"
 
 
 def test_balance_includes_allocated_lines_on_external_1c_contracts() -> None:
