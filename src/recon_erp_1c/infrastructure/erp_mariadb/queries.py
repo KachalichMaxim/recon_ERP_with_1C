@@ -43,14 +43,26 @@ SELECT
     COALESCE(s.f_kod1cp, '') AS committent_contract_code,
     d.f_id AS dog_id,
     COALESCE(d.f_dogname, '') AS base_contract_number,
+    COALESCE(org.f_abbr, '') AS organization_abbr,
+    CONCAT(
+        COALESCE(d.f_dogname, ''), '/',
+        COALESCE(s.f_num, ''), '/',
+        COALESCE(org.f_abbr, ''), '/',
+        COALESCE(client.f_cname, '')
+    ) AS delivery_full_name,
+    COALESCE(main_client.f_id, 0) AS main_client_id,
+    COALESCE(main_client.f_name, '') AS main_client_name,
     COALESCE(client.f_id, 0) AS client_id,
     COALESCE(client.f_cname, '') AS client_name,
     COALESCE(client.f_inn, '') AS client_inn
 FROM veda_specs s
 JOIN veda_dogs d ON d.f_id = s.f_dogid
 LEFT JOIN veda_clients client ON client.f_id = d.f_contrid
+LEFT JOIN veda_clients org ON org.f_id = d.f_orgid
+LEFT JOIN veda_contacts main_client ON main_client.f_id = client.f_contactid
 LEFT JOIN veda_spr spec_type ON spec_type.f_type = 33 AND spec_type.f_num = s.f_typez
-WHERE (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
+WHERE (%(spec_id)s IS NULL OR s.f_id = %(spec_id)s)
+  AND (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
   AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
   AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
   AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s)
@@ -62,7 +74,8 @@ COUNT_DELIVERIES = """
 SELECT COUNT(*) AS total_count
 FROM veda_specs s
 JOIN veda_dogs d ON d.f_id = s.f_dogid
-WHERE (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
+WHERE (%(spec_id)s IS NULL OR s.f_id = %(spec_id)s)
+  AND (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
   AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
   AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
   AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s);
@@ -84,7 +97,8 @@ FROM (
         COALESCE(s.f_kod1cb, '') AS buyer_contract_code
     FROM veda_specs s
     JOIN veda_dogs d ON d.f_id = s.f_dogid
-    WHERE (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
+    WHERE (%(spec_id)s IS NULL OR s.f_id = %(spec_id)s)
+      AND (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
       AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
       AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
       AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s)
@@ -169,6 +183,82 @@ LEFT JOIN (
     ) sales_ops
     GROUP BY sales_ops.spec_id
 ) sales ON sales.spec_id = filtered_specs.spec_id;
+"""
+
+SEARCH_DELIVERY_BY_ID = """
+SELECT
+    s.f_id AS spec_id,
+    COALESCE(s.f_num, '') AS spec_number,
+    COALESCE(NULLIF(spec_type.f_name, ''), NULLIF(spec_type.f_dopprstr, ''), NULLIF(spec_type.f_uslstr, ''), '') AS spec_type_name,
+    s.f_dt AS spec_date,
+    d.f_id AS dog_id,
+    COALESCE(d.f_dogname, '') AS base_contract_number,
+    COALESCE(org.f_abbr, '') AS organization_abbr,
+    COALESCE(client.f_id, 0) AS client_id,
+    COALESCE(client.f_cname, '') AS client_name,
+    COALESCE(client.f_inn, '') AS client_inn,
+    CONCAT(
+        COALESCE(d.f_dogname, ''), '/',
+        COALESCE(s.f_num, ''), '/',
+        COALESCE(org.f_abbr, ''), '/',
+        COALESCE(client.f_cname, '')
+    ) AS delivery_full_name
+FROM veda_specs s
+JOIN veda_dogs d ON d.f_id = s.f_dogid
+LEFT JOIN veda_clients client ON client.f_id = d.f_contrid
+LEFT JOIN veda_clients org ON org.f_id = d.f_orgid
+LEFT JOIN veda_spr spec_type ON spec_type.f_type = 33 AND spec_type.f_num = s.f_typez
+WHERE s.f_id = %(spec_id)s
+  AND (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
+  AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
+  AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
+  AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s)
+LIMIT 1;
+"""
+
+SEARCH_DELIVERIES = """
+SELECT
+    s.f_id AS spec_id,
+    COALESCE(s.f_num, '') AS spec_number,
+    COALESCE(NULLIF(spec_type.f_name, ''), NULLIF(spec_type.f_dopprstr, ''), NULLIF(spec_type.f_uslstr, ''), '') AS spec_type_name,
+    s.f_dt AS spec_date,
+    d.f_id AS dog_id,
+    COALESCE(d.f_dogname, '') AS base_contract_number,
+    COALESCE(org.f_abbr, '') AS organization_abbr,
+    COALESCE(client.f_id, 0) AS client_id,
+    COALESCE(client.f_cname, '') AS client_name,
+    COALESCE(client.f_inn, '') AS client_inn,
+    CONCAT(
+        COALESCE(d.f_dogname, ''), '/',
+        COALESCE(s.f_num, ''), '/',
+        COALESCE(org.f_abbr, ''), '/',
+        COALESCE(client.f_cname, '')
+    ) AS delivery_full_name
+FROM veda_specs s
+JOIN veda_dogs d ON d.f_id = s.f_dogid
+LEFT JOIN veda_clients client ON client.f_id = d.f_contrid
+LEFT JOIN veda_clients org ON org.f_id = d.f_orgid
+LEFT JOIN veda_spr spec_type ON spec_type.f_type = 33 AND spec_type.f_num = s.f_typez
+WHERE (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
+  AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
+  AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
+  AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s)
+  AND (
+      COALESCE(s.f_num, '') LIKE %(query_like)s
+      OR COALESCE(d.f_dogname, '') LIKE %(query_like)s
+      OR COALESCE(client.f_cname, '') LIKE %(query_like)s
+      OR CONCAT(
+          COALESCE(d.f_dogname, ''), '/',
+          COALESCE(s.f_num, ''), '/',
+          COALESCE(org.f_abbr, ''), '/',
+          COALESCE(client.f_cname, '')
+      ) LIKE %(query_like)s
+  )
+ORDER BY
+    CASE WHEN COALESCE(s.f_num, '') = %(query)s THEN 0 ELSE 1 END,
+    s.f_dt DESC,
+    s.f_id DESC
+LIMIT %(limit)s;
 """
 
 DELIVERY_BALANCE_BY_SPEC_ID = """

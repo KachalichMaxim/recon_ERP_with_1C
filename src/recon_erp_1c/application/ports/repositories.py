@@ -12,6 +12,7 @@ class ErpReadRepository(Protocol):
     def list_deliveries(
         self,
         *,
+        spec_id: int | None = None,
         client_id: int | None = None,
         dog_id: int | None = None,
         date_from: date | None = None,

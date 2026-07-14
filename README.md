@@ -92,6 +92,8 @@ GET /health
 GET /api/config/status
 POST /api/auth/login
 GET /api/auth/me
+GET /api/reconciliation/deliveries?q=660%2F1%2F1051&limit=12
+GET /api/reconciliation/deliveries?q=20334&limit=12
 GET /api/reconciliation/specifications?client_id=221&dog_id=88&date_from=2025-01-01&date_to=2025-12-31&limit=50
 GET /api/reconciliation/run?spec_id=20334&date_from=2025-01-01&date_to=2025-12-31&persist_log=1
 GET /api/reconciliation/run.xlsx?spec_id=20334&date_from=2025-01-01&date_to=2025-12-31
@@ -110,7 +112,7 @@ X-ERP-Token: <erp-token>
 ## Пользовательские пути
 
 1. Пользователь открывает экран из ERP. ERP передает launch token, backend валидирует его и создает короткую сессию сервиса. Прямой логин/пароль разрешен только в dev/demo-режиме.
-2. Пользователь задает фильтры: `client_id`, `dog_id`, период и лимит строк. Сервис показывает список поставок из ERP.
+2. Пользователь задает фильтры: ЮЛ, договор, поставку, период и число строк. Поставку можно найти по полному названию ERP или точному `spec_id`; текстовый поиск начинается с трех символов.
 3. Пользователь выбирает поставку и запускает сверку. UI показывает шаги: ERP context -> ERP documents -> 1C snapshot -> matching -> log.
 4. После завершения пользователь видит статусы документов и может фильтровать строки по типу расхождения.
 5. Пользователь скачивает XLSX по той же поставке и периоду.

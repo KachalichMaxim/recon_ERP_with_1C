@@ -8,6 +8,7 @@ from recon_erp_1c.application.ports.repositories import ErpReadRepository
 
 @dataclass(frozen=True, slots=True)
 class ListDeliveriesCommand:
+    spec_id: int | None = None
     client_id: int | None = None
     dog_id: int | None = None
     date_from: date | None = None
@@ -22,6 +23,7 @@ class ListDeliveriesUseCase:
 
     def execute(self, command: ListDeliveriesCommand) -> list[dict[str, object]]:
         return self.erp_repository.list_deliveries(
+            spec_id=command.spec_id,
             client_id=command.client_id,
             dog_id=command.dog_id,
             date_from=command.date_from,

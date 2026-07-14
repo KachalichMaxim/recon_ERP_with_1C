@@ -21,6 +21,7 @@ class MariaDbErpReadRepository:
     def list_deliveries(
         self,
         *,
+        spec_id: int | None = None,
         client_id: int | None = None,
         dog_id: int | None = None,
         date_from: date | None = None,
@@ -33,6 +34,7 @@ class MariaDbErpReadRepository:
         rows = self._fetch_all(
             queries.LIST_DELIVERIES,
             {
+                "spec_id": spec_id,
                 "client_id": client_id,
                 "dog_id": dog_id,
                 "date_from": date_from,
@@ -53,6 +55,10 @@ class MariaDbErpReadRepository:
                 "committent_contract_code": row.get("committent_contract_code") or "",
                 "dog_id": row.get("dog_id"),
                 "base_contract_number": row.get("base_contract_number") or "",
+                "organization_abbr": row.get("organization_abbr") or "",
+                "delivery_full_name": row.get("delivery_full_name") or "",
+                "main_client_id": row.get("main_client_id"),
+                "main_client_name": row.get("main_client_name") or "",
                 "client_id": row.get("client_id"),
                 "client_name": row.get("client_name") or "",
                 "client_inn": row.get("client_inn") or "",
@@ -63,6 +69,7 @@ class MariaDbErpReadRepository:
     def count_deliveries(
         self,
         *,
+        spec_id: int | None = None,
         client_id: int | None = None,
         dog_id: int | None = None,
         date_from: date | None = None,
@@ -71,6 +78,7 @@ class MariaDbErpReadRepository:
         row = self._fetch_one(
             queries.COUNT_DELIVERIES,
             {
+                "spec_id": spec_id,
                 "client_id": client_id,
                 "dog_id": dog_id,
                 "date_from": date_from,
@@ -82,6 +90,7 @@ class MariaDbErpReadRepository:
     def matrix_total_summary(
         self,
         *,
+        spec_id: int | None = None,
         client_id: int | None = None,
         dog_id: int | None = None,
         date_from: date | None = None,
@@ -90,6 +99,7 @@ class MariaDbErpReadRepository:
         row = self._fetch_one(
             queries.MATRIX_TOTAL_SUMMARY,
             {
+                "spec_id": spec_id,
                 "client_id": client_id,
                 "dog_id": dog_id,
                 "date_from": date_from,
@@ -135,6 +145,50 @@ class MariaDbErpReadRepository:
                 "client_id": row.get("client_id"),
                 "client_name": row.get("client_name") or "",
                 "client_inn": row.get("client_inn") or "",
+            }
+            for row in rows
+        ]
+
+    def search_deliveries(
+        self,
+        query: str,
+        *,
+        client_id: int | None = None,
+        dog_id: int | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        limit: int = 12,
+    ) -> list[dict[str, object]]:
+        text = query.strip()
+        if not text or (not text.isdigit() and len(text) < 3):
+            return []
+        params = {
+            "client_id": client_id,
+            "dog_id": dog_id,
+            "date_from": date_from,
+            "date_to": date_to,
+            "limit": max(1, min(int(limit or 12), 30)),
+        }
+        if text.isdigit():
+            params["spec_id"] = int(text)
+            rows = self._fetch_all(queries.SEARCH_DELIVERY_BY_ID, params)
+        else:
+            params["query"] = text
+            params["query_like"] = f"%{text}%"
+            rows = self._fetch_all(queries.SEARCH_DELIVERIES, params)
+        return [
+            {
+                "spec_id": row.get("spec_id"),
+                "spec_number": row.get("spec_number") or "",
+                "spec_type_name": row.get("spec_type_name") or "",
+                "spec_date": _date_to_iso(row.get("spec_date")),
+                "dog_id": row.get("dog_id"),
+                "base_contract_number": row.get("base_contract_number") or "",
+                "organization_abbr": row.get("organization_abbr") or "",
+                "client_id": row.get("client_id"),
+                "client_name": row.get("client_name") or "",
+                "client_inn": row.get("client_inn") or "",
+                "delivery_full_name": row.get("delivery_full_name") or "",
             }
             for row in rows
         ]

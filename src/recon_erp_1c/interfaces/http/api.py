@@ -72,6 +72,9 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/reconciliation/contracts":
                 self._search_contracts(query)
                 return
+            if parsed.path == "/api/reconciliation/deliveries":
+                self._search_deliveries(query)
+                return
             if parsed.path == "/api/reconciliation/matrix":
                 self._list_matrix(query)
                 return
@@ -287,6 +290,7 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
         self._require_context()
         repository = _erp_repository()
         command = ListDeliveriesCommand(
+            spec_id=_optional_int(query, "spec_id"),
             client_id=_optional_int(query, "client_id"),
             dog_id=_optional_int(query, "dog_id"),
             date_from=_optional_date(query, "date_from"),
@@ -327,6 +331,33 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
         else:
             items = _erp_repository().search_contracts(text, client_id=client_id, limit=limit)
         self._json(HTTPStatus.OK, {"ok": True, "items": items, "count": len(items), "min_query_length": 2})
+
+    def _search_deliveries(self, query: dict[str, list[str]]) -> None:
+        self._require_context()
+        text = (query.get("q") or [""])[0].strip()
+        limit = max(1, min(_optional_int(query, "limit") or 12, 30))
+        min_length = 1 if text.isdigit() else 3
+        if len(text) < min_length:
+            self._json(
+                HTTPStatus.OK,
+                {"ok": True, "items": [], "count": 0, "min_query_length": min_length},
+            )
+            return
+        if _app_config().ui_demo:
+            items = _demo_delivery_search(text, limit)
+        else:
+            items = _erp_repository().search_deliveries(
+                text,
+                client_id=_optional_int(query, "client_id"),
+                dog_id=_optional_int(query, "dog_id"),
+                date_from=_optional_date(query, "date_from"),
+                date_to=_optional_date(query, "date_to"),
+                limit=limit,
+            )
+        self._json(
+            HTTPStatus.OK,
+            {"ok": True, "items": items, "count": len(items), "min_query_length": min_length},
+        )
 
     def _run_reconciliation(self, query: dict[str, list[str]]) -> None:
         self._require_context()
@@ -601,7 +632,7 @@ def _execute_reconciliation(query: dict[str, list[str]], *, default_persist_log:
 
 def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
     if os.environ.get("RECON_UI_DEMO", "").strip() == "1":
-        return _demo_matrix_payload()
+        return _demo_matrix_payload(query)
     repository = _erp_repository()
     export_all = _optional_bool(query, "all", default=False)
     include_total = _optional_bool(query, "include_total", default=False)
@@ -610,12 +641,20 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
     offset = 0 if export_all else (_optional_int(query, "offset") or 0)
     client_id = _optional_int(query, "client_id")
     dog_id = _optional_int(query, "dog_id")
+    spec_id = _optional_int(query, "spec_id")
     date_from = _optional_date(query, "date_from")
     date_to = _optional_date(query, "date_to")
     started = time.perf_counter()
-    total_count = repository.count_deliveries(client_id=client_id, dog_id=dog_id, date_from=date_from, date_to=date_to)
+    total_count = repository.count_deliveries(
+        spec_id=spec_id,
+        client_id=client_id,
+        dog_id=dog_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
     total_summary = (
         repository.matrix_total_summary(
+            spec_id=spec_id,
             client_id=client_id,
             dog_id=dog_id,
             date_from=date_from,
@@ -627,6 +666,7 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
     if export_all:
         limit = max(1, min(total_count or limit, 2000))
     command = ListDeliveriesCommand(
+        spec_id=spec_id,
         client_id=client_id,
         dog_id=dog_id,
         date_from=date_from,
@@ -835,7 +875,7 @@ def _decimal_text(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.01")))
 
 
-def _demo_matrix_payload() -> dict[str, object]:
+def _demo_matrix_payload(query: dict[str, list[str]] | None = None) -> dict[str, object]:
     items = [
         {
             "spec_id": 20334,
@@ -974,6 +1014,28 @@ def _demo_matrix_payload() -> dict[str, object]:
             "documents_count": 5,
         },
     ]
+    for item in items:
+        item["organization_abbr"] = "ВА"
+        item["delivery_full_name"] = "/".join(
+            [
+                str(item.get("base_contract_number") or ""),
+                str(item.get("spec_number") or ""),
+                str(item.get("organization_abbr") or ""),
+                str(item.get("client_name") or ""),
+            ]
+        )
+        item["main_client_id"] = 115
+        item["main_client_name"] = "АЭРО-ТРЕЙД ООО"
+    query = query or {}
+    spec_id = _optional_int(query, "spec_id")
+    client_id = _optional_int(query, "client_id")
+    dog_id = _optional_int(query, "dog_id")
+    if spec_id is not None:
+        items = [item for item in items if int(item.get("spec_id") or 0) == spec_id]
+    if client_id is not None:
+        items = [item for item in items if int(item.get("client_id") or 0) == client_id]
+    if dog_id is not None:
+        items = [item for item in items if int(item.get("dog_id") or 0) == dog_id]
     return {
         "ok": True,
         "mode": "ui_demo",
@@ -1010,6 +1072,39 @@ def _demo_client_search(query: str, limit: int) -> list[dict[str, object]]:
                     "client_id": client_id,
                     "client_name": item.get("client_name") or "",
                     "client_inn": item.get("client_inn") or "",
+                }
+            )
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _demo_delivery_search(query: str, limit: int) -> list[dict[str, object]]:
+    needle = query.strip().lower()
+    result: list[dict[str, object]] = []
+    for item in _demo_matrix_payload()["items"]:
+        exact_id = needle.isdigit() and int(item.get("spec_id") or 0) == int(needle)
+        haystack = " ".join(
+            [
+                str(item.get("spec_number") or ""),
+                str(item.get("spec_type_name") or ""),
+                str(item.get("delivery_full_name") or ""),
+            ]
+        ).lower()
+        if exact_id or (not needle.isdigit() and needle in haystack):
+            result.append(
+                {
+                    "spec_id": item.get("spec_id"),
+                    "spec_number": item.get("spec_number") or "",
+                    "spec_type_name": item.get("spec_type_name") or "",
+                    "spec_date": item.get("spec_date") or "",
+                    "dog_id": item.get("dog_id"),
+                    "base_contract_number": item.get("base_contract_number") or "",
+                    "organization_abbr": item.get("organization_abbr") or "",
+                    "client_id": item.get("client_id"),
+                    "client_name": item.get("client_name") or "",
+                    "client_inn": item.get("client_inn") or "",
+                    "delivery_full_name": item.get("delivery_full_name") or "",
                 }
             )
         if len(result) >= limit:

@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light">
   <title>Сверка ERP и 1С</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23C4122F'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='26' font-family='Arial' font-weight='700' fill='white'%3EV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="reconciliation.css?v=20260703_matrix_ux">
-  <script src="reconciliation.js?v=20260703_matrix_ux" defer></script>
+  <link rel="stylesheet" href="reconciliation.css?v=20260715_delivery_search">
+  <script src="reconciliation.js?v=20260715_delivery_search" defer></script>
 </head>
 <body>
   <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
@@ -126,13 +126,18 @@
         <section class="filters" aria-label="Фильтры матрицы">
           <div class="field search-field">
             <label for="clientIdInput">ЮЛ клиента ERP</label>
-            <input id="clientIdInput" autocomplete="off" placeholder="Введите название, ИНН или client_id">
+            <input id="clientIdInput" autocomplete="off" placeholder="Введите название или ИНН">
             <div class="suggestions hidden" id="clientSuggestions"></div>
           </div>
           <div class="field search-field">
             <label for="dogIdInput">Договор ERP</label>
             <input id="dogIdInput" autocomplete="off" placeholder="Введите номер или код 1С договора">
             <div class="suggestions hidden" id="dogSuggestions"></div>
+          </div>
+          <div class="field search-field delivery-search-field">
+            <label for="deliveryInput">Поставка</label>
+            <input id="deliveryInput" autocomplete="off" placeholder="Полное название или ID поставки">
+            <div class="suggestions hidden" id="deliverySuggestions"></div>
           </div>
           <div class="field">
             <label for="dateFromInput">Период с</label>
@@ -143,7 +148,7 @@
             <input id="dateToInput" type="date">
           </div>
           <div class="field compact">
-            <label for="limitInput">Поставок</label>
+            <label for="limitInput">Строк на странице</label>
             <input id="limitInput" type="number" value="50" min="1" max="500">
           </div>
           <div class="field compact">

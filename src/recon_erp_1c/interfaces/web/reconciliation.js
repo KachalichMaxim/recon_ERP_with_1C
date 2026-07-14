@@ -64,6 +64,8 @@
     clientSuggestions: $('clientSuggestions'),
     dogIdInput: $('dogIdInput'),
     dogSuggestions: $('dogSuggestions'),
+    deliveryInput: $('deliveryInput'),
+    deliverySuggestions: $('deliverySuggestions'),
     dateFromInput: $('dateFromInput'),
     dateToInput: $('dateToInput'),
     limitInput: $('limitInput'),
@@ -109,6 +111,7 @@
 
   let clientSearchTimer = 0;
   let dogSearchTimer = 0;
+  let deliverySearchTimer = 0;
   const feedbackSaveTimers = {};
 
   function api(path, options = {}) {
@@ -379,9 +382,11 @@
     const params = new URLSearchParams();
     const clientId = selectedClientId();
     const dogId = selectedDogId();
+    const specId = selectedDeliveryId();
     [
       ['client_id', clientId],
       ['dog_id', dogId],
+      ['spec_id', specId],
       ['date_from', els.dateFromInput.value],
       ['date_to', els.dateToInput.value],
       ['limit', els.limitInput.value || '50'],
@@ -406,10 +411,18 @@
     return /^\d+$/.test(text) ? text : '';
   }
 
+  function selectedDeliveryId() {
+    const explicit = els.deliveryInput.dataset.specId || '';
+    if (explicit) return explicit;
+    const text = (els.deliveryInput.value || '').trim();
+    return /^\d+$/.test(text) ? text : '';
+  }
+
   async function loadMatrix(offset) {
     if (!validateDateRange(els.matrixMessage)) return;
     if (!validateClientFilter(els.matrixMessage)) return;
     if (!validateDogFilter(els.matrixMessage)) return;
+    if (!validateDeliveryFilter(els.matrixMessage)) return;
     state.matrixOffset = Math.max(0, Number(offset == null ? state.matrixOffset : offset) || 0);
     els.loadMatrixBtn.disabled = true;
     els.matrixRows.innerHTML = '<tr><td colspan="11" class="empty-cell">Загружаем ERP-матрицу...</td></tr>';
@@ -527,6 +540,8 @@
     els.clientIdInput.dataset.clientLabel = label;
     els.clientSuggestions.classList.add('hidden');
     els.clientSuggestions.innerHTML = '';
+    clearDogFilter();
+    clearDeliveryFilter();
   }
 
   function scheduleDogSearch() {
@@ -596,6 +611,91 @@
     els.dogIdInput.dataset.dogLabel = label;
     els.dogSuggestions.classList.add('hidden');
     els.dogSuggestions.innerHTML = '';
+    clearDeliveryFilter();
+  }
+
+  function clearDogFilter() {
+    els.dogIdInput.value = '';
+    delete els.dogIdInput.dataset.dogId;
+    delete els.dogIdInput.dataset.dogLabel;
+    renderDogSuggestions([]);
+  }
+
+  function clearDeliveryFilter() {
+    els.deliveryInput.value = '';
+    delete els.deliveryInput.dataset.specId;
+    delete els.deliveryInput.dataset.deliveryLabel;
+    renderDeliverySuggestions([]);
+  }
+
+  function scheduleDeliverySearch() {
+    const text = (els.deliveryInput.value || '').trim();
+    if (els.deliveryInput.dataset.deliveryLabel && text !== els.deliveryInput.dataset.deliveryLabel) {
+      delete els.deliveryInput.dataset.specId;
+      delete els.deliveryInput.dataset.deliveryLabel;
+    }
+    clearTimeout(deliverySearchTimer);
+    const minLength = /^\d+$/.test(text) ? 1 : 3;
+    if (text.length < minLength) {
+      renderDeliverySuggestions([]);
+      return;
+    }
+    deliverySearchTimer = setTimeout(() => searchDeliveries(text), 250);
+  }
+
+  async function searchDeliveries(text) {
+    try {
+      const params = new URLSearchParams({ q: text, limit: '12' });
+      const clientId = selectedClientId();
+      const dogId = selectedDogId();
+      if (clientId) params.set('client_id', clientId);
+      if (dogId) params.set('dog_id', dogId);
+      if (els.dateFromInput.value) params.set('date_from', els.dateFromInput.value);
+      if (els.dateToInput.value) params.set('date_to', els.dateToInput.value);
+      const resp = await api('/api/reconciliation/deliveries?' + params.toString());
+      const payload = await resp.json();
+      if (!resp.ok || payload.ok !== true) throw new Error(payload.message || 'Не удалось найти поставки');
+      renderDeliverySuggestions(payload.items || [], text);
+    } catch (err) {
+      els.deliverySuggestions.innerHTML = `<div class="suggestion-empty">${escapeHtml(normalizeErrorMessage(err))}</div>`;
+      els.deliverySuggestions.classList.remove('hidden');
+    }
+  }
+
+  function renderDeliverySuggestions(items, searchText = '') {
+    const minLength = /^\d+$/.test(searchText) ? 1 : 3;
+    if (!searchText || searchText.length < minLength) {
+      els.deliverySuggestions.classList.add('hidden');
+      els.deliverySuggestions.innerHTML = '';
+      return;
+    }
+    if (!items.length) {
+      els.deliverySuggestions.innerHTML = '<div class="suggestion-empty">Поставки не найдены в выбранном периоде.</div>';
+      els.deliverySuggestions.classList.remove('hidden');
+      return;
+    }
+    els.deliverySuggestions.innerHTML = items.map((item) => {
+      const label = item.delivery_full_name || deliveryLabel(item);
+      const type = item.spec_type_name || 'Поставка';
+      return `<button class="suggestion-item" type="button" data-spec-id="${escapeHtml(item.spec_id)}" data-delivery-label="${escapeHtml(label)}">
+        <span class="suggestion-title">${escapeHtml(label)}</span>
+        <span class="suggestion-meta">${escapeHtml(type)} №${escapeHtml(item.spec_number || '—')} · ${escapeHtml(fmtDate(item.spec_date))} · ID ${escapeHtml(item.spec_id || '—')}</span>
+      </button>`;
+    }).join('');
+    els.deliverySuggestions.classList.remove('hidden');
+    els.deliverySuggestions.querySelectorAll('[data-spec-id]').forEach((node) => {
+      node.addEventListener('click', () => selectDeliverySuggestion(node));
+    });
+  }
+
+  function selectDeliverySuggestion(node) {
+    const specId = node.getAttribute('data-spec-id') || '';
+    const label = node.getAttribute('data-delivery-label') || specId;
+    els.deliveryInput.value = label;
+    els.deliveryInput.dataset.specId = specId;
+    els.deliveryInput.dataset.deliveryLabel = label;
+    els.deliverySuggestions.classList.add('hidden');
+    els.deliverySuggestions.innerHTML = '';
   }
 
   function buildMatrixSummary(items) {
@@ -644,7 +744,7 @@
       updateMatrixPager();
       return;
     }
-    const byClient = groupBy(items, (row) => `${row.client_id || 0}|${row.client_name || ''}`);
+    const byClient = groupBy(items, (row) => `${row.main_client_id || row.client_id || 0}|${row.main_client_name || row.client_name || ''}`);
     const html = [];
     for (const [clientGroupKey, clientItems] of byClient.entries()) {
       const client = clientItems[0];
@@ -652,64 +752,75 @@
       const clientOpen = isMatrixExpanded(clientKey);
       html.push(matrixRowHtml({
         level: 0,
-        label: `Клиент: ${client.client_name || '—'}`,
-        subtext: `ИНН ${client.client_inn || '—'}`,
+        label: `Клиент: ${client.main_client_name || client.client_name || '—'}`,
+        subtext: `${unique(clientItems.map((row) => row.client_id)).length} ЮЛ`,
         aggregate: aggregateItems(clientItems),
         specText: `${clientItems.length} поставок`,
         toggleKey: clientKey,
         expanded: clientOpen,
       }));
       if (!clientOpen) continue;
-      const legalKey = `${clientKey}:legal:${client.client_id || client.client_name || 'main'}`;
-      const legalOpen = isMatrixExpanded(legalKey);
-      html.push(matrixRowHtml({
-        level: 1,
-        label: `ЮЛ: ${client.client_name || '—'}`,
-        subtext: `ИНН ${client.client_inn || '—'}`,
-        aggregate: aggregateItems(clientItems),
-        specText: `${clientItems.length} поставок`,
-        toggleKey: legalKey,
-        expanded: legalOpen,
-      }));
-      if (!legalOpen) continue;
-      const byDog = groupBy(clientItems, (row) => `${row.dog_id || 0}|${row.base_contract_number || ''}`);
-      for (const [dogGroupKey, dogItems] of byDog.entries()) {
-        const dog = dogItems[0];
-        const dogKey = `${legalKey}:contract:${dogGroupKey}`;
-        const dogOpen = isMatrixExpanded(dogKey);
+      const byLegal = groupBy(clientItems, (row) => `${row.client_id || 0}|${row.client_name || ''}`);
+      for (const [legalGroupKey, legalItems] of byLegal.entries()) {
+        const legal = legalItems[0];
+        const legalKey = `${clientKey}:legal:${legalGroupKey}`;
+        const legalOpen = isMatrixExpanded(legalKey);
         html.push(matrixRowHtml({
-          level: 2,
-          label: `Договор: ${dog.base_contract_number || '—'}`,
-          subtext: 'Основной договор поставки',
-          aggregate: aggregateItems(dogItems),
-          specText: `${dogItems.length} поставок`,
-          toggleKey: dogKey,
-          expanded: dogOpen,
+          level: 1,
+          label: `ЮЛ: ${legal.client_name || '—'}`,
+          subtext: `ИНН ${legal.client_inn || '—'}`,
+          aggregate: aggregateItems(legalItems),
+          specText: `${legalItems.length} поставок`,
+          toggleKey: legalKey,
+          expanded: legalOpen,
         }));
-        if (!dogOpen) continue;
-        for (const row of dogItems) {
+        if (!legalOpen) continue;
+        const byDog = groupBy(legalItems, (row) => `${row.dog_id || 0}|${row.base_contract_number || ''}`);
+        for (const [dogGroupKey, dogItems] of byDog.entries()) {
+          const dog = dogItems[0];
+          const dogKey = `${legalKey}:contract:${dogGroupKey}`;
+          const dogOpen = isMatrixExpanded(dogKey);
           html.push(matrixRowHtml({
-            level: 3,
-            label: deliveryLabel(row),
-            subtext: fmtDate(row.spec_date),
-            aggregate: row,
-            specText: row.spec_number || '—',
-            specId: row.spec_id,
-            erpUrl: row.erp_url,
+            level: 2,
+            label: `Договор: ${dog.base_contract_number || '—'}`,
+            subtext: 'Основной договор поставки',
+            aggregate: aggregateItems(dogItems),
+            specText: `${dogItems.length} поставок`,
+            toggleKey: dogKey,
+            expanded: dogOpen,
           }));
-          if (Number(row.spec_id) === Number(state.selectedSpecId) && state.matrixDetailsOpen) {
-            html.push(matrixSpecDetailsHtml(row));
+          if (!dogOpen) continue;
+          for (const row of dogItems) {
+            html.push(matrixRowHtml({
+              level: 3,
+              label: deliveryLabel(row),
+              subtext: [row.delivery_full_name, fmtDate(row.spec_date)].filter(Boolean).join(' · '),
+              aggregate: row,
+              specText: row.spec_number || '—',
+              specId: row.spec_id,
+              erpUrl: row.erp_url,
+            }));
+            if (Number(row.spec_id) === Number(state.selectedSpecId) && state.matrixDetailsOpen) {
+              html.push(matrixSpecDetailsHtml(row));
+            }
           }
         }
       }
     }
     els.matrixRows.innerHTML = html.join('');
     els.matrixRows.querySelectorAll('tr[data-toggle-key]').forEach((tr) => {
-      tr.addEventListener('click', () => {
+      const toggle = () => {
         const key = tr.getAttribute('data-toggle-key') || '';
         state.matrixExpanded[key] = !isMatrixExpanded(key);
         localStorage.setItem('recon_matrix_expanded_v1', JSON.stringify(state.matrixExpanded));
         renderMatrix(matrixKpiSummary());
+      };
+      tr.addEventListener('click', toggle);
+      tr.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          toggle();
+        }
       });
     });
     els.matrixRows.querySelectorAll('tr[data-spec-id]').forEach((tr) => {
@@ -812,7 +923,7 @@
     const sfText = specId ? joinList(aggregate.sf_numbers) : '—';
     const rowAttrs = specId
       ? `data-spec-id="${escapeHtml(specId)}"`
-      : `data-toggle-key="${escapeHtml(toggleKey || '')}"`;
+      : `data-toggle-key="${escapeHtml(toggleKey || '')}" tabindex="0" role="button" aria-expanded="${expanded ? 'true' : 'false'}"`;
     const marker = toggleKey
       ? `<span class="level-toggle" aria-hidden="true">${expanded ? '⌄' : '›'}</span>`
       : '';
@@ -909,7 +1020,7 @@
   function deliveryLabel(row) {
     const type = row.spec_type_name || row.type_name || row.delivery_type || 'Поставка';
     const number = row.spec_number || '—';
-    return `${type}: ${number}`;
+    return `${type} №${number}`;
   }
 
   function renderMatrixSummary(summary) {
@@ -945,6 +1056,7 @@
     els.matrixSelectionPanel.classList.remove('hidden');
     els.matrixSelectionText.innerHTML = `
       <div class="selected-title">Выбрана поставка: ${escapeHtml(deliveryLabel(row))}</div>
+      <div class="selected-path">${escapeHtml(row.delivery_full_name || '')}</div>
       <div class="selected-meta">
         <span>Клиент: ${escapeHtml(row.client_name || '—')}</span>
         <span>Договор: ${escapeHtml(row.base_contract_number || '—')}</span>
@@ -1602,6 +1714,15 @@
     return true;
   }
 
+  function validateDeliveryFilter(messageNode) {
+    const text = (els.deliveryInput.value || '').trim();
+    if (text && !selectedDeliveryId()) {
+      setMessage(messageNode, 'Выберите поставку из выпадающего списка или введите ее ID.', true);
+      return false;
+    }
+    return true;
+  }
+
   function initDefaults() {
     const now = new Date();
     els.dateToInput.value = inputDateValue(now);
@@ -1610,6 +1731,10 @@
     if (params.get('client_id')) els.clientIdInput.value = params.get('client_id');
     if (params.get('client_id')) els.clientIdInput.dataset.clientId = params.get('client_id');
     if (params.get('dog_id')) els.dogIdInput.value = params.get('dog_id');
+    if (params.get('spec_id')) {
+      els.deliveryInput.value = params.get('spec_id');
+      els.deliveryInput.dataset.specId = params.get('spec_id');
+    }
     if (params.get('limit')) els.limitInput.value = params.get('limit');
   }
 
@@ -1632,10 +1757,8 @@
     delete els.clientIdInput.dataset.clientId;
     delete els.clientIdInput.dataset.clientLabel;
     renderClientSuggestions([]);
-    els.dogIdInput.value = '';
-    delete els.dogIdInput.dataset.dogId;
-    delete els.dogIdInput.dataset.dogLabel;
-    renderDogSuggestions([]);
+    clearDogFilter();
+    clearDeliveryFilter();
     if (els.matrixStatusFilter) els.matrixStatusFilter.value = 'all';
     els.limitInput.value = '50';
     setCurrentYear();
@@ -1671,11 +1794,16 @@
     els.loadMatrixBtn.addEventListener('click', () => loadMatrix(0));
     els.clientIdInput.addEventListener('input', scheduleClientSearch);
     els.dogIdInput.addEventListener('input', scheduleDogSearch);
+    els.deliveryInput.addEventListener('input', scheduleDeliverySearch);
     els.clientIdInput.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') renderClientSuggestions([]);
     });
     els.dogIdInput.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') renderDogSuggestions([]);
+    });
+    els.deliveryInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') renderDeliverySuggestions([]);
+      if (event.key === 'Enter' && selectedDeliveryId()) loadMatrix(0);
     });
     document.addEventListener('click', (event) => {
       if (!els.clientIdInput.contains(event.target) && !els.clientSuggestions.contains(event.target)) {
@@ -1683,6 +1811,9 @@
       }
       if (!els.dogIdInput.contains(event.target) && !els.dogSuggestions.contains(event.target)) {
         els.dogSuggestions.classList.add('hidden');
+      }
+      if (!els.deliveryInput.contains(event.target) && !els.deliverySuggestions.contains(event.target)) {
+        els.deliverySuggestions.classList.add('hidden');
       }
     });
     els.matrixStatusFilter.addEventListener('change', () => {
