@@ -62,7 +62,7 @@ paths:
           name: "mode"
           in: "query"
           required: false
-          description: "Режим сверки"
+            description: "Режим области поиска. delivery_reconciliation отбирает документы по договору в шапке, табличных частях и расшифровках платежей; для выбранных документов возвращаются все document_lines."
           schema:
             type: "string"
             enum:

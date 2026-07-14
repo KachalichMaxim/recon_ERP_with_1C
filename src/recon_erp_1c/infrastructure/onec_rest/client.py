@@ -32,6 +32,7 @@ class OneCRestConfig:
     bind_address: str = ""
     snapshot_path: str = "/reconciliation/v1/snapshot"
     health_path: str = "/reconciliation/v1/health"
+    delivery_scope_enabled: bool = False
 
     @classmethod
     def from_env(cls) -> "OneCRestConfig":
@@ -46,6 +47,8 @@ class OneCRestConfig:
             or "/reconciliation/v1/snapshot",
             health_path=os.environ.get("RECON_ONEC_REST_HEALTH_PATH", "/reconciliation/v1/health").strip()
             or "/reconciliation/v1/health",
+            delivery_scope_enabled=os.environ.get("RECON_ONEC_DELIVERY_SCOPE_ENABLED", "0").strip().lower()
+            in {"1", "true", "yes", "on"},
         )
 
     def missing_fields(self) -> list[str]:
@@ -80,6 +83,7 @@ def onec_rest_status(config: OneCRestConfig | None = None) -> dict[str, Any]:
         "bind_address_configured": bool(config.bind_address),
         "snapshot_path": config.snapshot_path,
         "health_path": config.health_path,
+        "delivery_scope_enabled": config.delivery_scope_enabled,
     }
 
 
@@ -175,14 +179,18 @@ class OneCRestClient:
         return self._request_json("GET", self.config.health_path)
 
     def get_reconciliation_snapshot(self, request: dict[str, Any]) -> dict[str, Any]:
-        payload = self._request_json("GET", self.config.snapshot_path, snapshot_query_params(request))
+        payload = self._request_json(
+            "GET",
+            self.config.snapshot_path,
+            snapshot_query_params(request, include_delivery_context=self.config.delivery_scope_enabled),
+        )
         if "snapshot" not in payload:
             # Collection-like responses may already be a snapshot object.
             payload = {"ok": payload.get("ok", True), "snapshot": payload}
         return payload
 
 
-def snapshot_query_params(request: dict[str, Any]) -> dict[str, Any]:
+def snapshot_query_params(request: dict[str, Any], *, include_delivery_context: bool = False) -> dict[str, Any]:
     """Flatten Python snapshot request into the GET query contract expected by 1C."""
     period = request.get("period") if isinstance(request.get("period"), dict) else {}
     delivery = request.get("delivery") if isinstance(request.get("delivery"), dict) else {}
@@ -199,6 +207,14 @@ def snapshot_query_params(request: dict[str, Any]) -> dict[str, Any]:
         "buyer_contract_code": delivery.get("buyer_contract_code1c", ""),
         "committent_contract_code": delivery.get("committent_contract_code1c", ""),
     }
+    if include_delivery_context:
+        params.update(
+            {
+                "mode": request.get("mode", "delivery_reconciliation"),
+                "base_contract": delivery.get("base_contract", ""),
+                "spec_number": delivery.get("spec_number", ""),
+            }
+        )
     has_contract_filter = bool(params["buyer_contract_code"] or params["committent_contract_code"])
 
     first_org = next((item for item in organizations if isinstance(item, dict)), {})

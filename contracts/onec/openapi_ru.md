@@ -230,7 +230,7 @@ include=account_movements
 | `date_from` | да | нет | начало периода `YYYY-MM-DD` | ограничивает документы по дате |
 | `date_to` | да | нет | конец периода `YYYY-MM-DD` | ограничивает документы по дате |
 | `request_id` | нет | нет | id запроса Python backend | вернуть в response для трассировки |
-| `mode` | нет | нет | `delivery_reconciliation`, `contract_reconciliation`, `client_reconciliation` | режим фильтрации |
+| `mode` | нет | нет | `delivery_reconciliation`, `contract_reconciliation`, `client_reconciliation` | режим области поиска; после приемки поддержки 1С Python передает `delivery_reconciliation` для поставки |
 | `organization_code` | нет | нет | код организации 1C | фильтр по `Справочник.Организации.Код` |
 | `organization_inn` | нет | нет | ИНН организации | резервный поиск организации |
 | `organization_name` | нет | нет | название организации | последний резервный поиск |
@@ -258,6 +258,8 @@ date_from + date_to обязательны,
 и дополнительно должен быть хотя бы один бизнес-фильтр:
 buyer_contract_code / committent_contract_code / contract_code / counterparty_code / counterparty_inn / document_code.
 ```
+
+В `delivery_reconciliation` документы отбираются не только по договору шапки. Достаточно совпадения `buyer_contract_code` или `committent_contract_code` в шапке, строке табличной части либо расшифровке платежа. Для каждого отобранного документа возвращаются шапка и все его строки в `document_lines`; каждая строка сохраняет собственный договор, сумму и id. Отдельный параметр `scope=delivery` не используется.
 
 ## 5. Пагинация
 

@@ -75,7 +75,7 @@ GET /reconciliation/v1/snapshot?date_from=2025-07-01&date_to=2025-08-31&organiza
 | `date_from` | да | нет | начало периода документов 1C |
 | `date_to` | да | нет | конец периода документов 1C |
 | `request_id` | нет | нет | id запроса для трассировки |
-| `mode` | нет | нет | `delivery_reconciliation`, `contract_reconciliation`, `client_reconciliation` |
+| `mode` | нет | нет | режим области поиска: `delivery_reconciliation`, `contract_reconciliation`, `client_reconciliation` |
 | `organization_code` | нет | нет | код организации 1C |
 | `organization_inn` | нет | нет | ИНН организации |
 | `counterparty_code` | нет | нет | код контрагента 1C |
@@ -100,6 +100,33 @@ date_from + date_to обязательны,
 и дополнительно нужен хотя бы один бизнес-фильтр:
 contract_code / contract_number / counterparty_code / counterparty_inn / document_code.
 ```
+
+### 4.1 Режим `delivery_reconciliation`
+
+Целевой запрос Python для сверки одной поставки:
+
+```http
+mode=delivery_reconciliation
+buyer_contract_code=<код договора с покупателем>
+committent_contract_code=<код договора с комитентом>
+```
+
+До публикации поддержки этих параметров в 1С Python сохраняет совместимый запрос без `mode`, `spec_number` и `base_contract`. После приемочного теста расширенный запрос включается настройкой `RECON_ONEC_DELIVERY_SCOPE_ENABLED=1`.
+
+Новый параметр `scope=delivery` не требуется: его смысл уже выражен параметром `mode`.
+
+В этом режиме документ попадает в ответ, если хотя бы один из переданных кодов договора найден:
+
+1. в договоре шапки документа;
+2. в договоре строки табличной части документа;
+3. в расшифровке/распределении платежа;
+4. в иной аналитике документа, которая однозначно связывает его с договором-заявкой.
+
+По найденному документу нужно вернуть одну шапку и все строки его табличной части в `document_lines`, а не только совпавшую строку. Каждая строка должна содержать собственный `contract_code`, сумму и идентификатор строки. Это позволяет Python проверить сумму шапки и корректно распределить документ между поставками.
+
+`spec_number` и `base_contract` передаются как контрольный контекст. Они не заменяют точный поиск по `buyer_contract_code` / `committent_contract_code`.
+
+В режиме `contract_reconciliation` допускается обычный отбор по договору шапки без расширения области через табличные части. Python-сервис поставочной сверки этот режим не использует.
 
 ## 5. Ответ `/snapshot`
 

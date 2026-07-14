@@ -5,7 +5,7 @@ from datetime import date
 from recon_erp_1c.domain.entities import Counterparty, Delivery, Organization
 from recon_erp_1c.domain.value_objects import DateRange, OneCContractCodes
 from recon_erp_1c.infrastructure.onec_rest.repository import OneCRestReadRepository
-from recon_erp_1c.infrastructure.onec_rest.client import OneCRestConfig
+from recon_erp_1c.infrastructure.onec_rest.client import OneCRestConfig, snapshot_query_params
 
 
 class _FakeClient:
@@ -115,3 +115,45 @@ def test_onec_url_does_not_duplicate_contract_root() -> None:
     assert config.url("/reconciliation/v1/snapshot") == (
         "http://1c.local/vedagent_dev/hs/reconciliation/v1/snapshot"
     )
+
+
+def test_delivery_mode_and_business_context_are_sent_in_get_query() -> None:
+    params = snapshot_query_params(
+        {
+            "request_id": "spec-20334",
+            "mode": "delivery_reconciliation",
+            "period": {"date_from": "2025-07-01", "date_to": "2025-08-31"},
+            "delivery": {
+                "spec_number": "1051",
+                "base_contract": "660/1",
+                "buyer_contract_code1c": "БП-068417",
+                "committent_contract_code1c": "БП-068418",
+            },
+        },
+        include_delivery_context=True,
+    )
+
+    assert params["mode"] == "delivery_reconciliation"
+    assert params["spec_number"] == "1051"
+    assert params["base_contract"] == "660/1"
+    assert params["buyer_contract_code"] == "БП-068417"
+    assert params["committent_contract_code"] == "БП-068418"
+
+
+def test_delivery_context_is_not_sent_before_onec_support_is_enabled() -> None:
+    params = snapshot_query_params(
+        {
+            "mode": "delivery_reconciliation",
+            "period": {"date_from": "2025-07-01", "date_to": "2025-08-31"},
+            "delivery": {
+                "spec_number": "1051",
+                "base_contract": "660/1",
+                "buyer_contract_code1c": "БП-068417",
+            },
+        }
+    )
+
+    assert params["buyer_contract_code"] == "БП-068417"
+    assert "mode" not in params
+    assert "spec_number" not in params
+    assert "base_contract" not in params
