@@ -59,17 +59,14 @@ paths:
           schema:
             type: "string"
         -
-          name: "mode"
+          name: "scope"
           in: "query"
           required: false
-            description: "Режим области поиска. delivery_reconciliation отбирает документы по договору в шапке, табличных частях и расшифровках платежей; для выбранных документов возвращаются все document_lines."
+          description: "Область поиска. scope=delivery учитывает связь договора заявки в шапке, табличных частях и расшифровках платежей."
           schema:
             type: "string"
             enum:
-              - "delivery_reconciliation"
-              - "contract_reconciliation"
-              - "client_reconciliation"
-            default: "delivery_reconciliation"
+              - "delivery"
         -
           name: "contract_version"
           in: "query"

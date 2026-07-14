@@ -133,9 +133,7 @@ def test_delivery_mode_and_business_context_are_sent_in_get_query() -> None:
         include_delivery_context=True,
     )
 
-    assert params["mode"] == "delivery_reconciliation"
-    assert params["spec_number"] == "1051"
-    assert params["base_contract"] == "660/1"
+    assert params["scope"] == "delivery"
     assert params["buyer_contract_code"] == "БП-068417"
     assert params["committent_contract_code"] == "БП-068418"
 
@@ -154,6 +152,4 @@ def test_delivery_context_is_not_sent_before_onec_support_is_enabled() -> None:
     )
 
     assert params["buyer_contract_code"] == "БП-068417"
-    assert "mode" not in params
-    assert "spec_number" not in params
-    assert "base_contract" not in params
+    assert "scope" not in params

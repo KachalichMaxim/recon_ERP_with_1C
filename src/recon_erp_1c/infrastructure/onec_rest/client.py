@@ -208,13 +208,7 @@ def snapshot_query_params(request: dict[str, Any], *, include_delivery_context: 
         "committent_contract_code": delivery.get("committent_contract_code1c", ""),
     }
     if include_delivery_context:
-        params.update(
-            {
-                "mode": request.get("mode", "delivery_reconciliation"),
-                "base_contract": delivery.get("base_contract", ""),
-                "spec_number": delivery.get("spec_number", ""),
-            }
-        )
+        params["scope"] = "delivery"
     has_contract_filter = bool(params["buyer_contract_code"] or params["committent_contract_code"])
 
     first_org = next((item for item in organizations if isinstance(item, dict)), {})
