@@ -660,7 +660,7 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
             date_from=date_from,
             date_to=date_to,
         )
-        if include_total
+        if include_total and spec_id is None
         else None
     )
     if export_all:
@@ -687,6 +687,8 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
         )
         for delivery in deliveries
     ]
+    if include_total and spec_id is not None:
+        total_summary = _matrix_summary(items)
     return {
         "ok": True,
         "mode": "erp_live",

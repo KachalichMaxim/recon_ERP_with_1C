@@ -4,6 +4,7 @@ from datetime import date
 
 from recon_erp_1c.infrastructure.erp_mariadb import queries
 from recon_erp_1c.infrastructure.erp_mariadb.repository import MariaDbErpReadRepository
+from recon_erp_1c.interfaces.http import api
 
 
 class _SearchRepository(MariaDbErpReadRepository):
@@ -68,3 +69,34 @@ def test_short_text_delivery_search_does_not_hit_database() -> None:
 
     assert repository.search_deliveries("AB") == []
     assert repository.last_query == ""
+
+
+def test_exact_delivery_matrix_reuses_page_summary_for_total(monkeypatch) -> None:
+    class _MatrixRepository:
+        def count_deliveries(self, **_kwargs: object) -> int:
+            return 1
+
+        def matrix_total_summary(self, **_kwargs: object) -> dict[str, object]:
+            raise AssertionError("Exact spec matrix must not run the all-deliveries summary query")
+
+        def list_deliveries(self, **_kwargs: object) -> list[dict[str, object]]:
+            return [{**_row(), "buyer_contract_code": "", "committent_contract_code": ""}]
+
+        def list_documents_and_calculations_for_deliveries(
+            self, _spec_ids: list[int]
+        ) -> tuple[dict[int, list[object]], dict[int, dict[str, str]]]:
+            return {20334: []}, {
+                20334: {
+                    "payment_sum": "100.00",
+                    "reimbursable_sum": "40.00",
+                    "non_reimbursable_sum": "10.00",
+                    "balance": "50.00",
+                }
+            }
+
+    monkeypatch.setattr(api, "_erp_repository", lambda: _MatrixRepository())
+
+    payload = api._matrix_payload({"spec_id": ["20334"], "include_total": ["1"]})
+
+    assert payload["total_count"] == 1
+    assert payload["total_summary"] == payload["page_summary"]
