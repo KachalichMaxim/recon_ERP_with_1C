@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from dataclasses import replace
 from datetime import datetime
@@ -131,6 +132,7 @@ def _classify_global_erp_presence(
 
 
 def match_documents(erp_documents: list[AccountingDocument], onec_documents: list[AccountingDocument]) -> list[ReconciliationIssue]:
+    erp_documents = _coalesce_erp_rows_for_onec_headers(erp_documents, onec_documents)
     issues: list[ReconciliationIssue] = []
     onec_index = _build_match_index(onec_documents)
     matched_onec_indexes: set[int] = set()
@@ -305,6 +307,12 @@ def _find_onec_match(
 ) -> tuple[list[int], str] | None:
     for key, confidence in _pairing_keys(erp_doc):
         candidates = [idx for idx in onec_index.get(key, []) if idx not in matched_onec_indexes]
+        if confidence == "code_only":
+            candidates = [
+                idx
+                for idx in candidates
+                if onec_documents[idx].amount == erp_doc.amount
+            ]
         if candidates:
             return _select_candidates_by_contract(erp_doc, candidates, onec_documents, confidence)
     return None
@@ -323,6 +331,11 @@ def _pairing_keys(document: AccountingDocument) -> list[tuple[tuple[str, ...], s
         keys.append((("code_date", kind, code, doc_date), "code_date"))
     if number and doc_date:
         keys.append((("number_date_amount", kind, number, doc_date, amount, currency), "strong"))
+    if code:
+        # The ERP date may be the supplier document date while 1C stores the
+        # posting date. Code + exact amount is a safe fallback for reporting
+        # that difference as DATE_MISMATCH instead of two absence errors.
+        keys.append((("code_only", kind, code), "code_only"))
     return keys
 
 
@@ -406,6 +419,105 @@ def _aggregation_key(document: AccountingDocument) -> tuple[str, ...] | None:
     if document.kind.value == "customer_invoice":
         return (*common, date_value, normalize_document_number(document.number))
     return (*common, date_value, document.vat_rate.strip())
+
+
+def _coalesce_erp_rows_for_onec_headers(
+    erp_documents: list[AccountingDocument],
+    onec_documents: list[AccountingDocument],
+) -> list[AccountingDocument]:
+    """Combine ERP child rows only when 1C stores the same total as one header.
+
+    If 1C exposes lines that cover every ERP amount, rows stay separate and are
+    reconciled against those lines. This preserves operation-level diagnostics.
+    """
+    grouped: dict[tuple[str, ...], list[AccountingDocument]] = {}
+    positions: dict[tuple[str, ...], int] = {}
+    for position, document in enumerate(erp_documents):
+        key = _header_total_key(document)
+        if key is None:
+            continue
+        grouped.setdefault(key, []).append(document)
+        positions.setdefault(key, position)
+
+    replacements: dict[tuple[str, ...], AccountingDocument] = {}
+    consumed_ids: set[int] = set()
+    for key, rows in grouped.items():
+        if len(rows) < 2:
+            continue
+        candidates = [document for document in onec_documents if _header_total_key(document) == key]
+        if len(candidates) != 1:
+            continue
+        onec_document = candidates[0]
+        total = sum((row.amount.amount for row in rows), Decimal("0"))
+        if total != onec_document.amount.amount or _detail_amounts_cover_rows(rows, onec_document):
+            continue
+        replacements[key] = _combine_documents(rows)
+        consumed_ids.update(id(row) for row in rows)
+
+    if not replacements:
+        return erp_documents
+
+    result: list[AccountingDocument] = []
+    emitted: set[tuple[str, ...]] = set()
+    for position, document in enumerate(erp_documents):
+        key = _header_total_key(document)
+        if key in replacements and position == positions[key] and key not in emitted:
+            result.append(replacements[key])
+            emitted.add(key)
+        elif id(document) not in consumed_ids:
+            result.append(document)
+    return result
+
+
+def _header_total_key(document: AccountingDocument) -> tuple[str, ...] | None:
+    code = document.code1c.strip()
+    if document.kind.value not in {"sale", "purchase"} or not code or not document.date:
+        return None
+    return (
+        document.kind.value,
+        code,
+        document.date.isoformat(),
+        document.contract_code1c.strip(),
+        document.amount.currency,
+    )
+
+
+def _detail_amounts_cover_rows(rows: list[AccountingDocument], onec_document: AccountingDocument) -> bool:
+    required = Counter((row.amount.amount, row.amount.currency) for row in rows)
+    available = Counter(
+        (detail.amount.amount, detail.amount.currency)
+        for detail in (*onec_document.lines, *onec_document.allocations)
+    )
+    return all(available[item] >= count for item, count in required.items())
+
+
+def _combine_documents(rows: list[AccountingDocument]) -> AccountingDocument:
+    first = rows[0]
+    total = sum((row.amount.amount for row in rows), Decimal("0"))
+    return AccountingDocument(
+        source=first.source,
+        kind=first.kind,
+        code1c=first.code1c,
+        number=first.number,
+        date=first.date,
+        amount=Money.of(total, first.amount.currency),
+        contract_code1c=first.contract_code1c,
+        incoming_number=first.incoming_number,
+        posted=all(row.posted for row in rows),
+        deleted=all(row.deleted for row in rows),
+        source_id=",".join(row.source_id for row in rows if row.source_id),
+        source_number=first.source_number,
+        operation_id=None,
+        vat_rate=first.vat_rate,
+        reimbursement_type=first.reimbursement_type,
+        linked_contract_codes=tuple(
+            dict.fromkeys(code for row in rows for code in row.linked_contract_codes)
+        ),
+        lines=tuple(line for row in rows for line in row.lines),
+        allocations=tuple(allocation for row in rows for allocation in row.allocations),
+        tax_invoice_number=first.tax_invoice_number,
+        tax_invoice_date=first.tax_invoice_date,
+    )
 
 
 @dataclass(frozen=True, slots=True)

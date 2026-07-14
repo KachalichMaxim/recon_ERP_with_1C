@@ -37,6 +37,8 @@ SELECT
     COALESCE(s.f_num, '') AS spec_number,
     COALESCE(NULLIF(spec_type.f_name, ''), NULLIF(spec_type.f_dopprstr, ''), NULLIF(spec_type.f_uslstr, ''), '') AS spec_type_name,
     s.f_dt AS spec_date,
+    s.f_dtclose AS closure_date,
+    COALESCE(s.f_status, 0) AS spec_status,
     COALESCE(s.f_kod1cb, '') AS buyer_contract_code,
     COALESCE(s.f_kod1cp, '') AS committent_contract_code,
     d.f_id AS dog_id,
@@ -655,20 +657,31 @@ ORDER BY operation_id, document_date, source_id;
 OPERATION_PAYMENT_DOCS_BY_OPERATION_IDS = """
 SELECT
     d.f_docid AS operation_id,
-    COALESCE(GROUP_CONCAT(DISTINCT NULLIF(h.f_kod1C, '') ORDER BY h.f_kod1C SEPARATOR ', '), '') AS code1c,
-    COALESCE(GROUP_CONCAT(DISTINCT NULLIF(CAST(h.f_ppnum AS CHAR), '') ORDER BY h.f_ppnum SEPARATOR ', '), '') AS document_number,
-    MAX(CASE
+    COALESCE(NULLIF(h.f_kod1C, ''), '') AS code1c,
+    COALESCE(NULLIF(CAST(h.f_ppnum AS CHAR), ''), '') AS document_number,
+    CASE
         WHEN h.f_dt1C IS NOT NULL AND h.f_dt1C <> '0000-00-00 00:00:00' THEN h.f_dt1C
         ELSE h.f_ppdt
-    END) AS document_date,
-    COALESCE(NULLIF(MAX(val.f_dopprstr), ''), NULLIF(MAX(val.f_uslstr), ''), NULLIF(MAX(val.f_namedop), ''), 'RUB') AS currency,
-    COALESCE(MIN(h.f_id), 0) AS source_id
+    END AS document_date,
+    COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
+    COALESCE(h.f_id, 0) AS source_id,
+    COALESCE(SUM(d.f_clssum), 0) AS allocated_amount
 FROM veda_acchist_docs d
 JOIN veda_acchist h ON h.f_id = d.f_acchistid
 LEFT JOIN veda_spr val ON val.f_type = 4 AND val.f_num = h.f_val
 WHERE d.f_doctype = 3
   AND d.f_docid IN ({operation_id_filter})
-GROUP BY d.f_docid;
+GROUP BY
+    d.f_docid,
+    h.f_id,
+    h.f_kod1C,
+    h.f_ppnum,
+    h.f_dt1C,
+    h.f_ppdt,
+    val.f_dopprstr,
+    val.f_uslstr,
+    val.f_namedop
+ORDER BY d.f_docid, document_date, h.f_id;
 """
 
 GLOBAL_PAYMENT_DOCUMENT_EXISTS = """
@@ -676,7 +689,6 @@ SELECT 1
 FROM veda_acchist payment
 WHERE payment.f_kod1C = %(code1c)s
   AND payment.f_ppdt = %(document_date)s
-  AND ABS(COALESCE(payment.f_sum, 0) - %(amount)s) < 0.011
 LIMIT 1;
 """
 
@@ -685,7 +697,6 @@ SELECT 1
 FROM veda_schets invoice
 WHERE invoice.f_kod1c = %(code1c)s
   AND invoice.f_dt = %(document_date)s
-  AND ABS(COALESCE(invoice.f_sum, 0) - %(amount)s) < 0.011
   AND invoice.f_status <> 9
 LIMIT 1;
 """
@@ -700,7 +711,6 @@ WHERE COALESCE(NULLIF(document.f_kod1c, ''), NULLIF(parent.f_kod1c, ''), '') = %
         WHEN parent.f_dt1c IS NOT NULL AND parent.f_dt1c <> '0000-00-00' THEN parent.f_dt1c
         ELSE COALESCE(parent.f_dt, document.f_dt)
       END = %(document_date)s
-  AND ABS(COALESCE(document.f_sum, 0) - %(amount)s) < 0.011
   AND document.f_status <> 9
   AND (%(document_kind)s = 'purchase' AND document.f_type = 7
        OR %(document_kind)s = 'sale' AND COALESCE(document.f_type, 0) <> 7)

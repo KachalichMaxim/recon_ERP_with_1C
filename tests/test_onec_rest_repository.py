@@ -4,7 +4,10 @@ from datetime import date
 
 from recon_erp_1c.domain.entities import AccountingDocument, Counterparty, Delivery, Organization
 from recon_erp_1c.domain.value_objects import DateRange, DocumentKind, Money, OneCContractCodes, SourceSystem
-from recon_erp_1c.infrastructure.onec_rest.repository import OneCRestReadRepository
+from recon_erp_1c.infrastructure.onec_rest.repository import (
+    OneCRestReadRepository,
+    _filter_document_lookup_snapshot,
+)
 from recon_erp_1c.infrastructure.onec_rest.client import OneCRestConfig, snapshot_query_params
 
 
@@ -78,6 +81,15 @@ def test_repository_keeps_lines_allocations_and_balances() -> None:
         ],
         "document_lines": [
             {
+                "document_id": "sale-guid",
+                "document_number": "00БП-003225",
+                "line_id": "1",
+                "amount": 14636.84,
+                "currency": "RUB",
+                "contract_code": "БП-068417",
+                "vat_rate": "20%",
+            },
+            {
                 "document_id": "purchase-guid",
                 "document_number": "00БП-012300",
                 "line_id": "3",
@@ -119,6 +131,7 @@ def test_repository_keeps_lines_allocations_and_balances() -> None:
     assert payment.allocations[0].invoice_number == "ВА-007517"
     assert sale.tax_invoice_number == "00БП-03225"
     assert sale.tax_invoice_date == date(2025, 7, 30)
+    assert sale.vat_rate == "20%"
     assert result.balances[0].signed_closing_balance.amount.__str__() == "-50.00"
     assert result.warnings == ("Часть аналитики недоступна",)
     assert len(client.requests) == 1
@@ -212,3 +225,42 @@ def test_repository_does_not_repeat_lookup_for_document_already_in_delivery_snap
     )
 
     assert len(client.requests) == 1
+
+
+def test_document_lookup_discards_reused_code_from_other_year() -> None:
+    expected = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.PURCHASE,
+        code1c="0ЛБП-000770",
+        number="000029129/000091898/Р",
+        date=date(2024, 7, 24),
+        amount=Money.of("88020.60"),
+        contract_code1c="БП-048195",
+    )
+    snapshot = {
+        "purchases": [
+            {
+                "source_id": "correct-date-differs",
+                "number": "0ЛБП-000770",
+                "date": "2024-09-19",
+                "amount_total": 88020.60,
+                "currency": "RUB",
+            },
+            {
+                "source_id": "reused-next-year",
+                "number": "0ЛБП-000770",
+                "date": "2025-03-05",
+                "amount_total": 592897.83,
+                "currency": "RUB",
+            },
+        ],
+        "document_lines": [
+            {"document_id": "correct-date-differs", "document_number": "0ЛБП-000770", "line_id": 1, "amount": 88020.60},
+            {"document_id": "reused-next-year", "document_number": "0ЛБП-000770", "line_id": 1, "amount": 592897.83},
+        ],
+    }
+
+    filtered = _filter_document_lookup_snapshot(snapshot, "purchases", expected)
+
+    assert [row["source_id"] for row in filtered["purchases"]] == ["correct-date-differs"]
+    assert [row["document_id"] for row in filtered["document_lines"]] == ["correct-date-differs"]

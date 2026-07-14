@@ -160,7 +160,7 @@ def _merge_known_document_lookups(
     period: DateRange,
     erp_documents: list[AccountingDocument],
 ) -> None:
-    lookups: list[tuple[str, str, dict[str, Any]]] = []
+    lookups: list[tuple[str, str, AccountingDocument, dict[str, Any]]] = []
     seen: set[tuple[str, str, str]] = set()
     existing_codes = {
         block_name: {
@@ -187,6 +187,7 @@ def _merge_known_document_lookups(
             (
                 block_name,
                 code,
+                document,
                 {
                     "request_id": f"doc-{delivery.erp_spec_id}-{code}",
                     "period": {
@@ -208,18 +209,68 @@ def _merge_known_document_lookups(
         return
     with ThreadPoolExecutor(max_workers=min(4, len(lookups))) as pool:
         futures = {
-            pool.submit(client.get_reconciliation_snapshot, request): (block_name, code)
-            for block_name, code, request in lookups
+            pool.submit(client.get_reconciliation_snapshot, request): (block_name, code, document)
+            for block_name, code, document, request in lookups
         }
-        completed: list[tuple[str, str, dict[str, Any]]] = []
+        completed: list[tuple[str, str, AccountingDocument, dict[str, Any]]] = []
         for future in as_completed(futures):
-            block_name, code = futures[future]
-            completed.append((block_name, code, future.result()))
-    for block_name, _code, response in sorted(completed, key=lambda item: (item[0], item[1])):
+            block_name, code, document = futures[future]
+            completed.append((block_name, code, document, future.result()))
+    for block_name, _code, document, response in sorted(completed, key=lambda item: (item[0], item[1])):
         block_snapshot = response.get("snapshot") if isinstance(response.get("snapshot"), dict) else {}
+        block_snapshot = _filter_document_lookup_snapshot(block_snapshot, block_name, document)
         _merge_snapshot_block(snapshot, block_snapshot, block_name)
         if block_name in {"sales", "purchases"}:
             _merge_snapshot_block(snapshot, block_snapshot, "document_lines")
+
+
+def _filter_document_lookup_snapshot(
+    snapshot: dict[str, Any],
+    block_name: str,
+    expected: AccountingDocument,
+) -> dict[str, Any]:
+    """Remove documents that only reuse the same 1C code in another period."""
+    rows = [
+        row
+        for row in _dict_list(snapshot.get(block_name))
+        if _first_text(row, "code1c", "code", "number", "source_ref") == expected.code1c
+    ]
+    exact_date = [row for row in rows if expected.date and _as_date(row.get("date")) == expected.date]
+    if exact_date:
+        selected = exact_date
+    else:
+        selected = [
+            row
+            for row in rows
+            if Money.of(
+                row.get("amount_total") or row.get("amount") or Decimal("0"),
+                _currency(_first_text(row, "currency")),
+            )
+            == expected.amount
+        ]
+
+    selected_ids = {_first_text(row, "source_id") for row in selected if _first_text(row, "source_id")}
+    selected_numbers = {
+        _first_text(row, "number", "source_ref")
+        for row in selected
+        if _first_text(row, "number", "source_ref")
+    }
+    filtered = dict(snapshot)
+    filtered[block_name] = selected
+    if block_name in {"sales", "purchases"}:
+        if selected_ids:
+            filtered["document_lines"] = [
+                row
+                for row in _dict_list(snapshot.get("document_lines"))
+                if _first_text(row, "document_id") in selected_ids
+            ]
+        else:
+            filtered["document_lines"] = [
+                row
+                for row in _dict_list(snapshot.get("document_lines"))
+                if _first_text(row, "document_number") in selected_numbers
+            ]
+    return filtered
 
 
 def _block_for_kind(kind: str) -> str:
@@ -287,6 +338,10 @@ def _document_from_1c_row(
     incoming_number = _first_text(row, "incoming_number")
     number = source_number
     lines = _lookup_document_lines(lines_by_document, source_id, source_number)
+    line_vat_rates = {line.vat_rate for line in lines if line.vat_rate}
+    vat_rate = _first_text(row, "vat_rate", "vat")
+    if not vat_rate and len(line_vat_rates) == 1:
+        vat_rate = next(iter(line_vat_rates))
     return AccountingDocument(
         source=SourceSystem.ONE_C,
         kind=_kind(row, block_name),
@@ -300,7 +355,7 @@ def _document_from_1c_row(
         deleted=bool(row.get("deleted", False)),
         source_id=source_id,
         operation_id=None,
-        vat_rate=_first_text(row, "vat_rate", "vat"),
+        vat_rate=vat_rate,
         tax_invoice_number=_first_text(row, "tax_invoice_number", "invoice_number"),
         tax_invoice_date=_as_date(row.get("tax_invoice_date") or row.get("invoice_date")),
         linked_contract_codes=tuple(_text_list(row.get("linked_contract_codes"))),

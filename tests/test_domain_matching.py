@@ -562,6 +562,90 @@ def test_two_erp_rows_with_same_aggregate_code_match_distinct_1c_lines() -> None
     assert all(issue.onec_document and issue.onec_document.contract_code1c == "БП-013397" for issue in issues)
 
 
+def test_erp_rows_are_combined_when_onec_has_only_aggregate_header_line() -> None:
+    erp_docs = [
+        AccountingDocument(
+            source=SourceSystem.ERP,
+            kind=DocumentKind.SALE,
+            code1c="00БП-002193",
+            number="00БП-002193",
+            date=date(2024, 6, 4),
+            amount=Money.of(amount),
+            contract_code1c="БП-043369",
+            source_id=source_id,
+            operation_id=operation_id,
+            vat_rate="20%",
+        )
+        for amount, source_id, operation_id in (
+            ("13500", "105644", 208848),
+            ("247630", "105645", 208849),
+            ("56500", "105646", 208850),
+            ("25042", "105647", 208852),
+            ("23500", "105648", 208853),
+            ("17100", "105649", 208854),
+        )
+    ]
+    onec_doc = AccountingDocument(
+        source=SourceSystem.ONE_C,
+        kind=DocumentKind.SALE,
+        code1c="00БП-002193",
+        number="00БП-002193",
+        date=date(2024, 6, 4),
+        amount=Money.of("383272"),
+        contract_code1c="БП-043369",
+        vat_rate="20%",
+        lines=(
+            DocumentLine("sale-guid", "1", Money.of("383272"), contract_code1c="БП-043369", vat_rate="20%"),
+        ),
+    )
+
+    issues = match_documents(erp_docs, [onec_doc])
+
+    assert [issue.status for issue in issues] == [ReconciliationStatus.MATCH]
+    assert issues[0].erp_document is not None
+    assert issues[0].erp_document.amount == Money.of("383272")
+    assert issues[0].erp_document.source_id == "105644,105645,105646,105647,105648,105649"
+
+
+def test_same_code_and_amount_with_different_dates_reports_date_mismatch() -> None:
+    erp_doc = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.PURCHASE,
+        code1c="0ЛБП-000770",
+        number="000029129/000091898/Р",
+        date=date(2024, 7, 24),
+        amount=Money.of("88020.60"),
+        contract_code1c="БП-048195",
+    )
+    onec_docs = [
+        AccountingDocument(
+            source=SourceSystem.ONE_C,
+            kind=DocumentKind.PURCHASE,
+            code1c="0ЛБП-000770",
+            number="0ЛБП-000770",
+            date=date(2024, 9, 19),
+            amount=Money.of("88020.60"),
+            contract_code1c="БП-048195",
+        ),
+        AccountingDocument(
+            source=SourceSystem.ONE_C,
+            kind=DocumentKind.PURCHASE,
+            code1c="0ЛБП-000770",
+            number="0ЛБП-000770",
+            date=date(2025, 3, 5),
+            amount=Money.of("592897.83"),
+            contract_code1c="БП-051780",
+        ),
+    ]
+
+    issues = match_documents([erp_doc], onec_docs)
+
+    assert issues[0].status == ReconciliationStatus.DATE_MISMATCH
+    assert issues[0].fields == ("date",)
+    assert issues[0].match_confidence == "code_only"
+    assert issues[1].status == ReconciliationStatus.NOT_LINKED_TO_DELIVERY_IN_ERP
+
+
 def test_operation_link_makes_header_contract_informational() -> None:
     erp_doc = AccountingDocument(
         source=SourceSystem.ERP,

@@ -47,6 +47,8 @@ class MariaDbErpReadRepository:
                 "spec_number": row.get("spec_number"),
                 "spec_type_name": row.get("spec_type_name") or "",
                 "spec_date": _date_to_iso(row.get("spec_date")),
+                "closure_date": _date_to_iso(row.get("closure_date")),
+                "spec_status": int(row.get("spec_status") or 0),
                 "buyer_contract_code": row.get("buyer_contract_code") or "",
                 "committent_contract_code": row.get("committent_contract_code") or "",
                 "dog_id": row.get("dog_id"),
@@ -286,10 +288,11 @@ class MariaDbErpReadRepository:
             operation_id = int(row.get("operation_id") or 0)
             if operation_id:
                 closing_by_operation.setdefault(operation_id, []).append(row)
-        payment_by_operation = {
-            int(row.get("operation_id") or 0): row
-            for row in self._fetch_operation_rows(queries.OPERATION_PAYMENT_DOCS_BY_OPERATION_IDS, operation_ids)
-        }
+        payments_by_operation: dict[int, list[dict[str, Any]]] = {}
+        for row in self._fetch_operation_rows(queries.OPERATION_PAYMENT_DOCS_BY_OPERATION_IDS, operation_ids):
+            operation_id = int(row.get("operation_id") or 0)
+            if operation_id:
+                payments_by_operation.setdefault(operation_id, []).append(row)
         calculation_amounts: dict[int, dict[str, Decimal]] = {
             spec_id: {
                 "payment_sum": Decimal("0"),
@@ -306,7 +309,7 @@ class MariaDbErpReadRepository:
                 continue
             amounts = amounts_by_operation.get(operation_id, {})
             closing_rows = closing_by_operation.get(operation_id, [])
-            payment = payment_by_operation.get(operation_id, {})
+            operation_payments = payments_by_operation.get(operation_id, [])
             reimbursement_id = int(operation.get("reimbursement_id") or 0)
             buyer_code = _str(operation.get("buyer_contract_code"))
             committent_code = _str(operation.get("committent_contract_code"))
@@ -413,25 +416,32 @@ class MariaDbErpReadRepository:
                     }
                 )
             if Decimal(str(amounts.get("payment_sum") or "0")) != Decimal("0"):
-                rows.append(
+                payment_rows = operation_payments or [
                     {
-                        "spec_id": operation.get("spec_id"),
-                        "document_kind": "payment",
-                        "code1c": payment.get("code1c") or "",
-                        "document_number": payment.get("document_number") or "",
-                        "document_date": payment.get("document_date"),
-                        "amount_total": amounts.get("payment_sum") or Decimal("0"),
-                        "currency": payment.get("currency") or "RUB",
-                        "contract_code1c": buyer_code,
-                        "source_id": payment.get("source_id") or 0,
-                        "source_number": payment.get("document_number") or "",
-                        "operation_id": operation_id,
-                        "vat_rate": "",
-                        "reimbursement_type": "",
-                        "deleted": 0,
-                        "paid_amount": None,
+                        "allocated_amount": amounts.get("payment_sum") or Decimal("0"),
+                        "currency": "RUB",
                     }
-                )
+                ]
+                for payment in payment_rows:
+                    rows.append(
+                        {
+                            "spec_id": operation.get("spec_id"),
+                            "document_kind": "payment",
+                            "code1c": payment.get("code1c") or "",
+                            "document_number": payment.get("document_number") or "",
+                            "document_date": payment.get("document_date"),
+                            "amount_total": payment.get("allocated_amount") or Decimal("0"),
+                            "currency": payment.get("currency") or "RUB",
+                            "contract_code1c": buyer_code,
+                            "source_id": payment.get("source_id") or 0,
+                            "source_number": payment.get("document_number") or "",
+                            "operation_id": operation_id,
+                            "vat_rate": "",
+                            "reimbursement_type": "",
+                            "deleted": 0,
+                            "paid_amount": None,
+                        }
+                    )
         grouped: dict[int, list[AccountingDocument]] = {spec_id: [] for spec_id in ids}
         for row in rows:
             spec_id = int(row.get("spec_id") or 0)
@@ -492,7 +502,7 @@ def _row_to_document(row: dict[str, Any]) -> AccountingDocument:
     return AccountingDocument(
         source=SourceSystem.ERP,
         kind=_document_kind(row.get("document_kind")),
-        code1c=_str(row.get("code1c")),
+        code1c=_meaningful_code(row.get("code1c")),
         number=_str(row.get("document_number")),
         date=_as_date(row.get("document_date")),
         amount=Money.of(row.get("amount_total") or Decimal("0"), _currency(row.get("currency"))),
@@ -580,7 +590,7 @@ def _int_or_none(value: object) -> int | None:
 
 def _meaningful_code(value: object) -> str:
     text = _str(value)
-    if text in {"", "_", "-", "0"}:
+    if text.lower() in {"", "_", "-", "0", "б/н", "бн", "без номера"}:
         return ""
     return text
 
