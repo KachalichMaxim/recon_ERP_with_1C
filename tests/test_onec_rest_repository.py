@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from recon_erp_1c.domain.entities import Counterparty, Delivery, Organization
-from recon_erp_1c.domain.value_objects import DateRange, OneCContractCodes
+from recon_erp_1c.domain.entities import AccountingDocument, Counterparty, Delivery, Organization
+from recon_erp_1c.domain.value_objects import DateRange, DocumentKind, Money, OneCContractCodes, SourceSystem
 from recon_erp_1c.infrastructure.onec_rest.repository import OneCRestReadRepository
 from recon_erp_1c.infrastructure.onec_rest.client import OneCRestConfig, snapshot_query_params
 
@@ -129,6 +129,7 @@ def test_delivery_mode_and_business_context_are_sent_in_get_query() -> None:
                 "buyer_contract_code1c": "БП-068417",
                 "committent_contract_code1c": "БП-068418",
             },
+            "counterparties": [{"code1c": "000000699", "inn": "7811451960"}],
         },
         include_delivery_context=True,
     )
@@ -136,6 +137,8 @@ def test_delivery_mode_and_business_context_are_sent_in_get_query() -> None:
     assert params["scope"] == "delivery"
     assert params["buyer_contract_code"] == "БП-068417"
     assert params["committent_contract_code"] == "БП-068418"
+    assert "counterparty_code" not in params
+    assert "counterparty_inn" not in params
 
 
 def test_delivery_context_is_not_sent_before_onec_support_is_enabled() -> None:
@@ -148,8 +151,49 @@ def test_delivery_context_is_not_sent_before_onec_support_is_enabled() -> None:
                 "base_contract": "660/1",
                 "buyer_contract_code1c": "БП-068417",
             },
+            "counterparties": [{"code1c": "000000699", "inn": "7811451960"}],
         }
     )
 
     assert params["buyer_contract_code"] == "БП-068417"
     assert "scope" not in params
+    assert params["counterparty_code"] == "000000699"
+    assert params["counterparty_inn"] == "7811451960"
+
+
+def test_repository_does_not_repeat_lookup_for_document_already_in_delivery_snapshot() -> None:
+    client = _FakeClient(
+        {
+            "purchases": [
+                {
+                    "source_id": "purchase-guid",
+                    "number": "00БП-012300",
+                    "document_type": "purchase",
+                    "date": "2025-07-22",
+                    "amount_total": 17715,
+                    "currency": "RUB",
+                    "contract_code": "БП-003834",
+                }
+            ],
+            "document_lines": [],
+        }
+    )
+    repository = OneCRestReadRepository(client)  # type: ignore[arg-type]
+    erp_document = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.PURCHASE,
+        code1c="00БП-012300",
+        number="00БП-012300",
+        date=date(2025, 7, 22),
+        amount=Money.of("17715.00"),
+        contract_code1c="БП-003834",
+    )
+
+    repository.fetch_snapshot(
+        delivery=_delivery(),
+        period=DateRange(date(2025, 7, 1), date(2025, 8, 31)),
+        contracts=[],
+        erp_documents=[erp_document],
+    )
+
+    assert len(client.requests) == 1

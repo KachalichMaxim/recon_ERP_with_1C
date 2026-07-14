@@ -162,12 +162,22 @@ def _merge_known_document_lookups(
 ) -> None:
     lookups: list[tuple[str, str, dict[str, Any]]] = []
     seen: set[tuple[str, str, str]] = set()
+    existing_codes = {
+        block_name: {
+            str(row.get("code1c") or row.get("number") or "").strip()
+            for row in snapshot.get(block_name, [])
+            if isinstance(row, dict)
+        }
+        for block_name in ("customer_invoices", "payments", "sales", "purchases")
+    }
     for document in erp_documents:
         code = document.code1c.strip()
         if not code:
             continue
         block_name = _block_for_kind(document.kind.value)
         if not block_name:
+            continue
+        if code in existing_codes.get(block_name, set()):
             continue
         key = (block_name, code, document.date.isoformat() if document.date else "")
         if key in seen:

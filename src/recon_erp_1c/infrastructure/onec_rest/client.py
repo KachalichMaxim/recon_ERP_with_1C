@@ -219,13 +219,16 @@ def snapshot_query_params(request: dict[str, Any], *, include_delivery_context: 
         }
     )
 
-    first_counterparty = next((item for item in counterparties if isinstance(item, dict)), {})
-    params.update(
-        {
-            "counterparty_code": first_counterparty.get("code1c", ""),
-            "counterparty_inn": first_counterparty.get("inn", ""),
-        }
-    )
+    # Delivery scope may include supplier documents whose counterparty differs
+    # from the customer. Contract links, not the customer, define this scope.
+    if not include_delivery_context:
+        first_counterparty = next((item for item in counterparties if isinstance(item, dict)), {})
+        params.update(
+            {
+                "counterparty_code": first_counterparty.get("code1c", ""),
+                "counterparty_inn": first_counterparty.get("inn", ""),
+            }
+        )
 
     query_lists: dict[str, list[Any]] = {
         "contract_code": [],
