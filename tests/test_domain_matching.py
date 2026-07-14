@@ -711,6 +711,43 @@ def test_missing_operation_closing_document_is_a_precondition_error() -> None:
     assert issue.primary_reason == "missing_erp_closing_document"
 
 
+def test_missing_onec_document_explains_the_attempted_search_key() -> None:
+    erp_document = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.PURCHASE,
+        code1c="00БП-019539",
+        number="б/н",
+        date=date(2024, 11, 2),
+        amount=Money.of("103.37", "USD"),
+        contract_code1c="БП-055292",
+    )
+
+    issue = match_documents([erp_document], [])[0]
+
+    assert issue.status == ReconciliationStatus.NOT_FOUND_IN_1C
+    assert issue.primary_reason == "onec_document_absent_by_kind_code_date_and_exact_amount"
+    assert issue.fields == ("kind", "code1c", "date", "amount", "currency")
+
+
+def test_missing_erp_code_is_reported_separately_from_onec_absence() -> None:
+    erp_document = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.SALE,
+        code1c="",
+        number="SNKO042240400038",
+        date=date(2024, 4, 29),
+        amount=Money.of("5300", "USD"),
+        contract_code1c="БП-008928",
+        source_id="105434",
+    )
+
+    issue = match_documents([erp_document], [])[0]
+
+    assert issue.status == ReconciliationStatus.ERP_CODE1C_MISSING
+    assert issue.primary_reason == "erp_code1c_missing_onec_lookup_not_possible"
+    assert "erp_code1c" in issue.fields
+
+
 def test_unmatched_onec_document_means_not_linked_to_selected_delivery() -> None:
     onec_doc = AccountingDocument(
         source=SourceSystem.ONE_C,
@@ -771,6 +808,7 @@ def test_onec_document_found_globally_remains_not_linked_to_delivery() -> None:
     classified = _classify_global_erp_presence([issue], Repository())
 
     assert classified[0].status == ReconciliationStatus.NOT_LINKED_TO_DELIVERY_IN_ERP
+    assert classified[0].primary_reason == "erp_document_exists_but_delivery_link_missing"
 
 
 def test_onec_document_absent_globally_is_reported_missing_in_erp() -> None:
@@ -793,7 +831,7 @@ def test_onec_document_absent_globally_is_reported_missing_in_erp() -> None:
     classified = _classify_global_erp_presence([issue], Repository())
 
     assert classified[0].status == ReconciliationStatus.NOT_FOUND_IN_ERP
-    assert classified[0].primary_reason == "not_found_in_erp"
+    assert classified[0].primary_reason == "onec_document_absent_in_erp_by_kind_code_date"
 
 
 def test_balance_includes_allocated_lines_on_external_1c_contracts() -> None:

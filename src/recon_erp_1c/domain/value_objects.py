@@ -32,6 +32,7 @@ class DocumentKind(StrEnum):
 class ReconciliationStatus(StrEnum):
     MATCH = "match"
     NOT_FOUND_IN_1C = "not_found_in_1c"
+    ERP_CODE1C_MISSING = "erp_code1c_missing"
     NOT_FOUND_IN_ERP = "not_found_in_erp"
     NOT_LINKED_TO_DELIVERY_IN_ERP = "not_linked_to_delivery_in_erp"
     MISSING_ERP_INVOICE = "missing_erp_invoice"

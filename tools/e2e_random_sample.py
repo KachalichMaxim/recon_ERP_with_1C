@@ -30,7 +30,7 @@ from recon_erp_1c.infrastructure.onec_rest.repository import OneCRestReadReposit
 from recon_erp_1c.infrastructure.persistence.mariadb_log_repository import MariaDbReconciliationLogRepository
 
 
-ERP_DATA_STATUSES = {"missing_erp_invoice", "missing_erp_closing_document"}
+ERP_DATA_STATUSES = {"missing_erp_invoice", "missing_erp_closing_document", "erp_code1c_missing"}
 NON_BLOCKING_STATUSES = {"match", "not_comparable"}
 
 

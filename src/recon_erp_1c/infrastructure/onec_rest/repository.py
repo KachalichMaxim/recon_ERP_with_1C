@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from decimal import Decimal
+import os
 from typing import Any
 
 from recon_erp_1c.domain.entities import (
@@ -21,6 +22,8 @@ from recon_erp_1c.infrastructure.onec_rest.client import OneCRestClient
 class OneCRestReadRepository:
     def __init__(self, client: OneCRestClient) -> None:
         self.client = client
+        self.lookup_workers = max(1, min(8, int(os.environ.get("RECON_ONEC_LOOKUP_WORKERS", "6") or "6")))
+        self.last_metrics: dict[str, int | float] = {}
 
     def fetch_snapshot(
         self,
@@ -30,6 +33,9 @@ class OneCRestReadRepository:
         contracts: list[Contract],
         erp_documents: list[AccountingDocument],
     ) -> OneCSnapshot:
+        reset_metrics = getattr(self.client, "reset_metrics", None)
+        if callable(reset_metrics):
+            reset_metrics()
         snapshot = _empty_snapshot()
         base_request = _snapshot_request(
             delivery=delivery,
@@ -46,15 +52,19 @@ class OneCRestReadRepository:
             delivery=delivery,
             period=period,
             erp_documents=erp_documents,
+            lookup_workers=self.lookup_workers,
         )
         warnings = tuple(
             dict.fromkeys(_warning_text(item) for item in snapshot.get("warnings", []) if _warning_text(item))
         )
-        return OneCSnapshot(
+        result = OneCSnapshot(
             documents=tuple(_documents_from_snapshot(snapshot)),
             balances=tuple(_balances_from_snapshot(snapshot)),
             warnings=warnings,
         )
+        metrics_snapshot = getattr(self.client, "metrics_snapshot", None)
+        self.last_metrics = metrics_snapshot() if callable(metrics_snapshot) else {}
+        return result
 
 
 def _snapshot_request(
@@ -159,6 +169,7 @@ def _merge_known_document_lookups(
     delivery: Delivery,
     period: DateRange,
     erp_documents: list[AccountingDocument],
+    lookup_workers: int,
 ) -> None:
     lookups: list[tuple[str, str, AccountingDocument, dict[str, Any]]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -207,7 +218,8 @@ def _merge_known_document_lookups(
 
     if not lookups:
         return
-    with ThreadPoolExecutor(max_workers=min(4, len(lookups))) as pool:
+    workers = min(lookup_workers, len(lookups))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(client.get_reconciliation_snapshot, request): (block_name, code, document)
             for block_name, code, document, request in lookups

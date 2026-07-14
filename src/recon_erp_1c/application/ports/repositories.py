@@ -27,6 +27,9 @@ class ErpReadRepository(Protocol):
     def list_delivery_documents(self, spec_id: int) -> list[AccountingDocument]:
         ...
 
+    def get_delivery_documents_and_balance(self, spec_id: int) -> tuple[list[AccountingDocument], Money]:
+        ...
+
     def list_delivery_contracts(self, spec_id: int) -> list[Contract]:
         ...
 

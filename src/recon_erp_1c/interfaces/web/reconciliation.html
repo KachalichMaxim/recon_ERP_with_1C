@@ -255,7 +255,8 @@
         <div class="kpi-grid recon-kpi" id="summaryCards">
           <button class="kpi kpi-filter active" type="button" data-result-filter="all"><span>Документов</span><b data-key="issues_total">0</b></button>
           <button class="kpi kpi-filter ok" type="button" data-result-filter="match"><span>Совпало</span><b data-status="match">0</b></button>
-          <button class="kpi kpi-filter bad" type="button" data-result-filter="not_found_in_1c"><span>Нет в 1С</span><b data-status="not_found_in_1c">0</b></button>
+          <button class="kpi kpi-filter bad" type="button" data-result-filter="not_found_in_1c"><span>Не найдено в 1С</span><b data-status="not_found_in_1c">0</b></button>
+          <button class="kpi kpi-filter bad" type="button" data-result-filter="erp_code1c_missing"><span>Нет кода 1С в ERP</span><b data-status="erp_code1c_missing">0</b></button>
           <button class="kpi kpi-filter warn" type="button" data-result-filter="not_linked_to_delivery_in_erp"><span>Нет связи ERP</span><b data-status="not_linked_to_delivery_in_erp">0</b></button>
           <button class="kpi kpi-filter bad" type="button" data-result-filter="mismatches"><span>Расхождения</span><b data-role="mismatches">0</b></button>
         </div>
@@ -266,9 +267,10 @@
             <option value="all">Все статусы</option>
             <option value="problems">Только к разбору</option>
             <option value="match">Совпало</option>
-            <option value="not_found_in_1c">Нет в 1С</option>
+            <option value="not_found_in_1c">Не найдено в 1С</option>
+            <option value="erp_code1c_missing">Не заполнен код 1С</option>
             <option value="not_linked_to_delivery_in_erp">Нет связи с поставкой ERP</option>
-            <option value="not_found_in_erp">Нет в ERP глобально</option>
+            <option value="not_found_in_erp">Не найдено в ERP</option>
             <option value="mismatches">Расхождения</option>
             <option value="amount_mismatch">Сумма/валюта</option>
             <option value="number_mismatch">Номер</option>

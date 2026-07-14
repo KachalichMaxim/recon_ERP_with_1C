@@ -8,7 +8,7 @@ from recon_erp_1c.infrastructure.onec_rest.repository import (
     OneCRestReadRepository,
     _filter_document_lookup_snapshot,
 )
-from recon_erp_1c.infrastructure.onec_rest.client import OneCRestConfig, snapshot_query_params
+from recon_erp_1c.infrastructure.onec_rest.client import OneCRestClient, OneCRestConfig, snapshot_query_params
 
 
 class _FakeClient:
@@ -143,6 +143,52 @@ def test_onec_url_does_not_duplicate_contract_root() -> None:
     assert config.url("/reconciliation/v1/snapshot") == (
         "http://1c.local/vedagent_dev/hs/reconciliation/v1/snapshot"
     )
+
+
+def test_document_lookup_cache_ignores_request_id() -> None:
+    client = OneCRestClient(
+        OneCRestConfig(
+            base_url="http://1c.local/vedagent_dev/hs/reconciliation/v1",
+            token="token",
+            lookup_cache_ttl_seconds=120,
+            lookup_cache_max_entries=10,
+        )
+    )
+    first_key = client._cache_key(
+        "GET",
+        "/reconciliation/v1/snapshot",
+        {"request_id": "spec-1", "document_code": ["00БП-001"]},
+    )
+    second_key = client._cache_key(
+        "GET",
+        "/reconciliation/v1/snapshot",
+        {"request_id": "spec-2", "document_code": ["00БП-001"]},
+    )
+
+    client._cache_put(first_key, {"ok": True, "snapshot": {"sales": []}})
+
+    assert first_key == second_key
+    assert client._cache_get(second_key) == {"ok": True, "snapshot": {"sales": []}}
+
+
+def test_document_lookup_cache_is_shared_between_request_clients() -> None:
+    config = OneCRestConfig(
+        base_url="http://1c.local/vedagent_dev/hs/reconciliation/v1",
+        token="token",
+        lookup_cache_ttl_seconds=120,
+        lookup_cache_max_entries=10,
+    )
+    writer = OneCRestClient(config)
+    reader = OneCRestClient(config)
+    key = writer._cache_key(
+        "GET",
+        "/reconciliation/v1/snapshot",
+        {"document_code": ["00БП-SHARED-CACHE"]},
+    )
+
+    writer._cache_put(key, {"ok": True, "snapshot": {"payments": []}})
+
+    assert reader._cache_get(key) == {"ok": True, "snapshot": {"payments": []}}
 
 
 def test_delivery_mode_and_business_context_are_sent_in_get_query() -> None:

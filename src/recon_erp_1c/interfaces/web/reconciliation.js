@@ -1129,6 +1129,7 @@
     els.summaryCards.querySelector('[data-key="issues_total"]').textContent = total;
     els.summaryCards.querySelector('[data-status="match"]').textContent = by.match || 0;
     els.summaryCards.querySelector('[data-status="not_found_in_1c"]').textContent = by.not_found_in_1c || 0;
+    els.summaryCards.querySelector('[data-status="erp_code1c_missing"]').textContent = by.erp_code1c_missing || 0;
     els.summaryCards.querySelector('[data-status="not_linked_to_delivery_in_erp"]').textContent = by.not_linked_to_delivery_in_erp || 0;
     const mismatches = [
       'amount_mismatch',
@@ -1143,6 +1144,7 @@
       'contract_context_missing',
       'missing_erp_invoice',
       'missing_erp_closing_document',
+      'erp_code1c_missing',
       'not_linked_to_delivery_in_erp',
     ].reduce((sum, key) => sum + Number(by[key] || 0), 0);
     els.summaryCards.querySelector('[data-role="mismatches"]').textContent = mismatches;
@@ -1193,6 +1195,7 @@
       'contract_context_missing',
       'missing_erp_invoice',
       'missing_erp_closing_document',
+      'erp_code1c_missing',
       'not_linked_to_delivery_in_erp',
     ].includes(row.status));
     else if (filter !== 'all') rows = rows.filter((row) => row.status === filter);
@@ -1327,7 +1330,8 @@
   }
 
   function issueReason(row) {
-    if (row.status === 'not_found_in_1c') return 'Документ ERP не найден в 1С';
+    if (row.status === 'not_found_in_1c') return 'Документ ERP с заполненным кодом 1С не найден в 1С по типу, коду, дате и точной сумме';
+    if (row.status === 'erp_code1c_missing') return 'В документе ERP не заполнен код 1С; точечная проверка выгрузки в 1С невозможна';
     if (row.status === 'not_found_in_erp') return 'Документ 1С не найден в ERP';
     if (row.status === 'not_linked_to_delivery_in_erp') return 'Документ 1С существует, но не связан с выбранной поставкой ERP';
     if (row.status === 'missing_erp_invoice') return 'По операции ERP не выставлен или не привязан счет покупателю';
@@ -1365,8 +1369,9 @@
   function statusBadge(status) {
     const map = {
       match: ['match', 'ОК'],
-      not_found_in_1c: ['bad', 'Нет в 1С'],
-      not_found_in_erp: ['warn', 'Нет в ERP'],
+      not_found_in_1c: ['bad', 'Не найдено в 1С'],
+      erp_code1c_missing: ['bad', 'Нет кода 1С в ERP'],
+      not_found_in_erp: ['warn', 'Не найдено в ERP'],
       not_linked_to_delivery_in_erp: ['warn', 'Нет связи ERP'],
       amount_mismatch: ['bad', 'Сумма/валюта'],
       date_mismatch: ['warn', 'Дата'],

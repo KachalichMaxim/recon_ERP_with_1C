@@ -9,12 +9,20 @@ dedicated 1C REST API, not to raw OData objects.
 from __future__ import annotations
 
 import base64
+import copy
 import http.client
 import json
 import os
+import threading
+import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode, urlsplit
+
+
+_LOOKUP_CACHE_LOCK = threading.Lock()
+_LOOKUP_CACHE: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
 from urllib.request import Request, urlopen
 
 
@@ -33,6 +41,8 @@ class OneCRestConfig:
     snapshot_path: str = "/reconciliation/v1/snapshot"
     health_path: str = "/reconciliation/v1/health"
     delivery_scope_enabled: bool = False
+    lookup_cache_ttl_seconds: int = 120
+    lookup_cache_max_entries: int = 256
 
     @classmethod
     def from_env(cls) -> "OneCRestConfig":
@@ -49,6 +59,12 @@ class OneCRestConfig:
             or "/reconciliation/v1/health",
             delivery_scope_enabled=os.environ.get("RECON_ONEC_DELIVERY_SCOPE_ENABLED", "0").strip().lower()
             in {"1", "true", "yes", "on"},
+            lookup_cache_ttl_seconds=max(
+                0, int(os.environ.get("RECON_ONEC_LOOKUP_CACHE_TTL_SECONDS", "120") or "120")
+            ),
+            lookup_cache_max_entries=max(
+                0, int(os.environ.get("RECON_ONEC_LOOKUP_CACHE_MAX_ENTRIES", "256") or "256")
+            ),
         )
 
     def missing_fields(self) -> list[str]:
@@ -84,12 +100,16 @@ def onec_rest_status(config: OneCRestConfig | None = None) -> dict[str, Any]:
         "snapshot_path": config.snapshot_path,
         "health_path": config.health_path,
         "delivery_scope_enabled": config.delivery_scope_enabled,
+        "lookup_cache_ttl_seconds": config.lookup_cache_ttl_seconds,
+        "lookup_cache_max_entries": config.lookup_cache_max_entries,
     }
 
 
 class OneCRestClient:
     def __init__(self, config: OneCRestConfig | None = None):
         self.config = config or OneCRestConfig.from_env()
+        self._state_lock = threading.Lock()
+        self.reset_metrics()
 
     @classmethod
     def from_env(cls) -> "OneCRestClient":
@@ -118,11 +138,19 @@ class OneCRestClient:
         self._assert_ready()
         body = None
         url = self.config.url(path)
+        is_lookup = bool(method.upper() == "GET" and payload and payload.get("document_code"))
+        cache_key = self._cache_key(method, path, payload) if is_lookup else ""
+        cached = self._cache_get(cache_key) if cache_key else None
+        if cached is not None:
+            with self._state_lock:
+                self._metrics["cache_hits"] += 1
+            return cached
         if method.upper() == "GET" and payload:
             url = f"{url}?{urlencode(payload, doseq=True)}"
         elif payload is not None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers = self._headers()
+        started = time.perf_counter()
         try:
             if self.config.bind_address:
                 raw = self._request_bound_source(method, url, body, headers)
@@ -142,7 +170,73 @@ class OneCRestClient:
             raise OneCRestError("1C REST JSON response must be an object")
         if parsed.get("ok") is False:
             raise OneCRestError(str(parsed.get("message") or parsed.get("error") or "1C returned ok=false"))
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        with self._state_lock:
+            self._metrics["http_requests"] += 1
+            self._metrics["document_lookup_requests" if is_lookup else "snapshot_requests"] += 1
+            self._metrics["response_bytes"] += len(raw.encode("utf-8"))
+            self._metrics["http_ms"] += elapsed_ms
+        if cache_key:
+            self._cache_put(cache_key, parsed)
         return parsed
+
+    def reset_metrics(self) -> None:
+        with getattr(self, "_state_lock", threading.Lock()):
+            self._metrics = {
+                "http_requests": 0,
+                "snapshot_requests": 0,
+                "document_lookup_requests": 0,
+                "cache_hits": 0,
+                "response_bytes": 0,
+                "http_ms": 0.0,
+            }
+
+    def metrics_snapshot(self) -> dict[str, int | float]:
+        with _LOOKUP_CACHE_LOCK:
+            cache_entries = len(_LOOKUP_CACHE)
+        with self._state_lock:
+            return {
+                **self._metrics,
+                "http_ms": round(float(self._metrics["http_ms"]), 2),
+                "cache_entries": cache_entries,
+            }
+
+    def _cache_key(self, method: str, path: str, payload: dict[str, Any] | None) -> str:
+        stable_payload = {
+            key: value
+            for key, value in (payload or {}).items()
+            if key != "request_id"
+        }
+        return json.dumps(
+            [self.config.base_url, method.upper(), path, stable_payload],
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    def _cache_get(self, key: str) -> dict[str, Any] | None:
+        if not key or self.config.lookup_cache_ttl_seconds <= 0:
+            return None
+        now = time.monotonic()
+        with _LOOKUP_CACHE_LOCK:
+            cached = _LOOKUP_CACHE.get(key)
+            if cached is None:
+                return None
+            created_at, payload = cached
+            if now - created_at > self.config.lookup_cache_ttl_seconds:
+                del _LOOKUP_CACHE[key]
+                return None
+            _LOOKUP_CACHE.move_to_end(key)
+            return copy.deepcopy(payload)
+
+    def _cache_put(self, key: str, payload: dict[str, Any]) -> None:
+        if not key or self.config.lookup_cache_ttl_seconds <= 0 or self.config.lookup_cache_max_entries <= 0:
+            return
+        with _LOOKUP_CACHE_LOCK:
+            _LOOKUP_CACHE[key] = (time.monotonic(), copy.deepcopy(payload))
+            _LOOKUP_CACHE.move_to_end(key)
+            while len(_LOOKUP_CACHE) > self.config.lookup_cache_max_entries:
+                _LOOKUP_CACHE.popitem(last=False)
 
     def _request_bound_source(self, method: str, url: str, body: bytes | None, headers: dict[str, str]) -> str:
         """Execute request from a specific local VPN address.

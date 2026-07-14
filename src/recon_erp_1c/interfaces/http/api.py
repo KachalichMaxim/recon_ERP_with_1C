@@ -6,6 +6,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal
 from pathlib import Path
 from http import HTTPStatus
@@ -1134,19 +1135,39 @@ def _execute_batch_job(job_id: str, spec_ids: list[int], date_from: str, date_to
         _update_batch_job(job_id, status="completed", metrics={"total_ms": round((time.perf_counter() - started) * 1000, 2)})
         return
 
-    for spec_id in spec_ids:
-        try:
-            query = {
-                "spec_id": [str(spec_id)],
-                "date_from": [date_from],
-                "date_to": [date_to],
-                "persist_log": [persist_log],
-            }
-            run = run_to_dict(_execute_reconciliation(query))
-            _append_batch_result(job_id, run=run)
-        except Exception as exc:  # noqa: BLE001 - background job must keep processing remaining specs
-            _append_batch_result(job_id, error={"spec_id": spec_id, "message": str(exc), "type": exc.__class__.__name__})
-    _update_batch_job(job_id, status="completed", metrics={"total_ms": round((time.perf_counter() - started) * 1000, 2)})
+    worker_count = max(1, min(4, int(os.environ.get("RECON_BATCH_WORKERS", "2") or "2"), len(spec_ids)))
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        futures = {
+            pool.submit(_execute_batch_spec, spec_id, date_from, date_to, persist_log): spec_id
+            for spec_id in spec_ids
+        }
+        for future in as_completed(futures):
+            spec_id = futures[future]
+            try:
+                _append_batch_result(job_id, run=future.result())
+            except Exception as exc:  # noqa: BLE001 - background job must keep processing remaining specs
+                _append_batch_result(
+                    job_id,
+                    error={"spec_id": spec_id, "message": str(exc), "type": exc.__class__.__name__},
+                )
+    _update_batch_job(
+        job_id,
+        status="completed",
+        metrics={
+            "total_ms": round((time.perf_counter() - started) * 1000, 2),
+            "workers": worker_count,
+        },
+    )
+
+
+def _execute_batch_spec(spec_id: int, date_from: str, date_to: str, persist_log: str) -> dict[str, object]:
+    query = {
+        "spec_id": [str(spec_id)],
+        "date_from": [date_from],
+        "date_to": [date_to],
+        "persist_log": [persist_log],
+    }
+    return run_to_dict(_execute_reconciliation(query))
 
 
 def _append_batch_result(job_id: str, *, run: dict[str, object] | None = None, error: dict[str, object] | None = None) -> None:

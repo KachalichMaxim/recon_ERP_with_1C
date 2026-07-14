@@ -13,6 +13,7 @@ from recon_erp_1c.domain.entities import (
     AccountingBalance,
     AccountingDocument,
     BalanceComparison,
+    Contract,
     Delivery,
     DocumentLine,
     PaymentAllocation,
@@ -20,7 +21,7 @@ from recon_erp_1c.domain.entities import (
     ReconciliationRun,
 )
 from recon_erp_1c.domain.services import compare_documents, normalize_document_number
-from recon_erp_1c.domain.value_objects import DateRange, Money, ReconciliationStatus
+from recon_erp_1c.domain.value_objects import ContractRole, DateRange, Money, ReconciliationStatus, SourceSystem
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,9 +46,13 @@ class ReconcileDeliveryUseCase:
         total_started = perf_counter()
         erp_started = perf_counter()
         delivery = self.erp_repository.get_delivery(command.spec_id)
-        contracts = self.erp_repository.list_delivery_contracts(command.spec_id)
-        erp_documents = self.erp_repository.list_delivery_documents(command.spec_id)
-        erp_balance = self.erp_repository.get_delivery_balance(command.spec_id)
+        contracts = _contracts_from_delivery(delivery)
+        bundle_reader = getattr(self.erp_repository, "get_delivery_documents_and_balance", None)
+        if callable(bundle_reader):
+            erp_documents, erp_balance = bundle_reader(command.spec_id)
+        else:
+            erp_documents = self.erp_repository.list_delivery_documents(command.spec_id)
+            erp_balance = self.erp_repository.get_delivery_balance(command.spec_id)
         erp_ms = (perf_counter() - erp_started) * 1000
         onec_started = perf_counter()
         onec_snapshot = self.onec_repository.fetch_snapshot(
@@ -57,6 +62,7 @@ class ReconcileDeliveryUseCase:
             erp_documents=erp_documents,
         )
         onec_ms = (perf_counter() - onec_started) * 1000
+        onec_source_metrics = getattr(self.onec_repository, "last_metrics", {})
         match_started = perf_counter()
         issues = match_documents(
             aggregate_documents(erp_documents),
@@ -88,11 +94,39 @@ class ReconcileDeliveryUseCase:
                 "erp_documents": len(erp_documents),
                 "onec_documents": len(onec_snapshot.documents),
                 "onec_balances": len(onec_snapshot.balances),
+                **{
+                    f"onec_{key}": value
+                    for key, value in onec_source_metrics.items()
+                },
             },
         )
         if command.persist_log and self.log_repository is not None:
             self.log_repository.save_run(run)
         return run
+
+
+def _contracts_from_delivery(delivery: Delivery) -> list[Contract]:
+    contracts: list[Contract] = []
+    for code, role in (
+        (delivery.contract_codes.buyer_contract_code, ContractRole.BUYER),
+        (delivery.contract_codes.committent_contract_code, ContractRole.COMMITTENT),
+    ):
+        if not code:
+            continue
+        contracts.append(
+            Contract(
+                source=SourceSystem.ERP,
+                code1c=code,
+                number=f"{delivery.base_contract_number}/{delivery.spec_number}",
+                date=delivery.spec_date,
+                role=role,
+                organization=delivery.organization,
+                counterparty=delivery.counterparty,
+                base_contract_number=delivery.base_contract_number,
+                spec_number=delivery.spec_number,
+            )
+        )
+    return contracts
 
 
 def _classify_global_erp_presence(
@@ -118,14 +152,24 @@ def _classify_global_erp_presence(
             )
             continue
         if checker(issue.onec_document):
-            result.append(issue)
+            result.append(
+                replace(
+                    issue,
+                    message=(
+                        "Документ найден в ERP по типу, коду 1С и дате, "
+                        "но связь с выбранной поставкой отсутствует"
+                    ),
+                    primary_reason="erp_document_exists_but_delivery_link_missing",
+                )
+            )
             continue
         result.append(
             replace(
                 issue,
                 status=ReconciliationStatus.NOT_FOUND_IN_ERP,
-                message="Документ 1С не найден в исходных таблицах ERP",
-                primary_reason="not_found_in_erp",
+                message="Документ 1С не найден в исходных таблицах ERP по типу, коду 1С и дате",
+                fields=("kind", "code1c", "date"),
+                primary_reason="onec_document_absent_in_erp_by_kind_code_date",
             )
         )
     return result
@@ -181,16 +225,7 @@ def match_documents(erp_documents: list[AccountingDocument], onec_documents: lis
                     )
                 )
                 continue
-            issues.append(
-                ReconciliationIssue(
-                    status=ReconciliationStatus.NOT_FOUND_IN_1C,
-                    message="Документ ERP не найден в 1С по типу, коду/номеру и дате",
-                    erp_document=erp_doc,
-                    fields=(),
-                    primary_reason="not_found_in_1c",
-                    severity="critical",
-                )
-            )
+            issues.append(_not_found_in_onec_issue(erp_doc))
             continue
         candidate_indexes, confidence = match
         if len(candidate_indexes) > 1:
@@ -258,6 +293,38 @@ def match_documents(erp_documents: list[AccountingDocument], onec_documents: lis
             )
 
     return issues
+
+
+def _not_found_in_onec_issue(document: AccountingDocument) -> ReconciliationIssue:
+    if document.code1c:
+        status = ReconciliationStatus.NOT_FOUND_IN_1C
+        message = (
+            "REST 1С не вернул документ по типу, коду 1С и дате; "
+            "fallback по тому же коду, точной сумме и валюте также не дал кандидата"
+        )
+        fields = ("kind", "code1c", "date", "amount", "currency")
+        reason = "onec_document_absent_by_kind_code_date_and_exact_amount"
+    elif document.number:
+        status = ReconciliationStatus.ERP_CODE1C_MISSING
+        message = (
+            "В ERP не заполнен код 1С. Номер ERP не является стабильным номером 1С, "
+            "поэтому точечная проверка выгрузки в 1С невозможна"
+        )
+        fields = ("erp_code1c", "number")
+        reason = "erp_code1c_missing_onec_lookup_not_possible"
+    else:
+        status = ReconciliationStatus.ERP_CODE1C_MISSING
+        message = "В ERP отсутствуют код 1С и номер документа; автоматический поиск в 1С невозможен"
+        fields = ("erp_code1c", "number")
+        reason = "erp_document_identifiers_missing"
+    return ReconciliationIssue(
+        status=status,
+        message=message,
+        erp_document=document,
+        fields=fields,
+        primary_reason=reason,
+        severity="critical",
+    )
 
 
 def _erp_document_precondition_issue(document: AccountingDocument) -> ReconciliationIssue | None:

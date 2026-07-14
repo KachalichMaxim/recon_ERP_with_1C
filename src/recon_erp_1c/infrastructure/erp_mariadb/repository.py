@@ -253,6 +253,11 @@ class MariaDbErpReadRepository:
     def list_delivery_documents(self, spec_id: int) -> list[AccountingDocument]:
         return self.list_documents_for_deliveries([spec_id]).get(spec_id, [])
 
+    def get_delivery_documents_and_balance(self, spec_id: int) -> tuple[list[AccountingDocument], Money]:
+        documents, calculations = self.list_documents_and_calculations_for_deliveries([spec_id])
+        calculation = calculations.get(spec_id, {})
+        return documents.get(spec_id, []), Money.of(calculation.get("balance") or "0", "RUB")
+
     def list_documents_for_deliveries(self, spec_ids: list[int]) -> dict[int, list[AccountingDocument]]:
         documents, _calculations = self.list_documents_and_calculations_for_deliveries(spec_ids)
         return documents
