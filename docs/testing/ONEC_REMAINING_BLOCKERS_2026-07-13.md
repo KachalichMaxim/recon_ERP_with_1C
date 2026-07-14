@@ -199,12 +199,12 @@ include=purchases,document_lines
 
 - таблицы `veda_reconciliation_runs`, `veda_reconciliation_items`, `veda_reconciliation_comments` созданы в production MariaDB;
 - сохранение запуска и строк выполняется одной транзакцией;
-- контрольный запуск `spec_id=20334` записан полностью: 1 шапка и 19 результатов;
+- контрольный запуск `spec_id=20334` записан полностью; после включения НДС из строк 1С результат повторно проверен 14.07.2026;
 - добавлен воспроизводимый CLI `tools/e2e_reconcile_delivery.py` с JSON/XLSX-выходом.
 
 ## Итог
 
-Проверка известных ERP-документов уже выполняется end-to-end. Для контрольной заявки получено `19 match`, `0 mismatch`, `0 not_found`; итоговые сальдо ERP и 1C совпадают.
+Проверка известных ERP-документов уже выполняется end-to-end. Повторная проверка контрольной заявки 14.07.2026: `17 match`, `2 vat_mismatch`, `7 missing_erp_invoice`, `0 not_found`; итоговые сальдо ERP и 1C совпадают. Расхождения НДС относятся к счетам `ВА-007260` и `ВА-007262`: ERP `Без НДС`, строки 1С `20%`.
 
 Функциональных блокеров REST 1C для согласованного сценария одной поставки не осталось. Реквизиты счета-фактуры в `sales[]` приняты как `tax_invoice_number`/`tax_invoice_date`.
 
@@ -228,4 +228,4 @@ include=purchases,document_lines
 
 Повторный запрос без `counterparty_inn` вернул `5 purchases` и `5 document_lines`, включая `00БП-012300`. Строка `6 462,89` содержит `contract_code=БП-003834` и `linked_contract_code=БП-068418`. Поставочное обнаружение и DTO строки приняты.
 
-Python-поддержка `scope=delivery` включена в production. В поставочной области фильтр `counterparty_code/counterparty_inn` не передается; организация и коды договоров CB/CP сохраняются. Контрольный E2E: `19 match`, `7 missing_erp_invoice`, сальдо ERP/1C `-6 666,82`, разница `0`.
+Python-поддержка `scope=delivery` включена в production. В поставочной области фильтр `counterparty_code/counterparty_inn` не передается; организация и коды договоров CB/CP сохраняются. Контрольный E2E 14.07.2026: `17 match`, `2 vat_mismatch`, `7 missing_erp_invoice`; сальдо ERP/1C `-6 666,82`, разница `0`.
