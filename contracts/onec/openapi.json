@@ -2160,12 +2160,14 @@
                 ],
                 "description": "Документ 1C РеализацияТоваровУслуг. Вид первичного документа act/upd/invoice не кодируется в document_type."
               },
-              "invoice_number": {
-                "type": "string"
-              },
-              "invoice_date": {
+              "tax_invoice_number": {
                 "type": "string",
-                "format": "date"
+                "description": "Номер связанного выданного счета-фактуры. Не является номером счета покупателю."
+              },
+              "tax_invoice_date": {
+                "type": "string",
+                "format": "date",
+                "description": "Дата связанного выданного счета-фактуры."
               },
               "allocations": {
                 "type": "array",

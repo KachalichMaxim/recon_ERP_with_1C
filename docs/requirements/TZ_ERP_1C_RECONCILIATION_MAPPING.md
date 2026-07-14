@@ -869,7 +869,7 @@ UI-бейджи:
    - `contr_code`;
    - `dog_code`;
    - `spec_contract_code`;
-   - `invoice_number`;
+   - `tax_invoice_number` и `tax_invoice_date` для реализации;
    - `sum`;
    - `line_kind`;
    - `line_sum`.

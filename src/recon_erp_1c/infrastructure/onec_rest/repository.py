@@ -301,6 +301,8 @@ def _document_from_1c_row(
         source_id=source_id,
         operation_id=None,
         vat_rate=_first_text(row, "vat_rate", "vat"),
+        tax_invoice_number=_first_text(row, "tax_invoice_number", "invoice_number"),
+        tax_invoice_date=_as_date(row.get("tax_invoice_date") or row.get("invoice_date")),
         linked_contract_codes=tuple(_text_list(row.get("linked_contract_codes"))),
         lines=lines,
         allocations=tuple(_allocation_from_row(item, row) for item in _dict_list(row.get("allocations"))),

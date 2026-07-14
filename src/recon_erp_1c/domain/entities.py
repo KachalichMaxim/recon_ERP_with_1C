@@ -106,6 +106,8 @@ class AccountingDocument:
     source_number: str = ""
     operation_id: int | None = None
     vat_rate: str = ""
+    tax_invoice_number: str = ""
+    tax_invoice_date: date | None = None
     reimbursement_type: str = ""
     payment_amount: Money | None = None
     linked_contract_codes: tuple[str, ...] = ()

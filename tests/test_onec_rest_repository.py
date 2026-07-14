@@ -33,7 +33,19 @@ def _delivery() -> Delivery:
 def test_repository_keeps_lines_allocations_and_balances() -> None:
     snapshot = {
         "customer_invoices": [],
-        "sales": [],
+        "sales": [
+            {
+                "source_id": "sale-guid",
+                "number": "00БП-003225",
+                "document_type": "sale",
+                "date": "2025-07-30",
+                "amount_total": 14636.84,
+                "currency": "RUB",
+                "contract_code": "БП-068417",
+                "tax_invoice_number": "00БП-03225  ",
+                "tax_invoice_date": "2025-07-30",
+            }
+        ],
         "purchases": [
             {
                 "source_id": "purchase-guid",
@@ -101,9 +113,12 @@ def test_repository_keeps_lines_allocations_and_balances() -> None:
 
     purchase = next(document for document in result.documents if document.kind.value == "purchase")
     payment = next(document for document in result.documents if document.kind.value == "payment")
+    sale = next(document for document in result.documents if document.kind.value == "sale")
     assert purchase.lines[0].line_id == "3"
     assert purchase.lines[0].amount.amount.__str__() == "6462.89"
     assert payment.allocations[0].invoice_number == "ВА-007517"
+    assert sale.tax_invoice_number == "00БП-03225"
+    assert sale.tax_invoice_date == date(2025, 7, 30)
     assert result.balances[0].signed_closing_balance.amount.__str__() == "-50.00"
     assert result.warnings == ("Часть аналитики недоступна",)
     assert len(client.requests) == 1
