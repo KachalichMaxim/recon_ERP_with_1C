@@ -85,7 +85,7 @@ def reconciliation_run_xlsx(run: dict[str, Any]) -> bytes:
                 ["Сальдо ERP", _nested_money_amount(balance.get("erp_balance"))],
                 ["Сальдо 1С по прямым договорам", _nested_money_amount(balance.get("direct_onec_balance"))],
                 ["Связанные строки на других договорах", _nested_money_amount(balance.get("allocated_adjustment"))],
-                ["Сальдо 1С по поставке", _nested_money_amount(balance.get("onec_balance"))],
+                ["Остаток 1С по договорам поставки", _nested_money_amount(balance.get("onec_balance"))],
                 ["Разница сальдо ERP - 1С", _nested_money_amount(balance.get("difference"))],
                 ["Статус сальдо", balance.get("status") or ""],
             ]

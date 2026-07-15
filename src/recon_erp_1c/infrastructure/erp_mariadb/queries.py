@@ -713,7 +713,7 @@ OPERATION_CLOSING_DOCS_BY_OPERATION_IDS = """
 SELECT
     akt.f_operid AS operation_id,
     CASE
-        WHEN COALESCE(akt.f_type, 0) = 7 THEN 'purchase'
+        WHEN COALESCE(akt.f_type, 0) IN (7, 23, 24, 25) THEN 'purchase'
         ELSE 'sale'
     END AS document_kind,
     COALESCE(
@@ -750,7 +750,7 @@ UNION ALL
 SELECT
     details_opers.f_operid AS operation_id,
     CASE
-        WHEN COALESCE(akt.f_type, 0) = 7 THEN 'purchase'
+        WHEN COALESCE(akt.f_type, 0) IN (7, 23, 24, 25) THEN 'purchase'
         ELSE 'sale'
     END AS document_kind,
     COALESCE(
@@ -844,8 +844,8 @@ WHERE COALESCE(NULLIF(document.f_kod1c, ''), NULLIF(parent.f_kod1c, ''), '') = %
         ELSE COALESCE(parent.f_dt, document.f_dt)
       END = %(document_date)s
   AND document.f_status <> 9
-  AND (%(document_kind)s = 'purchase' AND document.f_type = 7
-       OR %(document_kind)s = 'sale' AND COALESCE(document.f_type, 0) <> 7)
+  AND (%(document_kind)s = 'purchase' AND document.f_type IN (7, 23, 24, 25)
+       OR %(document_kind)s = 'sale' AND COALESCE(document.f_type, 0) NOT IN (7, 23, 24, 25))
 LIMIT 1;
 """
 
