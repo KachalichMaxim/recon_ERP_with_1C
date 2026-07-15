@@ -932,7 +932,7 @@
       ? `<button class="select-spec-btn ${selected ? 'selected' : ''}" type="button" data-select-spec-id="${escapeHtml(specId || '')}" aria-label="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}" title="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}"><span aria-hidden="true">${selected ? '●' : '○'}</span></button>`
       : '';
     const labelHtml = erpUrl
-      ? `<a class="matrix-link" href="${escapeHtml(erpUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(label)}</a>`
+      ? `<a class="matrix-link" href="${escapeHtml(erpUrl)}" target="_top" title="Открыть в ERP" onclick="event.stopPropagation()">${escapeHtml(label)}</a>`
       : `<span>${escapeHtml(label)}</span>`;
     return `<tr class="${rowClass}" ${rowAttrs}>
       <td class="select-col select-cell">${selectControl}</td>
@@ -1005,10 +1005,10 @@
   function matrixDetailDocumentHtml(item) {
     const title = escapeHtml(item.number || '—');
     const documentLink = item.erpUrl
-      ? `<a class="document-link" href="${escapeHtml(item.erpUrl)}" target="_blank" rel="noopener">${title}</a>`
+      ? `<a class="document-link" href="${escapeHtml(item.erpUrl)}" target="_top" title="Открыть документ в ERP">${title}</a>`
       : `<span>${title}</span>`;
     const operationLink = item.operationUrl
-      ? `<a class="operation-link" href="${escapeHtml(item.operationUrl)}" target="_blank" rel="noopener">Операция ERP</a>`
+      ? `<a class="operation-link" href="${escapeHtml(item.operationUrl)}" target="_top" title="Открыть операцию в ERP">Операция ERP</a>`
       : '';
     return `<div class="document-links">${documentLink}${operationLink}</div>`;
   }
@@ -1442,20 +1442,20 @@
       : '';
     const title = `${sourceNumber}<span>${escapeHtml(documentTitle(doc))}</span>`;
     const documentLink = doc.erp_url
-      ? `<a class="document-link" href="${escapeHtml(doc.erp_url)}" target="_blank" rel="noopener">${title}</a>`
+      ? `<a class="document-link" href="${escapeHtml(doc.erp_url)}" target="_top" title="Открыть документ в ERP">${title}</a>`
       : `<span>${title}</span>`;
     const operationLink = doc.operation_url
-      ? `<a class="operation-link" href="${escapeHtml(doc.operation_url)}" target="_blank" rel="noopener">Операция ERP</a>`
+      ? `<a class="operation-link" href="${escapeHtml(doc.operation_url)}" target="_top" title="Открыть операцию в ERP">Операция ERP</a>`
       : '';
     const parentOperationLink = doc.parent_operation_url
-      ? `<a class="operation-link parent-operation-link" href="${escapeHtml(doc.parent_operation_url)}" target="_blank" rel="noopener">Клиентская операция ERP ${escapeHtml(doc.parent_operation_id)}</a>`
+      ? `<a class="operation-link parent-operation-link" href="${escapeHtml(doc.parent_operation_url)}" target="_top" title="Открыть клиентскую операцию в ERP">Клиентская операция ERP ${escapeHtml(doc.parent_operation_id)}</a>`
       : '';
     const relatedLinks = (doc.related_erp_links || []).map((related) => {
       const relatedDocument = related.url
-        ? `<a class="document-link related-document-link" href="${escapeHtml(related.url)}" target="_blank" rel="noopener">${escapeHtml(related.label || 'ERP документ')}</a>`
+        ? `<a class="document-link related-document-link" href="${escapeHtml(related.url)}" target="_top" title="Открыть документ в ERP">${escapeHtml(related.label || 'ERP документ')}</a>`
         : `<span>${escapeHtml(related.label || 'ERP документ')}</span>`;
       const relatedOperation = related.operation_url
-        ? `<a class="operation-link" href="${escapeHtml(related.operation_url)}" target="_blank" rel="noopener">Операция ERP${related.operation_id ? ` ${escapeHtml(related.operation_id)}` : ''}</a>`
+        ? `<a class="operation-link" href="${escapeHtml(related.operation_url)}" target="_top" title="Открыть операцию в ERP">Операция ERP${related.operation_id ? ` ${escapeHtml(related.operation_id)}` : ''}</a>`
         : '';
       return `<div class="related-document-row">${relatedDocument}${relatedOperation}</div>`;
     }).join('');
@@ -1469,6 +1469,11 @@
     if (row.status === 'not_linked_to_delivery_in_erp') return 'Документ 1С существует, но не связан с выбранной поставкой ERP';
     if (row.status === 'missing_erp_invoice') return 'По операции ERP не выставлен или не привязан счет покупателю';
     if (row.status === 'missing_erp_closing_document') return 'По операции ERP отсутствует закрывающий документ';
+    if (row.status === 'vat_mismatch') {
+      const erpVat = row.erp_document?.vat_rate || 'не указана';
+      const onecVat = row.onec_document?.vat_rate || 'не указана';
+      return `Ставка НДС: ERP — ${erpVat}, 1С — ${onecVat}`;
+    }
     const labels = {
       code1c: 'код 1С',
       date: 'дата',

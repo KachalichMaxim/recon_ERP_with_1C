@@ -424,7 +424,21 @@ SELECT DISTINCT
           AND child.f_type = 1
           AND child.f_status <> 9
     ), '') AS related_operation_ids,
-    COALESCE(nds.f_name, '') AS vat_rate,
+    CASE
+        WHEN EXISTS (
+            SELECT 1 FROM veda_schets child
+            WHERE child.f_maininv = schet.f_id AND child.f_type = 1 AND child.f_status <> 9
+        ) THEN COALESCE((
+            SELECT CASE
+                WHEN COUNT(DISTINCT child.f_nds) = 1 THEN MAX(child_nds.f_name)
+                ELSE ''
+            END
+            FROM veda_schets child
+            LEFT JOIN veda_spr child_nds ON child_nds.f_type = 10 AND child_nds.f_num = child.f_nds
+            WHERE child.f_maininv = schet.f_id AND child.f_type = 1 AND child.f_status <> 9
+        ), '')
+        ELSE COALESCE(nds.f_name, '')
+    END AS vat_rate,
     '' AS reimbursement_type,
     CASE WHEN schet.f_status = 9 THEN 1 ELSE 0 END AS deleted,
     NULL AS paid_amount
@@ -474,7 +488,21 @@ SELECT DISTINCT
           AND child.f_type = 1
           AND child.f_status <> 9
     ), '') AS related_operation_ids,
-    COALESCE(nds.f_name, '') AS vat_rate,
+    CASE
+        WHEN EXISTS (
+            SELECT 1 FROM veda_schets child
+            WHERE child.f_maininv = schet.f_id AND child.f_type = 1 AND child.f_status <> 9
+        ) THEN COALESCE((
+            SELECT CASE
+                WHEN COUNT(DISTINCT child.f_nds) = 1 THEN MAX(child_nds.f_name)
+                ELSE ''
+            END
+            FROM veda_schets child
+            LEFT JOIN veda_spr child_nds ON child_nds.f_type = 10 AND child_nds.f_num = child.f_nds
+            WHERE child.f_maininv = schet.f_id AND child.f_type = 1 AND child.f_status <> 9
+        ), '')
+        ELSE COALESCE(nds.f_name, '')
+    END AS vat_rate,
     '' AS reimbursement_type,
     CASE WHEN schet.f_status = 9 THEN 1 ELSE 0 END AS deleted,
     NULL AS paid_amount

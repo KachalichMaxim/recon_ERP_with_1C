@@ -37,3 +37,10 @@ def test_supplier_operation_exposes_parent_customer_operation_link() -> None:
     assert payload is not None
     assert payload["operation_url"].endswith("obid=493958#")
     assert payload["parent_operation_url"].endswith("obid=487320#")
+
+
+def test_aggregate_customer_invoice_uses_consistent_child_vat_rate() -> None:
+    sql = queries.DELIVERY_CUSTOMER_INVOICES_BY_SPEC_IDS
+
+    assert "COUNT(DISTINCT child.f_nds) = 1" in sql
+    assert "THEN MAX(child_nds.f_name)" in sql
