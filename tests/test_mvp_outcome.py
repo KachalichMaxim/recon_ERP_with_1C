@@ -37,6 +37,7 @@ def test_run_exposes_independent_outcome_coverage_and_status_groups() -> None:
             ReconciliationIssue(status=ReconciliationStatus.MISSING_ERP_INVOICE, message="invoice"),
             ReconciliationIssue(status=ReconciliationStatus.NOT_FOUND_IN_1C, message="1c"),
             ReconciliationIssue(status=ReconciliationStatus.NOT_LINKED_TO_DELIVERY_IN_ERP, message="link"),
+            ReconciliationIssue(status=ReconciliationStatus.ERP_INVOICE_LINK_MISSING, message="invoice link"),
             ReconciliationIssue(status=ReconciliationStatus.VAT_MISMATCH, message="vat"),
         ],
         coverage=SnapshotCoverage(
@@ -62,7 +63,7 @@ def test_run_exposes_independent_outcome_coverage_and_status_groups() -> None:
         "matched": 1,
         "cannot_check": 1,
         "not_found": 1,
-        "link_problem": 1,
+        "link_problem": 2,
         "attribute_mismatch": 1,
     }
     assert payload["coverage"]["complete"] is None

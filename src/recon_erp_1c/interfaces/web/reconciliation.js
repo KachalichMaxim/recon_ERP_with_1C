@@ -1314,7 +1314,7 @@
       matched: sum(['match']),
       cannot_check: sum(['missing_erp_invoice', 'missing_erp_closing_document', 'erp_code1c_missing']),
       not_found: sum(['not_found_in_1c', 'not_found_in_erp']),
-      link_problem: sum(['not_linked_to_delivery_in_erp', 'contract_context_missing']),
+      link_problem: sum(['not_linked_to_delivery_in_erp', 'contract_context_missing', 'erp_invoice_link_missing']),
       attribute_mismatch: sum(['amount_mismatch', 'date_mismatch', 'contract_mismatch', 'number_mismatch', 'vat_mismatch', 'duplicate_in_1c', 'ambiguous_match', 'aggregation_conflict', 'not_comparable']),
     };
   }
@@ -1396,7 +1396,7 @@
     if (filter === 'problems') rows = rows.filter((row) => row.status !== 'match');
     else if (filter === 'cannot_check') rows = rows.filter((row) => ['missing_erp_invoice', 'missing_erp_closing_document', 'erp_code1c_missing'].includes(row.status));
     else if (filter === 'not_found') rows = rows.filter((row) => ['not_found_in_1c', 'not_found_in_erp'].includes(row.status));
-    else if (filter === 'link_problem') rows = rows.filter((row) => ['not_linked_to_delivery_in_erp', 'contract_context_missing'].includes(row.status));
+    else if (filter === 'link_problem') rows = rows.filter((row) => ['not_linked_to_delivery_in_erp', 'contract_context_missing', 'erp_invoice_link_missing'].includes(row.status));
     else if (filter === 'attribute_mismatch') rows = rows.filter((row) => ['amount_mismatch', 'date_mismatch', 'contract_mismatch', 'number_mismatch', 'vat_mismatch', 'duplicate_in_1c', 'ambiguous_match', 'aggregation_conflict', 'not_comparable'].includes(row.status));
     else if (filter === 'mismatches') rows = rows.filter((row) => [
       'amount_mismatch',
@@ -1596,7 +1596,7 @@
     if (row.status === 'erp_code1c_missing') return 'В документе ERP не заполнен код 1С; точечная проверка выгрузки в 1С невозможна';
     if (row.status === 'not_found_in_erp') return 'Документ 1С не найден в ERP';
     if (row.status === 'not_linked_to_delivery_in_erp') return 'Документ 1С существует, но не связан с выбранной поставкой ERP';
-    if (row.status === 'missing_erp_invoice') return row.message || 'По операции ERP не найдена прямая связь со счетом покупателю';
+    if (row.status === 'missing_erp_invoice' || row.status === 'erp_invoice_link_missing') return row.message || 'По операции ERP не найдена прямая связь со счетом покупателю';
     if (row.status === 'missing_erp_closing_document') return 'По операции ERP отсутствует закрывающий документ';
     if (row.status === 'vat_mismatch') {
       const erpVat = row.erp_document?.vat_rate || 'не указана';
@@ -1657,6 +1657,7 @@
       not_comparable: ['warn', 'Не сверяется'],
       contract_context_missing: ['bad', 'Нет аналитики поставки'],
       missing_erp_invoice: ['warn', 'Нет связи со счетом'],
+      erp_invoice_link_missing: ['warn', 'Счет на другой операции'],
       missing_erp_closing_document: ['bad', 'Нет закрывающего документа'],
     };
     const value = map[status] || ['warn', status || 'unknown'];

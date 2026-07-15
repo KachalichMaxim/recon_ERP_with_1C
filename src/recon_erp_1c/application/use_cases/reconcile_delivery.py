@@ -398,7 +398,7 @@ def _erp_document_precondition_issue(document: AccountingDocument) -> Reconcilia
                 else ""
             )
             return ReconciliationIssue(
-                status=ReconciliationStatus.MISSING_ERP_INVOICE,
+                status=ReconciliationStatus.ERP_INVOICE_LINK_MISSING,
                 message=(
                     f"По операции ERP нет прямой связи со счетом покупателю. "
                     f"В поставке найден счет {candidate.number or candidate.source_id} на ту же сумму"

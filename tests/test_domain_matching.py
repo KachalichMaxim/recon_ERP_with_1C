@@ -784,7 +784,7 @@ def test_missing_direct_invoice_link_reports_unique_delivery_candidate() -> None
 
     issue = match_documents([expected_invoice], [])[0]
 
-    assert issue.status == ReconciliationStatus.MISSING_ERP_INVOICE
+    assert issue.status == ReconciliationStatus.ERP_INVOICE_LINK_MISSING
     assert issue.primary_reason == "erp_invoice_link_missing_candidate_found"
     assert issue.severity == "warning"
     assert "ВЛ-000576" in issue.message

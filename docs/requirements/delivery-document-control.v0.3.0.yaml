@@ -13,6 +13,13 @@ rules:
     result: missing_erp_invoice
     owner_hint: ERP
 
+  - id: ERP-INVOICE-LINK-CANDIDATE
+    title: Счет той же суммы найден в поставке, но привязан к другой операции
+    status: hypothesis
+    severity: warning
+    result: erp_invoice_link_missing
+    owner_hint: ERP
+
   - id: ERP-CLOSING-DOC-REQUIRED
     title: Для реализованной операции должен существовать связанный закрывающий документ
     status: hypothesis

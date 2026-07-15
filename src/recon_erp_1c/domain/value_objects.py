@@ -36,6 +36,7 @@ class ReconciliationStatus(StrEnum):
     NOT_FOUND_IN_ERP = "not_found_in_erp"
     NOT_LINKED_TO_DELIVERY_IN_ERP = "not_linked_to_delivery_in_erp"
     MISSING_ERP_INVOICE = "missing_erp_invoice"
+    ERP_INVOICE_LINK_MISSING = "erp_invoice_link_missing"
     MISSING_ERP_CLOSING_DOCUMENT = "missing_erp_closing_document"
     DUPLICATE_IN_1C = "duplicate_in_1c"
     AMBIGUOUS_MATCH = "ambiguous_match"

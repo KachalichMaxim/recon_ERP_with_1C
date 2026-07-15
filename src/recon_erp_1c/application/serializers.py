@@ -179,7 +179,11 @@ def _status_groups(counts: dict[str, int]) -> dict[str, int]:
         "matched": {"match"},
         "cannot_check": {"missing_erp_invoice", "missing_erp_closing_document", "erp_code1c_missing"},
         "not_found": {"not_found_in_1c", "not_found_in_erp"},
-        "link_problem": {"not_linked_to_delivery_in_erp", "contract_context_missing"},
+        "link_problem": {
+            "not_linked_to_delivery_in_erp",
+            "contract_context_missing",
+            "erp_invoice_link_missing",
+        },
         "attribute_mismatch": {
             "amount_mismatch",
             "date_mismatch",
