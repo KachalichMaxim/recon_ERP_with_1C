@@ -36,6 +36,11 @@ def document_to_dict(document: AccountingDocument | None) -> dict[str, Any] | No
             if document.operation_id
             else ""
         )
+        payload["parent_operation_url"] = (
+            f"http://erp.vedagent/veda/?pgid=35&invtb=145&obid={document.parent_operation_id}#"
+            if document.parent_operation_id
+            else ""
+        )
         payload["related_erp_links"] = [
             {
                 "label": related.number or f"ERP документ {related.source_id}",

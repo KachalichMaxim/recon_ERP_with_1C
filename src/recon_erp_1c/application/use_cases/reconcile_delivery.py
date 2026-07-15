@@ -460,6 +460,7 @@ def aggregate_documents(documents: list[AccountingDocument]) -> list[AccountingD
                 source_id=",".join(row.source_id for row in rows if row.source_id),
                 source_number=first.source_number,
                 operation_id=None,
+                parent_operation_id=first.parent_operation_id,
                 vat_rate=first.vat_rate if same_vat else "",
                 reimbursement_type=first.reimbursement_type,
                 linked_contract_codes=tuple(dict.fromkeys(code for row in rows for code in row.linked_contract_codes)),
@@ -578,6 +579,7 @@ def _combine_documents(rows: list[AccountingDocument]) -> AccountingDocument:
         source_id=",".join(row.source_id for row in rows if row.source_id),
         source_number=first.source_number,
         operation_id=None,
+        parent_operation_id=first.parent_operation_id,
         vat_rate=first.vat_rate,
         reimbursement_type=first.reimbursement_type,
         linked_contract_codes=tuple(
@@ -611,14 +613,19 @@ def _compare_matched_detail(erp_doc: AccountingDocument, detail_match: _DetailMa
         else onec_doc
     )
     issue = compare_documents(erp_doc, comparable_onec)
+    if issue.status == ReconciliationStatus.MATCH and erp_doc.kind.value == "purchase" and erp_doc.operation_id:
+        match_message = (
+            f"Входящий документ поставщика совпал и связан с поставкой через операцию ERP "
+            f"{erp_doc.operation_id}; договор поставщика показан справочно"
+        )
+    elif issue.status == ReconciliationStatus.MATCH:
+        match_message = "Документ совпал; договор документа 1С показан справочно"
+    else:
+        match_message = issue.message
     return replace(
         issue,
         onec_document=onec_doc,
-        message=(
-            "Документ совпал; договор документа 1С показан справочно"
-            if issue.status == ReconciliationStatus.MATCH
-            else issue.message
-        ),
+        message=match_message,
     )
 
 

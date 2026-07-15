@@ -112,6 +112,7 @@ class AccountingDocument:
     source_id: str = ""
     source_number: str = ""
     operation_id: int | None = None
+    parent_operation_id: int | None = None
     vat_rate: str = ""
     tax_invoice_number: str = ""
     tax_invoice_date: date | None = None

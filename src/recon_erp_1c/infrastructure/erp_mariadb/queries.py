@@ -662,6 +662,7 @@ DELIVERY_OPERATIONS_BASE_BY_SPEC_IDS = """
 SELECT
     spec.f_id AS spec_id,
     oper.f_id AS operation_id,
+    COALESCE(oper.f_parentid, 0) AS parent_operation_id,
     COALESCE(oper.f_isvozm, 0) AS reimbursement_id,
     COALESCE(spec.f_kod1cb, '') AS buyer_contract_code,
     COALESCE(spec.f_kod1cp, '') AS committent_contract_code,

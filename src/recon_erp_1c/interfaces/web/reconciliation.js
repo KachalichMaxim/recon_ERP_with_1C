@@ -1438,6 +1438,9 @@
     const operationLink = doc.operation_url
       ? `<a class="operation-link" href="${escapeHtml(doc.operation_url)}" target="_blank" rel="noopener">Операция ERP</a>`
       : '';
+    const parentOperationLink = doc.parent_operation_url
+      ? `<a class="operation-link parent-operation-link" href="${escapeHtml(doc.parent_operation_url)}" target="_blank" rel="noopener">Клиентская операция ERP ${escapeHtml(doc.parent_operation_id)}</a>`
+      : '';
     const relatedLinks = (doc.related_erp_links || []).map((related) => {
       const relatedDocument = related.url
         ? `<a class="document-link related-document-link" href="${escapeHtml(related.url)}" target="_blank" rel="noopener">${escapeHtml(related.label || 'ERP документ')}</a>`
@@ -1447,7 +1450,7 @@
         : '';
       return `<div class="related-document-row">${relatedDocument}${relatedOperation}</div>`;
     }).join('');
-    return `<div class="document-links">${documentLink}${operationLink}${relatedLinks}</div>`;
+    return `<div class="document-links">${documentLink}${operationLink}${parentOperationLink}${relatedLinks}</div>`;
   }
 
   function issueReason(row) {
@@ -1477,6 +1480,12 @@
     const basis = basisLabels[row.match_basis] || '';
     if (fields.length) return `Расходятся: ${fields.join(', ')}${basis ? ` · проверено ${basis}` : ''}`;
     if (row.status === 'match' && basis) {
+      if (row.erp_document?.kind === 'purchase' && row.erp_document?.operation_id) {
+        const supplierContract = row.onec_document?.contract_code1c
+          ? ` · договор поставщика ${row.onec_document.contract_code1c}`
+          : '';
+        return `Совпало ${basis} · входящий документ связан с поставкой через операцию ERP ${row.erp_document.operation_id}${supplierContract}`;
+      }
       const linkedContract = row.erp_document?.contract_code1c
         && row.onec_document?.contract_code1c
         && row.erp_document.contract_code1c !== row.onec_document.contract_code1c;
