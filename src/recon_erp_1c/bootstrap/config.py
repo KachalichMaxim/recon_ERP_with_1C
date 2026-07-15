@@ -15,31 +15,33 @@ class MariaDbConfig:
     read_timeout_seconds: int = 30
     write_timeout_seconds: int = 30
     bind_address: str = ""
+    env_prefix: str = "RECON_ERP_DB"
 
     @classmethod
-    def from_env(cls) -> "MariaDbConfig":
+    def from_env(cls, prefix: str = "RECON_ERP_DB") -> "MariaDbConfig":
         return cls(
-            host=os.environ.get("RECON_ERP_DB_HOST", ""),
-            port=int(os.environ.get("RECON_ERP_DB_PORT", "3306")),
-            database=os.environ.get("RECON_ERP_DB_NAME", ""),
-            user=os.environ.get("RECON_ERP_DB_USER", ""),
-            password=os.environ.get("RECON_ERP_DB_PASSWORD", ""),
-            connect_timeout_seconds=int(os.environ.get("RECON_ERP_DB_CONNECT_TIMEOUT", "5")),
-            read_timeout_seconds=int(os.environ.get("RECON_ERP_DB_READ_TIMEOUT", "30")),
-            write_timeout_seconds=int(os.environ.get("RECON_ERP_DB_WRITE_TIMEOUT", "30")),
-            bind_address=os.environ.get("RECON_ERP_DB_BIND_ADDRESS", "").strip(),
+            host=os.environ.get(f"{prefix}_HOST", ""),
+            port=int(os.environ.get(f"{prefix}_PORT", "3306")),
+            database=os.environ.get(f"{prefix}_NAME", ""),
+            user=os.environ.get(f"{prefix}_USER", ""),
+            password=os.environ.get(f"{prefix}_PASSWORD", ""),
+            connect_timeout_seconds=int(os.environ.get(f"{prefix}_CONNECT_TIMEOUT", "5")),
+            read_timeout_seconds=int(os.environ.get(f"{prefix}_READ_TIMEOUT", "30")),
+            write_timeout_seconds=int(os.environ.get(f"{prefix}_WRITE_TIMEOUT", "30")),
+            bind_address=os.environ.get(f"{prefix}_BIND_ADDRESS", "").strip(),
+            env_prefix=prefix,
         )
 
     def missing_fields(self) -> list[str]:
         missing: list[str] = []
         if not self.host:
-            missing.append("RECON_ERP_DB_HOST")
+            missing.append(f"{self.env_prefix}_HOST")
         if not self.database:
-            missing.append("RECON_ERP_DB_NAME")
+            missing.append(f"{self.env_prefix}_NAME")
         if not self.user:
-            missing.append("RECON_ERP_DB_USER")
+            missing.append(f"{self.env_prefix}_USER")
         if not self.password:
-            missing.append("RECON_ERP_DB_PASSWORD")
+            missing.append(f"{self.env_prefix}_PASSWORD")
         return missing
 
     @property
@@ -80,6 +82,7 @@ class OneCRestConfig:
 @dataclass(frozen=True, slots=True)
 class AppConfig:
     erp_db: MariaDbConfig
+    storage_db: MariaDbConfig
     onec_rest: OneCRestConfig
     environment: str = "development"
     listen_host: str = "0.0.0.0"
@@ -95,6 +98,7 @@ class AppConfig:
     def from_env(cls) -> "AppConfig":
         return cls(
             erp_db=MariaDbConfig.from_env(),
+            storage_db=MariaDbConfig.from_env("RECON_STORAGE_DB"),
             onec_rest=OneCRestConfig.from_env(),
             environment=os.environ.get("RECON_ENV", "development").strip().lower() or "development",
             listen_host=os.environ.get("RECON_API_HOST", "0.0.0.0"),

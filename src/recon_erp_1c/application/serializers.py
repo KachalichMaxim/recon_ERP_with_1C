@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
+import hashlib
+import json
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
@@ -72,8 +74,40 @@ def _erp_source_url(kind: str, source_id: str) -> str:
     return ""
 
 
-def issue_to_dict(issue: ReconciliationIssue) -> dict[str, Any]:
+def reconciliation_issue_key(issue: ReconciliationIssue, ordinal: int = 0) -> str:
+    erp = issue.erp_document
+    onec = issue.onec_document
+    canonical = {
+        "ordinal": ordinal,
+        "status": issue.status.value,
+        "erp": _document_identity(erp),
+        "onec": _document_identity(onec),
+        "primary_reason": issue.primary_reason,
+        "matched_detail_id": issue.matched_detail_id,
+    }
+    raw = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _document_identity(document: AccountingDocument | None) -> dict[str, Any] | None:
+    if document is None:
+        return None
     return {
+        "source_id": document.source_id,
+        "operation_id": document.operation_id,
+        "kind": document.kind.value,
+        "code1c": document.code1c,
+        "number": document.number,
+        "date": document.date.isoformat() if document.date else "",
+        "amount": str(document.amount.amount),
+        "currency": document.amount.currency,
+        "contract_code1c": document.contract_code1c,
+    }
+
+
+def issue_to_dict(issue: ReconciliationIssue, ordinal: int = 0) -> dict[str, Any]:
+    return {
+        "issue_key": reconciliation_issue_key(issue, ordinal),
         "status": issue.status.value,
         "message": issue.message,
         "fields": list(issue.fields),
@@ -94,6 +128,7 @@ def run_to_dict(run: ReconciliationRun) -> dict[str, Any]:
     return {
         "run_id": run.run_id,
         "created_at": run.created_at.isoformat(),
+        "period": to_jsonable(run.period),
         "matched": run.matched,
         "delivery": to_jsonable(run.delivery),
         "summary": {
@@ -103,5 +138,5 @@ def run_to_dict(run: ReconciliationRun) -> dict[str, Any]:
         "balance_comparison": to_jsonable(run.balance_comparison),
         "source_warnings": list(run.source_warnings),
         "metrics": to_jsonable(run.metrics),
-        "issues": [issue_to_dict(issue) for issue in run.issues],
+        "issues": [issue_to_dict(issue, ordinal) for ordinal, issue in enumerate(run.issues)],
     }

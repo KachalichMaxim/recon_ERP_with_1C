@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light">
   <title>Сверка ERP и 1С</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23C4122F'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='26' font-family='Arial' font-weight='700' fill='white'%3EV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="reconciliation.css?v=20260715_vat_links_fix">
-  <script src="reconciliation.js?v=20260715_vat_links_fix" defer></script>
+  <link rel="stylesheet" href="/reconciliation.css?v=20260715_audit_storage">
+  <script src="/reconciliation.js?v=20260715_audit_storage" defer></script>
 </head>
 <body>
   <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
@@ -259,12 +259,12 @@
         </div>
 
         <div class="kpi-grid recon-kpi" id="summaryCards">
-          <button class="kpi kpi-filter active" type="button" data-result-filter="all"><span>Документов</span><b data-key="issues_total">0</b></button>
+          <button class="kpi kpi-filter active" type="button" data-result-filter="all"><span>Проверено строк</span><b data-key="issues_total">0</b></button>
           <button class="kpi kpi-filter ok" type="button" data-result-filter="match"><span>Совпало</span><b data-status="match">0</b></button>
           <button class="kpi kpi-filter bad" type="button" data-result-filter="not_found_in_1c"><span>Не найдено в 1С</span><b data-status="not_found_in_1c">0</b></button>
           <button class="kpi kpi-filter bad" type="button" data-result-filter="erp_code1c_missing"><span>Нет кода 1С в ERP</span><b data-status="erp_code1c_missing">0</b></button>
           <button class="kpi kpi-filter warn" type="button" data-result-filter="not_linked_to_delivery_in_erp"><span>Нет связи ERP</span><b data-status="not_linked_to_delivery_in_erp">0</b></button>
-          <button class="kpi kpi-filter bad" type="button" data-result-filter="mismatches"><span>Расхождения</span><b data-role="mismatches">0</b></button>
+          <button class="kpi kpi-filter bad" type="button" data-result-filter="problems"><span>К разбору</span><b data-role="problems">0</b></button>
         </div>
 
         <div class="result-toolbar">

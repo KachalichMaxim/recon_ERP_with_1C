@@ -21,6 +21,8 @@ erp_1c_reconciliation/
     prototype/
   sql/
     1c_reconciliation_schema.sql
+    migrations/
+      002_separate_audit_storage.sql
   src/
     recon_erp_1c/
       application/
@@ -56,6 +58,10 @@ GET /health
 GET /api/config/status
 GET /api/reconciliation/specifications
 GET /api/reconciliation/run
+GET /api/reconciliation/history
+GET /api/reconciliation/history/{run_uuid}
+GET /api/reconciliation/comments
+POST /api/reconciliation/comments
 ```
 
 ## Реализованные adapters
@@ -67,3 +73,5 @@ infrastructure/persistence/mariadb_log_repository.py
 ```
 
 `reference/prototype` не является production-кодом и не импортируется из `src`.
+
+ERP MariaDB подключается через `RECON_ERP_DB_*` только для чтения. Журнал и комментарии подключаются независимо через `RECON_STORAGE_DB_*`.

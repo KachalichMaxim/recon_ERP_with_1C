@@ -26,7 +26,7 @@ from recon_erp_1c.infrastructure.export.xlsx import reconciliation_matrix_xlsx, 
 from recon_erp_1c.infrastructure.onec_rest.client import OneCRestClient, OneCRestConfig, onec_rest_status
 from recon_erp_1c.infrastructure.onec_rest.repository import OneCRestReadRepository
 from recon_erp_1c.infrastructure.persistence.mariadb_log_repository import MariaDbReconciliationLogRepository
-from recon_erp_1c.interfaces.http.auth import AuthenticationError, create_session_token, request_context
+from recon_erp_1c.interfaces.http.auth import AuthenticationError, RequestContext, create_session_token, request_context
 
 
 _BATCH_JOBS: dict[str, dict[str, object]] = {}
@@ -53,6 +53,9 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 "/akt_sverki/reconciliation.js",
             }:
                 self._static(parsed.path)
+                return
+            if parsed.path.startswith("/reconciliation/spec/"):
+                self._static("/reconciliation.html")
                 return
             if parsed.path == "/health":
                 self._health()
@@ -83,6 +86,12 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/reconciliation/history":
                 self._history(query)
+                return
+            if parsed.path.startswith("/api/reconciliation/history/"):
+                self._history_run(parsed.path)
+                return
+            if parsed.path == "/api/reconciliation/comments":
+                self._comments(query)
                 return
             if parsed.path.startswith("/api/reconciliation/batch/"):
                 self._batch_status(parsed.path)
@@ -177,6 +186,7 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 "service": "recon-erp-1c",
                 "architecture": "clean-architecture-ddd",
                 "erp_db_configured": config.erp_db.configured,
+                "storage_db_configured": config.storage_db.configured,
                 "onec_rest_configured": onec_rest_status()["configured"],
                 "auth": {
                     "mode": "erp_launch_token",
@@ -194,6 +204,7 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             {
                 "ok": True,
                 "erp_db": config.erp_db.safe_status(),
+                "storage_db": config.storage_db.safe_status(),
                 "onec_rest": onec_rest_status(),
                 "auth": {
                     "mode": "erp_launch_token",
@@ -360,9 +371,9 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
         )
 
     def _run_reconciliation(self, query: dict[str, list[str]]) -> None:
-        self._require_context()
+        context = self._require_context()
         started = time.perf_counter()
-        run = _execute_reconciliation(query)
+        run = _execute_reconciliation(query, actor=context)
         payload = run_to_dict(run)
         payload["metrics"] = {
             **payload.get("metrics", {}),
@@ -418,7 +429,7 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
         if _app_config().ui_demo:
             self._json(HTTPStatus.OK, {"ok": True, "mode": "ui_demo"})
             return
-        with _connection_factory().connect() as connection:
+        with _storage_connection_factory().connect() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
@@ -448,6 +459,50 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 )
         self._json(HTTPStatus.OK, {"ok": True})
 
+    def _comments(self, query: dict[str, list[str]]) -> None:
+        self._require_context()
+        run_external_id = _first(query, "run_id")
+        spec_id = _optional_int(query, "spec_id")
+        if not run_external_id and spec_id is None:
+            raise ValueError("run_id or spec_id is required")
+        conditions = []
+        params: dict[str, object] = {}
+        if run_external_id:
+            conditions.append("run_external_id = %(run_external_id)s")
+            params["run_external_id"] = run_external_id[:128]
+        if spec_id is not None:
+            conditions.append("spec_id = %(spec_id)s")
+            params["spec_id"] = spec_id
+        with _storage_connection_factory().connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT comment_key, run_external_id, spec_id, status, reason_code,
+                           comment_text, user_login, user_name, created_at, updated_at
+                    FROM veda_reconciliation_comments
+                    WHERE {' AND '.join(conditions)}
+                    ORDER BY updated_at DESC, id DESC
+                    """,
+                    params,
+                )
+                rows = list(cursor.fetchall())
+        items = [
+            {
+                "key": row.get("comment_key"),
+                "run_id": row.get("run_external_id"),
+                "spec_id": row.get("spec_id"),
+                "status": row.get("status"),
+                "reason": row.get("reason_code"),
+                "comment": row.get("comment_text"),
+                "user_login": row.get("user_login"),
+                "user_name": row.get("user_name"),
+                "created_at": str(row.get("created_at") or ""),
+                "updated_at": str(row.get("updated_at") or ""),
+            }
+            for row in rows
+        ]
+        self._json(HTTPStatus.OK, {"ok": True, "items": items, "count": len(items)})
+
     def _history(self, query: dict[str, list[str]]) -> None:
         self._require_context()
         limit = max(1, min(_optional_int(query, "limit") or 20, 100))
@@ -465,13 +520,16 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             conditions.append("client_id = %(client_id)s")
             params["client_id"] = client_id
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        with _connection_factory().connect() as connection:
+        with _storage_connection_factory().connect() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     f"""
                     SELECT
-                        id, scope, scope_id, spec_id, client_id, source_mode,
-                        onec_docs_count, erp_docs_count, status, summary_json, created_at
+                        id, run_external_id, scope, scope_id, spec_id, client_id, source_mode,
+                        period_from, period_to, base_contract_number, spec_number,
+                        onec_docs_count, erp_docs_count, matched_count, unresolved_count,
+                        status, balance_status, erp_balance, onec_balance, balance_difference,
+                        balance_comparable, summary_json, created_at, completed_at
                     FROM veda_reconciliation_runs
                     {where}
                     ORDER BY id DESC
@@ -490,19 +548,58 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             items.append(
                 {
                     "id": row.get("id"),
+                    "run_id": row.get("run_external_id"),
                     "scope": row.get("scope"),
                     "scope_id": row.get("scope_id"),
                     "spec_id": row.get("spec_id"),
                     "client_id": row.get("client_id"),
                     "source_mode": row.get("source_mode"),
+                    "period_from": str(row.get("period_from") or ""),
+                    "period_to": str(row.get("period_to") or ""),
+                    "base_contract_number": row.get("base_contract_number"),
+                    "spec_number": row.get("spec_number"),
                     "onec_docs_count": row.get("onec_docs_count"),
                     "erp_docs_count": row.get("erp_docs_count"),
+                    "matched_count": row.get("matched_count"),
+                    "unresolved_count": row.get("unresolved_count"),
                     "status": row.get("status"),
+                    "balance_status": row.get("balance_status"),
+                    "erp_balance": str(row.get("erp_balance")) if row.get("erp_balance") is not None else None,
+                    "onec_balance": str(row.get("onec_balance")) if row.get("onec_balance") is not None else None,
+                    "balance_difference": str(row.get("balance_difference")) if row.get("balance_difference") is not None else None,
+                    "balance_comparable": bool(row.get("balance_comparable")),
                     "summary": summary,
                     "created_at": str(row.get("created_at") or ""),
+                    "completed_at": str(row.get("completed_at") or ""),
                 }
             )
         self._json(HTTPStatus.OK, {"ok": True, "items": items, "count": len(items)})
+
+    def _history_run(self, path: str) -> None:
+        self._require_context()
+        run_external_id = path.rstrip("/").rsplit("/", 1)[-1]
+        if not run_external_id:
+            raise ValueError("run id is required")
+        with _storage_connection_factory().connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT run_json
+                    FROM veda_reconciliation_runs
+                    WHERE run_external_id = %(run_external_id)s
+                    LIMIT 1
+                    """,
+                    {"run_external_id": run_external_id},
+                )
+                row = cursor.fetchone()
+        if not row:
+            self._json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found", "message": "Run not found"})
+            return
+        try:
+            run = json.loads(row.get("run_json") or "{}")
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Stored run payload is invalid") from exc
+        self._json(HTTPStatus.OK, {"ok": True, "run": run})
 
     def _batch_reconciliation(self) -> None:
         self._require_context()
@@ -608,17 +705,30 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def _execute_reconciliation(query: dict[str, list[str]], *, default_persist_log: bool = True):
+def _execute_reconciliation(
+    query: dict[str, list[str]],
+    *,
+    default_persist_log: bool = True,
+    actor: RequestContext | None = None,
+):
     spec_id = _required_int(query, "spec_id")
     date_from = _required_date(query, "date_from")
     date_to = _required_date(query, "date_to")
     persist_log = _optional_bool(query, "persist_log", default=default_persist_log)
     erp_repository = _erp_repository()
-    connection_factory = _connection_factory()
+    log_repository = None
+    if persist_log:
+        storage_factory = _storage_connection_factory()
+        log_repository = MariaDbReconciliationLogRepository(
+            storage_factory,
+            user_login=actor.user_email if actor else "",
+            user_name=actor.user_name if actor else "",
+            erp_token_hash=actor.erp_token_hash if actor else "",
+        )
     use_case = ReconcileDeliveryUseCase(
         erp_repository=erp_repository,
         onec_repository=OneCRestReadRepository(OneCRestClient(OneCRestConfig.from_env())),
-        log_repository=MariaDbReconciliationLogRepository(connection_factory) if persist_log else None,
+        log_repository=log_repository,
     )
     run = use_case.execute(
         ReconcileDeliveryCommand(
@@ -1320,6 +1430,14 @@ def _connection_factory() -> MariaDbConnectionFactory:
     missing = config.missing_fields()
     if missing:
         raise RuntimeError("ERP MariaDB is not configured: " + ", ".join(missing))
+    return MariaDbConnectionFactory(config)
+
+
+def _storage_connection_factory() -> MariaDbConnectionFactory:
+    config = _app_config().storage_db
+    missing = config.missing_fields()
+    if missing:
+        raise RuntimeError("Reconciliation storage MariaDB is not configured: " + ", ".join(missing))
     return MariaDbConnectionFactory(config)
 
 

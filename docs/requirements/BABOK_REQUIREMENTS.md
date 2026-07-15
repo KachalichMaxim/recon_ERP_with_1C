@@ -202,7 +202,7 @@
 
 | ID | Требование |
 | --- | --- |
-| FR-LOG-01 | Каждый запуск сверки сохранять в `veda_reconciliation_runs`. |
+| FR-LOG-01 | Каждый запуск сверки сохранять в `veda_reconciliation_runs` отдельной MariaDB сервиса. ERP MariaDB остается read-only источником. |
 | FR-LOG-02 | Каждое найденное расхождение сохранять в `veda_reconciliation_items`. |
 | FR-LOG-03 | В run сохранять scope, параметры, пользователя, источник 1C, время запуска, статус, summary. |
 | FR-LOG-04 | В item сохранять тип документа, ключи ERP/1C, статус, сумму ERP, сумму 1C, поля расхождения, `primary_reason`, `severity`, `match_confidence`, `details_json`. |
@@ -416,7 +416,7 @@ GET /reconciliation/v1/snapshot?from=2026-06-01&to=2026-06-30&organization_id=..
 
 | ID | Требование |
 | --- | --- |
-| TR-01 | Установить таблицы `veda_reconciliation_runs` и `veda_reconciliation_items` из `sql/1c_reconciliation_schema.sql`. |
+| TR-01 | Создать отдельную MariaDB сервиса и установить таблицы `veda_reconciliation_runs`, `veda_reconciliation_items`, `veda_reconciliation_comments` из `sql/1c_reconciliation_schema.sql`. Для последующего переноса в ERP MariaDB структура остается MariaDB-совместимой. |
 | TR-02 | Согласовать и реализовать 1C REST API по OpenAPI. |
 | TR-03 | Настроить переменные доступа к 1C REST API: базовый URL, токен или basic auth, timeout. |
 | TR-04 | Настроить ERP endpoint валидации launch token и согласовать состав user profile: `id`, `login/email`, ФИО, роли. |

@@ -199,6 +199,18 @@ python3 tools/smoke_onec_rest_adapter.py
 
 В production `RECON_ERP_DB_BIND_ADDRESS` и `RECON_ONEC_REST_BIND_ADDRESS` должны быть пустыми: серверу нужен нормальный сетевой маршрут до ERP MariaDB и 1C.
 
+Журнал запусков, документных результатов и комментариев хранится отдельно от ERP:
+
+```bash
+RECON_STORAGE_DB_HOST=127.0.0.1
+RECON_STORAGE_DB_PORT=3307
+RECON_STORAGE_DB_NAME=reconciliation_service
+RECON_STORAGE_DB_USER=reconciliation_writer
+RECON_STORAGE_DB_PASSWORD=...
+```
+
+Перед включением `persist_log=1` применить `sql/1c_reconciliation_schema.sql` к этой базе. Выбор MariaDB сохраняет прямой путь миграции журнала в MariaDB ERP: переносится три таблицы, затем меняются только `RECON_STORAGE_DB_*`.
+
 ## Prototype-only
 
 `reference/prototype/prototype_server.py` - перенос текущего серверного прототипа для справки и поэтапной миграции.

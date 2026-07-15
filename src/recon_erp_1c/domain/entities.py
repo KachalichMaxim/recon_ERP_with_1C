@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from .value_objects import ContractRole, DocumentKind, Money, OneCContractCodes, ReconciliationStatus, SourceSystem
+from .value_objects import ContractRole, DateRange, DocumentKind, Money, OneCContractCodes, ReconciliationStatus, SourceSystem
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +163,7 @@ class ReconciliationRun:
     run_id: str
     delivery: Delivery
     created_at: datetime
+    period: DateRange | None = None
     issues: list[ReconciliationIssue] = field(default_factory=list)
     balance_comparison: BalanceComparison | None = None
     source_warnings: tuple[str, ...] = ()

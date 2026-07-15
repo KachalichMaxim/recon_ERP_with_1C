@@ -30,6 +30,7 @@ C4Context
 
   System_Ext(erp, "ERP PHP", "Рабочий интерфейс ERP и источник launch token")
   SystemDb_Ext(erp_db, "ERP MariaDB", "Поставки, договоры, счета, операции, оплаты, акты, пользователи")
+  SystemDb_Ext(audit_db, "Reconciliation MariaDB", "Запуски, результаты, причины и комментарии разбора")
   System_Ext(onec, "1C Enterprise", "Read-only GET REST API для нормализованных документов сверки")
 
   Rel(accountant, erp, "Переходит в модуль сверки из ERP")
@@ -39,7 +40,8 @@ C4Context
   Rel(erp, erp_db, "Читает и пишет бизнес-данные", "PHP / SQL")
   Rel(erp, recon, "Передает short-lived launch token", "HTTPS")
   Rel(recon, erp, "Валидирует launch token", "HTTPS")
-  Rel(recon, erp_db, "Читает ERP-данные и пишет журнал сверки", "SQL")
+  Rel(recon, erp_db, "Только читает ERP-данные", "SQL / read-only")
+  Rel(recon, audit_db, "Пишет бизнес-аудит сверки", "SQL")
   Rel(recon, onec, "Получает 1C snapshot", "GET /reconciliation/v1/snapshot")
 ```
 
@@ -62,7 +64,8 @@ C4Container
   }
 
   System_Ext(erp_php, "ERP PHP", "Рабочая ERP и launch-token provider")
-  SystemDb_Ext(erp_db, "ERP MariaDB", "Исходные ERP-таблицы и таблицы журнала сверки")
+  SystemDb_Ext(erp_db, "ERP MariaDB", "Исходные ERP-таблицы")
+  SystemDb_Ext(audit_db, "Reconciliation MariaDB", "runs, items, comments")
   System_Ext(onec_api, "1C REST API", "Read-only GET contract")
 
   Rel(user, web_ui, "Открывает модуль и работает с данными", "Browser")
@@ -79,7 +82,7 @@ C4Container
   Rel(onec_adapter, onec_api, "GET snapshot / docs / dictionaries", "HTTPS")
 
   Rel(api, matcher, "Передает ERP и 1C документы")
-  Rel(matcher, erp_db, "Пишет veda_reconciliation_runs/items", "SQL")
+  Rel(matcher, audit_db, "Пишет veda_reconciliation_runs/items", "SQL")
 
   Rel(api, xlsx_exporter, "Передает matrix/run payload")
   Rel(xlsx_exporter, web_ui, "Возвращает XLSX bytes", "Download")
@@ -113,7 +116,8 @@ C4Component
     Component(xlsx, "XLSX Builder", "openpyxl", "Бухгалтерская матрица XLSX")
   }
 
-  SystemDb_Ext(erp_db_c4, "ERP MariaDB", "ERP data + reconciliation logs")
+  SystemDb_Ext(erp_db_c4, "ERP MariaDB", "Только исходные ERP-данные")
+  SystemDb_Ext(audit_db_c4, "Reconciliation MariaDB", "Запуски, строки сверки, комментарии")
   System_Ext(onec_c4, "1C REST API", "GET-only normalized snapshot")
   System_Ext(erp_auth_c4, "ERP Token Validation", "Validates launch token")
 
@@ -135,7 +139,7 @@ C4Component
   Rel(comment_api, log_repo, "Persist user decision / reason")
 
   Rel(erp_repo, erp_db_c4, "SQL")
-  Rel(log_repo, erp_db_c4, "SQL")
+  Rel(log_repo, audit_db_c4, "SQL")
   Rel(onec_repo, onec_c4, "HTTPS GET")
 ```
 
@@ -337,8 +341,9 @@ sequenceDiagram
 - Пользователь не проходит отдельный внешний вход. Доступ открывается только из ERP по короткоживущему launch token.
 - Backend session создается после валидации launch token в ERP. ERP token не хранится в URL и не используется как публичный долгоживущий секрет.
 - Для больших объемов используется background runner и collection endpoints с `cursor`/`limit`.
-- Все запуски сверки пишутся в `veda_reconciliation_runs`.
-- Все документные результаты и расхождения пишутся в `veda_reconciliation_items`.
+- Все запуски сверки пишутся в `veda_reconciliation_runs` отдельной MariaDB сервиса.
+- Все документные результаты и расхождения пишутся в `veda_reconciliation_items`, причины и комментарии разбора - в `veda_reconciliation_comments`.
+- ERP MariaDB используется сервисом только для чтения. Перенос журнала в MariaDB ERP выполняется обычной миграцией трех таблиц и сменой `RECON_STORAGE_DB_*`.
 - Документы сопоставляются по бизнес-ключу `тип документа + код 1C + дата 1C + договор 1C`; матч только по коду 1C запрещен из-за дублей.
 - Расхождения логируются типизированно: `MISSING_IN_ERP`, `MISSING_IN_1C`, `AMOUNT_MISMATCH`, `DATE_MISMATCH`, `NUMBER_MISMATCH`, `CONTRACT_MISMATCH`, `VAT_MISMATCH`, `DUPLICATE_IN_1C`, `AMBIGUOUS_MATCH`, `SOURCE_ERROR`.
 
@@ -346,12 +351,15 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  run["veda_reconciliation_runs<br/>scope, scope_id, spec_id, client_id,<br/>source_mode, counts, status,<br/>summary_json, created_at"]
-  item["veda_reconciliation_items<br/>run_id, oper_id, erp_doc_id,<br/>ERP fields, 1C fields,<br/>status, mismatch_fields_json, note"]
+  run["veda_reconciliation_runs<br/>run UUID, period, spec, user,<br/>balances, counts, metrics,<br/>summary_json, run_json"]
+  item["veda_reconciliation_items<br/>run_id, issue_key, oper_id,<br/>ERP fields, 1C fields,<br/>status, primary_reason, details_json"]
+  comment["veda_reconciliation_comments<br/>run UUID, issue_key, spec_id,<br/>reason, comment, user, timestamps"]
   analytics["Аналитика качества обмена<br/>частота ошибок по типам,<br/>проблемные документы, повторяемость"]
 
   run -->|"1:N"| item
+  item -->|"issue_key"| comment
   item --> analytics
+  comment --> analytics
 ```
 
 Лог используется не как технический debug-log, а как бизнес-аудит сверки: когда запускали, по какому объекту, сколько документов сравнили, какие типы расхождений получили и какие поля не совпали.

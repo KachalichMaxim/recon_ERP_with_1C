@@ -82,6 +82,7 @@ class ReconcileDeliveryUseCase:
             run_id=str(uuid4()),
             delivery=delivery,
             created_at=datetime.now(),
+            period=command.period,
             issues=issues,
             balance_comparison=balance_comparison,
             source_warnings=onec_snapshot.warnings,

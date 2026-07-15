@@ -1,6 +1,10 @@
 (function () {
   'use strict';
 
+  const initialParams = new URLSearchParams(location.search);
+  const routeSpecMatch = location.pathname.match(/\/reconciliation\/spec\/(\d+)\/?$/);
+  const initialSpecId = Number((routeSpecMatch && routeSpecMatch[1]) || initialParams.get('spec_id') || 0) || null;
+
   const feedbackReasons = [
     ['', 'Не выбрано'],
     ['mapping_error', 'Ошибка маппинга'],
@@ -22,7 +26,7 @@
   const state = {
     token: localStorage.getItem('recon_session') || '',
     profile: JSON.parse(localStorage.getItem('recon_profile') || 'null'),
-    view: localStorage.getItem('recon_view') || 'matrix',
+    view: initialSpecId ? 'recon' : (localStorage.getItem('recon_view') || 'matrix'),
     matrix: [],
     matrixPayload: null,
     matrixMode: '',
@@ -30,7 +34,7 @@
     matrixDetailsOpen: localStorage.getItem('recon_matrix_details_open') === '1',
     matrixExpanded: JSON.parse(localStorage.getItem('recon_matrix_expanded_v1') || '{}'),
     sidebarCollapsed: localStorage.getItem('recon_sidebar_collapsed') === '1',
-    selectedSpecId: Number(localStorage.getItem('recon_selected_spec') || 0) || null,
+    selectedSpecId: initialSpecId || Number(localStorage.getItem('recon_selected_spec') || 0) || null,
     run: null,
     feedback: JSON.parse(localStorage.getItem('recon_feedback_v1') || '{}'),
     config: null,
@@ -193,6 +197,21 @@
     els.navReconBtn.classList.toggle('active', !isMatrix);
     updateWorkflowState();
     updateActionState();
+    if (state.selectedSpecId && location.pathname.startsWith('/reconciliation/spec/')) syncBrowserUrl();
+  }
+
+  function syncBrowserUrl(runId = '') {
+    if (!state.selectedSpecId) {
+      history.replaceState({}, document.title, '/reconciliation.html');
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('view', state.view);
+    if (els.dateFromInput && els.dateFromInput.value) params.set('date_from', els.dateFromInput.value);
+    if (els.dateToInput && els.dateToInput.value) params.set('date_to', els.dateToInput.value);
+    if (runId || (state.run && state.run.run_id)) params.set('run_id', runId || state.run.run_id);
+    const next = `/reconciliation/spec/${state.selectedSpecId}?${params.toString()}`;
+    history.replaceState({}, document.title, next);
   }
 
   function updateWorkflowState() {
@@ -357,7 +376,15 @@
       localStorage.setItem('recon_profile', JSON.stringify(state.profile));
       setMessage(els.loginMessage, '');
       applyAuthState();
-      setView('matrix');
+      if (initialSpecId) {
+        state.selectedSpecId = initialSpecId;
+        els.deliveryInput.value = String(initialSpecId);
+        els.deliveryInput.dataset.specId = String(initialSpecId);
+        await loadMatrix(0);
+        setView(state.selectedSpecId ? 'recon' : 'matrix');
+      } else {
+        setView('matrix');
+      }
     } catch (err) {
       setMessage(els.loginMessage, normalizeErrorMessage(err), true);
     }
@@ -851,6 +878,7 @@
     renderResults();
     updateActionState();
     updateWorkflowState();
+    syncBrowserUrl();
   }
 
   function updateMatrixPager() {
@@ -1145,12 +1173,14 @@
         state.run = payload.run;
       }
       renderProgress('done');
+      await loadRunComments();
       renderResults();
       renderSummary();
       const elapsed = state.run.metrics && state.run.metrics.total_ms
         ? ` · ${(Number(state.run.metrics.total_ms) / 1000).toFixed(2)} с`
         : '';
       setMessage(els.runMessage, `Сверка завершена${elapsed}. Номер запуска: ${state.run.run_id}`);
+      syncBrowserUrl(state.run.run_id);
       els.onecStatusChip.textContent = state.matrixMode === 'ui_demo' ? '1С: UI demo' : '1С: ответ получен';
     } catch (err) {
       renderProgress('onec', 'onec');
@@ -1244,23 +1274,8 @@
     els.summaryCards.querySelector('[data-status="not_found_in_1c"]').textContent = by.not_found_in_1c || 0;
     els.summaryCards.querySelector('[data-status="erp_code1c_missing"]').textContent = by.erp_code1c_missing || 0;
     els.summaryCards.querySelector('[data-status="not_linked_to_delivery_in_erp"]').textContent = by.not_linked_to_delivery_in_erp || 0;
-    const mismatches = [
-      'amount_mismatch',
-      'date_mismatch',
-      'contract_mismatch',
-      'number_mismatch',
-      'vat_mismatch',
-      'duplicate_in_1c',
-      'ambiguous_match',
-      'aggregation_conflict',
-      'not_comparable',
-      'contract_context_missing',
-      'missing_erp_invoice',
-      'missing_erp_closing_document',
-      'erp_code1c_missing',
-      'not_linked_to_delivery_in_erp',
-    ].reduce((sum, key) => sum + Number(by[key] || 0), 0);
-    els.summaryCards.querySelector('[data-role="mismatches"]').textContent = mismatches;
+    const problems = Math.max(0, Number(total) - Number(by.match || 0));
+    els.summaryCards.querySelector('[data-role="problems"]').textContent = problems;
     renderBalanceComparison();
     updateWorkflowState();
   }
@@ -1382,7 +1397,7 @@
     const feedback = state.feedback[key] || {};
     const row = findIssueByFeedbackKey(key);
     try {
-      await api('/api/reconciliation/comments', {
+      const response = await api('/api/reconciliation/comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
@@ -1394,6 +1409,7 @@
           comment: feedback.comment || '',
         }),
       });
+      if (!response.ok) throw new Error('Комментарий не сохранен');
     } catch (_) {
       // Local draft remains in localStorage; backend retry will happen on the next edit.
     }
@@ -1405,6 +1421,7 @@
   }
 
   function feedbackKey(row) {
+    if (row.issue_key) return row.issue_key;
     const erp = row.erp_document || {};
     const onec = row.onec_document || {};
     return [
@@ -1415,6 +1432,28 @@
       erp.date || onec.date || '',
       erp.contract_code1c || onec.contract_code1c || '',
     ].join('|');
+  }
+
+  async function loadRunComments() {
+    if (!state.run || !state.run.run_id) return;
+    try {
+      const params = new URLSearchParams({ run_id: state.run.run_id, spec_id: String(state.selectedSpecId || 0) });
+      const response = await api('/api/reconciliation/comments?' + params.toString());
+      const payload = await response.json();
+      if (!response.ok || payload.ok !== true) return;
+      for (const item of payload.items || []) {
+        if (!item.key) continue;
+        state.feedback[item.key] = {
+          reason: item.reason || '',
+          comment: item.comment || '',
+          user_name: item.user_name || '',
+          updated_at: item.updated_at || '',
+        };
+      }
+      localStorage.setItem('recon_feedback_v1', JSON.stringify(state.feedback));
+    } catch (_) {
+      // The run remains usable if audit storage is temporarily unavailable.
+    }
   }
 
   function issueType(row) {
@@ -1759,14 +1798,18 @@
     const now = new Date();
     els.dateToInput.value = inputDateValue(now);
     els.dateFromInput.value = inputDateValue(new Date(now.getFullYear(), 0, 1));
-    const params = new URLSearchParams(location.search);
+    const params = initialParams;
     if (params.get('client_id')) els.clientIdInput.value = params.get('client_id');
     if (params.get('client_id')) els.clientIdInput.dataset.clientId = params.get('client_id');
     if (params.get('dog_id')) els.dogIdInput.value = params.get('dog_id');
-    if (params.get('spec_id')) {
-      els.deliveryInput.value = params.get('spec_id');
-      els.deliveryInput.dataset.specId = params.get('spec_id');
+    if (initialSpecId) {
+      els.deliveryInput.value = String(initialSpecId);
+      els.deliveryInput.dataset.specId = String(initialSpecId);
+      state.selectedSpecId = initialSpecId;
+      localStorage.setItem('recon_selected_spec', String(initialSpecId));
     }
+    if (params.get('date_from')) els.dateFromInput.value = params.get('date_from');
+    if (params.get('date_to')) els.dateToInput.value = params.get('date_to');
     if (params.get('limit')) els.limitInput.value = params.get('limit');
   }
 
@@ -1809,6 +1852,7 @@
     updateMatrixPager();
     setMessage(els.matrixMessage, 'Фильтры сброшены.');
     setMessage(els.runMessage, '');
+    syncBrowserUrl();
   }
 
   function bind() {
@@ -1896,12 +1940,22 @@
     await loadRuntimeConfig();
     await consumeLaunchToken();
     applyAuthState();
-    if (state.view === 'recon' && state.selectedSpecId && state.matrix.length) setView('recon');
-    else setView('matrix');
+    await validateSession();
+    if (!state.token && initialSpecId) {
+      state.selectedSpecId = initialSpecId;
+      els.deliveryInput.value = String(initialSpecId);
+      els.deliveryInput.dataset.specId = String(initialSpecId);
+    }
+    if (state.token && initialSpecId) {
+      await loadMatrix(0);
+      if (state.selectedSpecId) setView('recon');
+      else setView('matrix');
+    } else {
+      setView('matrix');
+    }
     renderMatrix();
     renderSelectedContext();
     renderProgress(null);
-    validateSession();
   }
 
   boot();

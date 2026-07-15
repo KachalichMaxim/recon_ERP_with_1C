@@ -1,8 +1,10 @@
--- Schema for standalone 1C reconciliation module analytics.
--- Apply in the ERP MariaDB database used by reconciliation_api_server.py.
+-- MariaDB-compatible storage for reconciliation runs, issues and review comments.
+-- The service uses a separate database. The same tables can later be migrated
+-- into the ERP MariaDB without changing the application data model.
 
 CREATE TABLE IF NOT EXISTS veda_reconciliation_runs (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    run_external_id CHAR(36) NOT NULL,
     scope VARCHAR(32) NOT NULL DEFAULT 'specification',
     scope_id BIGINT NOT NULL DEFAULT 0,
     spec_id BIGINT NOT NULL DEFAULT 0,
@@ -11,12 +13,28 @@ CREATE TABLE IF NOT EXISTS veda_reconciliation_runs (
     triggered_by_user VARCHAR(255) NULL,
     triggered_by_name VARCHAR(255) NULL,
     erp_token_hash CHAR(64) NULL,
+    period_from DATE NULL,
+    period_to DATE NULL,
+    base_contract_number VARCHAR(255) NULL,
+    spec_number VARCHAR(255) NULL,
+    buyer_contract_code VARCHAR(64) NULL,
+    committent_contract_code VARCHAR(64) NULL,
     onec_docs_count INT NOT NULL DEFAULT 0,
     erp_docs_count INT NOT NULL DEFAULT 0,
+    matched_count INT NOT NULL DEFAULT 0,
+    unresolved_count INT NOT NULL DEFAULT 0,
     status VARCHAR(32) NOT NULL DEFAULT 'COMPLETED',
+    balance_status VARCHAR(32) NULL,
+    erp_balance DECIMAL(18,2) NULL,
+    onec_balance DECIMAL(18,2) NULL,
+    balance_difference DECIMAL(18,2) NULL,
+    balance_comparable TINYINT(1) NOT NULL DEFAULT 1,
     summary_json LONGTEXT NULL,
+    run_json LONGTEXT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME NULL,
     PRIMARY KEY (id),
+    UNIQUE KEY uk_vrr_run_external_id (run_external_id),
     KEY idx_vrr_scope (scope, scope_id),
     KEY idx_vrr_client_id (client_id),
     KEY idx_vrr_spec_id (spec_id),
@@ -29,6 +47,9 @@ CREATE TABLE IF NOT EXISTS veda_reconciliation_items (
     run_id BIGINT UNSIGNED NOT NULL,
     oper_id BIGINT NOT NULL DEFAULT 0,
     erp_doc_id BIGINT NOT NULL DEFAULT 0,
+    issue_key CHAR(64) NOT NULL,
+    erp_source_id VARCHAR(255) NULL,
+    onec_source_id VARCHAR(255) NULL,
 
     erp_code1c VARCHAR(255) NULL,
     erp_number VARCHAR(255) NULL,
@@ -53,7 +74,9 @@ CREATE TABLE IF NOT EXISTS veda_reconciliation_items (
 
     PRIMARY KEY (id),
     KEY idx_vri_run_id (run_id),
+    KEY idx_vri_issue_key (issue_key),
     KEY idx_vri_status (status),
+    KEY idx_vri_primary_reason (primary_reason),
     KEY idx_vri_oper_id (oper_id),
     KEY idx_vri_erp_code1c (erp_code1c),
     CONSTRAINT fk_vri_run_id FOREIGN KEY (run_id) REFERENCES veda_reconciliation_runs(id)

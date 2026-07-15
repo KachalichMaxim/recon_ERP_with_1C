@@ -163,7 +163,7 @@ GET /snapshot?date_from=2025-07-01&date_to=2026-07-13&document_code=00БП-00322
 
 ## Требуемые доработки P0
 
-1. Применить SQL-схему `sql/1c_reconciliation_schema.sql` в MariaDB:
+1. Применить SQL-схему `sql/1c_reconciliation_schema.sql` в отдельной MariaDB сервиса:
    - `veda_reconciliation_runs`
    - `veda_reconciliation_items`
    - `veda_reconciliation_comments`
