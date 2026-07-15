@@ -337,6 +337,14 @@ class MariaDbErpReadRepository:
             int(row.get("operation_id") or 0): row
             for row in self._fetch_operation_rows(queries.OPERATION_AMOUNTS_BY_OPERATION_IDS, operation_ids)
         }
+        invoice_only_operation_ids = {
+            operation_id
+            for operation_id, amounts in amounts_by_operation.items()
+            if Decimal(str(amounts.get("sale_sum") or "0")) == Decimal("0")
+        }
+        customer_invoice_rows = [
+            row for row in rows if _str(row.get("document_kind")) == "customer_invoice"
+        ]
         invoice_linked_operations = {
             int(row.get("operation_id") or 0)
             for row in self._fetch_operation_rows(queries.OPERATION_CUSTOMER_INVOICE_LINKS_BY_OPERATION_IDS, operation_ids)
@@ -457,6 +465,14 @@ class MariaDbErpReadRepository:
                 )
             if Decimal(str(amounts.get("sale_sum") or "0")) != Decimal("0") and operation_id not in invoice_linked_operations:
                 operation_contract_code = buyer_code if reimbursement_id == 2 else (committent_code or buyer_code)
+                invoice_candidates = _delivery_invoice_candidates(
+                    customer_invoice_rows,
+                    spec_id=spec_id,
+                    operation_id=operation_id,
+                    amount=Decimal(str(amounts.get("sale_sum") or "0")),
+                    currency="RUB",
+                    invoice_only_operation_ids=invoice_only_operation_ids,
+                )
                 rows.append(
                     {
                         "spec_id": operation.get("spec_id"),
@@ -475,6 +491,15 @@ class MariaDbErpReadRepository:
                         "reimbursement_type": reimbursement_type,
                         "deleted": 0,
                         "paid_amount": None,
+                        "related_source_ids": "||".join(
+                            _str(candidate.get("source_id")) for candidate in invoice_candidates
+                        ),
+                        "related_document_numbers": "||".join(
+                            _str(candidate.get("document_number")) for candidate in invoice_candidates
+                        ),
+                        "related_operation_ids": "||".join(
+                            _str(candidate.get("operation_id")) for candidate in invoice_candidates
+                        ),
                     }
                 )
             if Decimal(str(amounts.get("payment_sum") or "0")) != Decimal("0"):
@@ -584,6 +609,33 @@ def _row_to_document(row: dict[str, Any]) -> AccountingDocument:
         else None,
         related_documents=_related_documents(row),
     )
+
+
+def _delivery_invoice_candidates(
+    invoice_rows: list[dict[str, Any]],
+    *,
+    spec_id: int,
+    operation_id: int,
+    amount: Decimal,
+    currency: str,
+    invoice_only_operation_ids: set[int],
+) -> list[dict[str, Any]]:
+    """Return one conservative delivery-level invoice candidate.
+
+    The candidate is evidence that an invoice exists, not proof that it belongs
+    to the source operation. Ambiguous amount matches intentionally return none.
+    """
+    candidates = [
+        row
+        for row in invoice_rows
+        if int(row.get("spec_id") or 0) == spec_id
+        and int(row.get("operation_id") or 0) != operation_id
+        and int(row.get("operation_id") or 0) in invoice_only_operation_ids
+        and Decimal(str(row.get("amount_total") or "0")) == amount
+        and _currency(row.get("currency")) == _currency(currency)
+        and int(row.get("source_id") or 0) > 0
+    ]
+    return candidates if len(candidates) == 1 else []
 
 
 def _related_documents(row: dict[str, Any]) -> tuple[RelatedDocument, ...]:

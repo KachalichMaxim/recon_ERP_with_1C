@@ -789,7 +789,7 @@ UI-бейджи:
 | Backend | UI |
 |---|---|
 | `MATCH` | `ОК` |
-| `MISSING_ERP_INVOICE` | `Нет счета ERP` |
+| `MISSING_ERP_INVOICE` | `Нет связи со счетом` |
 | `MISSING_ERP_CLOSING_DOCUMENT` | `Нет закрывающего документа` |
 | `NOT_FOUND_IN_1C` | `Не найдено в 1С` |
 | `ERP_CODE1C_MISSING` | `Нет кода 1С в ERP` |

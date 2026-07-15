@@ -390,9 +390,28 @@ def _erp_document_precondition_issue(document: AccountingDocument) -> Reconcilia
     if not missing_document:
         return None
     if document.kind.value == "customer_invoice":
+        if document.related_documents:
+            candidate = document.related_documents[0]
+            operation_suffix = (
+                f", привязанный к другой операции ERP {candidate.operation_id}"
+                if candidate.operation_id
+                else ""
+            )
+            return ReconciliationIssue(
+                status=ReconciliationStatus.MISSING_ERP_INVOICE,
+                message=(
+                    f"По операции ERP нет прямой связи со счетом покупателю. "
+                    f"В поставке найден счет {candidate.number or candidate.source_id} на ту же сумму"
+                    f"{operation_suffix}; сам счет проверяется отдельной строкой"
+                ),
+                erp_document=document,
+                fields=("erp_invoice_link", "candidate_invoice"),
+                primary_reason="erp_invoice_link_missing_candidate_found",
+                severity="warning",
+            )
         return ReconciliationIssue(
             status=ReconciliationStatus.MISSING_ERP_INVOICE,
-            message="По операции ERP не выставлен или не привязан счет покупателю",
+            message="По операции ERP не найдена прямая связь со счетом покупателю",
             erp_document=document,
             fields=("erp_invoice_link",),
             primary_reason="missing_erp_invoice",
@@ -538,9 +557,26 @@ def _aggregation_key(document: AccountingDocument) -> tuple[str, ...] | None:
         # contracts. It remains one physical payment for reconciliation.
         return (document.kind.value, document_id, source_id, document.amount.currency, date_value)
     if document.kind.value == "sale":
-        return (*common, date_value, document.vat_rate.strip())
+        return (
+            *common,
+            date_value,
+            document.vat_rate.strip(),
+            str(document.operation_id or ""),
+            str(document.parent_operation_id or ""),
+        )
     if document.kind.value == "customer_invoice":
         return (*common, date_value, normalize_document_number(document.number))
+    if document.kind.value == "purchase":
+        # One aggregate supplier document may contain allocations for several
+        # ERP operations and deliveries. Keep those rows separate so they can
+        # be checked against document_lines from 1C before any header roll-up.
+        return (
+            *common,
+            date_value,
+            document.vat_rate.strip(),
+            str(document.operation_id or ""),
+            str(document.parent_operation_id or ""),
+        )
     return (*common, date_value, document.vat_rate.strip())
 
 

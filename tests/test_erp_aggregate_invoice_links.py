@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from recon_erp_1c.application.serializers import document_to_dict
-from recon_erp_1c.infrastructure.erp_mariadb.repository import _row_to_document
+from recon_erp_1c.infrastructure.erp_mariadb.repository import _delivery_invoice_candidates, _row_to_document
 
 
 def test_aggregate_invoice_serializes_every_child_invoice_and_operation_link() -> None:
@@ -75,3 +75,25 @@ def test_aggregated_purchase_source_ids_produce_one_working_document_link() -> N
     assert payload["erp_links"] == [
         {"label": "0ЛБП-000788", "url": "http://erp.vedagent/veda/?pgid=83&obid=214724"}
     ]
+
+
+def test_unique_invoice_only_operation_is_exposed_as_link_candidate() -> None:
+    candidates = _delivery_invoice_candidates(
+        [
+            {
+                "spec_id": 23687,
+                "operation_id": 457606,
+                "source_id": 272946,
+                "document_number": "ВЛ-000576",
+                "amount_total": Decimal("5937.54"),
+                "currency": "RUB",
+            }
+        ],
+        spec_id=23687,
+        operation_id=451088,
+        amount=Decimal("5937.54"),
+        currency="RUB",
+        invoice_only_operation_ids={457606},
+    )
+
+    assert [candidate["source_id"] for candidate in candidates] == [272946]

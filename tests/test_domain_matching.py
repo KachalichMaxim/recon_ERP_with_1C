@@ -14,6 +14,7 @@ from recon_erp_1c.domain.entities import (
     AccountingDocument,
     DocumentLine,
     PaymentAllocation,
+    RelatedDocument,
     ReconciliationIssue,
 )
 from recon_erp_1c.domain.services import compare_documents
@@ -594,6 +595,47 @@ def test_two_erp_rows_with_same_aggregate_code_match_distinct_1c_lines() -> None
     assert all(issue.onec_document and issue.onec_document.contract_code1c == "БП-013397" for issue in issues)
 
 
+def test_aggregate_supplier_allocations_remain_separate_until_onec_line_matching() -> None:
+    erp_docs = [
+        AccountingDocument(
+            source=SourceSystem.ERP,
+            kind=DocumentKind.PURCHASE,
+            code1c="0ЛБП-000788",
+            number="2905",
+            date=date(2026, 2, 20),
+            amount=Money.of(amount),
+            contract_code1c="БП-042109",
+            source_id="214724",
+            operation_id=operation_id,
+            parent_operation_id=426784,
+            vat_rate="0%",
+        )
+        for amount, operation_id in (("14798.04", 451087), ("3523.34", 451086))
+    ]
+    onec_doc = AccountingDocument(
+        source=SourceSystem.ONE_C,
+        kind=DocumentKind.PURCHASE,
+        code1c="0ЛБП-000788",
+        number="0ЛБП-000788",
+        date=date(2026, 2, 20),
+        amount=Money.of("26000.00"),
+        contract_code1c="БП-042109",
+        vat_rate="0%",
+        lines=(
+            DocumentLine("purchase-guid", "1", Money.of("1476.66"), contract_code1c="БП-042109", vat_rate="0%"),
+            DocumentLine("purchase-guid", "2", Money.of("6201.96"), contract_code1c="БП-042109", vat_rate="0%"),
+            DocumentLine("purchase-guid", "3", Money.of("14798.04"), contract_code1c="БП-042109", vat_rate="0%"),
+            DocumentLine("purchase-guid", "4", Money.of("3523.34"), contract_code1c="БП-042109", vat_rate="0%"),
+        ),
+    )
+
+    issues = match_documents(aggregate_documents(erp_docs), aggregate_documents([onec_doc]))
+
+    assert [issue.status for issue in issues] == [ReconciliationStatus.MATCH, ReconciliationStatus.MATCH]
+    assert [issue.matched_detail_id for issue in issues] == ["3", "4"]
+    assert [issue.erp_document.operation_id for issue in issues if issue.erp_document] == [451087, 451086]
+
+
 def test_erp_rows_are_combined_when_onec_has_only_aggregate_header_line() -> None:
     erp_docs = [
         AccountingDocument(
@@ -723,6 +765,30 @@ def test_missing_operation_invoice_is_a_precondition_error() -> None:
 
     assert issue.status == ReconciliationStatus.MISSING_ERP_INVOICE
     assert issue.primary_reason == "missing_erp_invoice"
+
+
+def test_missing_direct_invoice_link_reports_unique_delivery_candidate() -> None:
+    expected_invoice = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.CUSTOMER_INVOICE,
+        code1c="",
+        number="",
+        date=None,
+        amount=Money.of("5937.54"),
+        contract_code1c="БП-078924",
+        operation_id=451088,
+        related_documents=(
+            RelatedDocument(source_id="272946", number="ВЛ-000576", operation_id=457606),
+        ),
+    )
+
+    issue = match_documents([expected_invoice], [])[0]
+
+    assert issue.status == ReconciliationStatus.MISSING_ERP_INVOICE
+    assert issue.primary_reason == "erp_invoice_link_missing_candidate_found"
+    assert issue.severity == "warning"
+    assert "ВЛ-000576" in issue.message
+    assert "457606" in issue.message
 
 
 def test_missing_operation_closing_document_is_a_precondition_error() -> None:

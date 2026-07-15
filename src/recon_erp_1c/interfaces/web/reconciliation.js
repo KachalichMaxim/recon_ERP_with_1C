@@ -1596,7 +1596,7 @@
     if (row.status === 'erp_code1c_missing') return 'В документе ERP не заполнен код 1С; точечная проверка выгрузки в 1С невозможна';
     if (row.status === 'not_found_in_erp') return 'Документ 1С не найден в ERP';
     if (row.status === 'not_linked_to_delivery_in_erp') return 'Документ 1С существует, но не связан с выбранной поставкой ERP';
-    if (row.status === 'missing_erp_invoice') return 'По операции ERP не выставлен или не привязан счет покупателю';
+    if (row.status === 'missing_erp_invoice') return row.message || 'По операции ERP не найдена прямая связь со счетом покупателю';
     if (row.status === 'missing_erp_closing_document') return 'По операции ERP отсутствует закрывающий документ';
     if (row.status === 'vat_mismatch') {
       const erpVat = row.erp_document?.vat_rate || 'не указана';
@@ -1656,7 +1656,7 @@
       aggregation_conflict: ['warn', 'Конфликт агрегации'],
       not_comparable: ['warn', 'Не сверяется'],
       contract_context_missing: ['bad', 'Нет аналитики поставки'],
-      missing_erp_invoice: ['bad', 'Нет счета ERP'],
+      missing_erp_invoice: ['warn', 'Нет связи со счетом'],
       missing_erp_closing_document: ['bad', 'Нет закрывающего документа'],
     };
     const value = map[status] || ['warn', status || 'unknown'];
