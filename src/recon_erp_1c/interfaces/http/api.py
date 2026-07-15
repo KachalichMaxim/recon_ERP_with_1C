@@ -730,8 +730,11 @@ def _execute_reconciliation(
     actor: RequestContext | None = None,
 ):
     spec_id = _required_int(query, "spec_id")
-    date_from = _required_date(query, "date_from")
-    date_to = _required_date(query, "date_to")
+    date_from = _optional_date(query, "date_from")
+    date_to = _optional_date(query, "date_to")
+    if (date_from is None) != (date_to is None):
+        raise ValueError("date_from and date_to must be provided together")
+    period = DateRange(date_from=date_from, date_to=date_to) if date_from and date_to else None
     persist_log = _optional_bool(query, "persist_log", default=default_persist_log)
     erp_repository = _erp_repository()
     log_repository = None
@@ -751,7 +754,7 @@ def _execute_reconciliation(
     run = use_case.execute(
         ReconcileDeliveryCommand(
             spec_id=spec_id,
-            period=DateRange(date_from=date_from, date_to=date_to),
+            period=period,
             persist_log=persist_log,
         )
     )

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from recon_erp_1c.application.serializers import run_to_dict
+from recon_erp_1c.application.use_cases.reconcile_delivery import _automatic_delivery_period
 from recon_erp_1c.domain.entities import (
     Counterparty,
     Delivery,
@@ -84,3 +85,10 @@ def test_no_issue_result_is_limited_to_available_scope() -> None:
 
     assert payload["result_status"] == "no_issues_in_available_scope"
     assert payload["matched"] is True
+
+
+def test_delivery_period_is_derived_without_user_date_filter() -> None:
+    period = _automatic_delivery_period(_delivery(), [])
+
+    assert period.date_from == date(2025, 5, 31)
+    assert period.date_to == date(2025, 8, 1)

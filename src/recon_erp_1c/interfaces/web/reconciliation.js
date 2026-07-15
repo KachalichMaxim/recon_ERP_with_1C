@@ -71,13 +71,9 @@
     dogSuggestions: $('dogSuggestions'),
     deliveryInput: $('deliveryInput'),
     deliverySuggestions: $('deliverySuggestions'),
-    dateFromInput: $('dateFromInput'),
-    dateToInput: $('dateToInput'),
     limitInput: $('limitInput'),
     matrixStatusFilter: $('matrixStatusFilter'),
     loadMatrixBtn: $('loadMatrixBtn'),
-    presetYearBtn: $('presetYearBtn'),
-    preset90Btn: $('preset90Btn'),
     resetFiltersBtn: $('resetFiltersBtn'),
     matrixMessage: $('matrixMessage'),
     matrixHint: $('matrixHint'),
@@ -167,10 +163,6 @@
     return text;
   }
 
-  function inputDateValue(date) {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  }
-
   function normalizeErrorMessage(err) {
     const text = err && err.message ? err.message : String(err || '');
     if (/ERP MariaDB is not configured/i.test(text)) {
@@ -183,16 +175,6 @@
     if (/ERP launch token validation endpoint is not configured/i.test(text)) return 'Не настроена проверка launch token ERP.';
     if (/Invalid ERP login or password/i.test(text)) return 'Неверный логин или пароль ERP.';
     return text.replace(/1C/g, '1С');
-  }
-
-  function validateDateRange(messageNode) {
-    const from = els.dateFromInput.value;
-    const to = els.dateToInput.value;
-    if (from && to && from > to) {
-      setMessage(messageNode, 'Дата начала не может быть позже даты окончания.', true);
-      return false;
-    }
-    return true;
   }
 
   function setView(view) {
@@ -215,8 +197,6 @@
     }
     const params = new URLSearchParams();
     params.set('view', state.view);
-    if (els.dateFromInput && els.dateFromInput.value) params.set('date_from', els.dateFromInput.value);
-    if (els.dateToInput && els.dateToInput.value) params.set('date_to', els.dateToInput.value);
     if (runId || (state.run && state.run.run_id)) params.set('run_id', runId || state.run.run_id);
     const next = `/reconciliation/spec/${state.selectedSpecId}?${params.toString()}`;
     history.replaceState({}, document.title, next);
@@ -424,8 +404,6 @@
       ['client_id', clientId],
       ['dog_id', dogId],
       ['spec_id', specId],
-      ['date_from', els.dateFromInput.value],
-      ['date_to', els.dateToInput.value],
       ['limit', els.limitInput.value || '50'],
       ['offset', String(state.matrixOffset || 0)],
     ].forEach(([key, value]) => {
@@ -456,7 +434,6 @@
   }
 
   async function loadMatrix(offset) {
-    if (!validateDateRange(els.matrixMessage)) return;
     if (!validateClientFilter(els.matrixMessage)) return;
     if (!validateDogFilter(els.matrixMessage)) return;
     if (!validateDeliveryFilter(els.matrixMessage)) return;
@@ -687,8 +664,6 @@
       const dogId = selectedDogId();
       if (clientId) params.set('client_id', clientId);
       if (dogId) params.set('dog_id', dogId);
-      if (els.dateFromInput.value) params.set('date_from', els.dateFromInput.value);
-      if (els.dateToInput.value) params.set('date_to', els.dateToInput.value);
       const resp = await api('/api/reconciliation/deliveries?' + params.toString());
       const payload = await resp.json();
       if (!resp.ok || payload.ok !== true) throw new Error(payload.message || 'Не удалось найти поставки');
@@ -707,7 +682,7 @@
       return;
     }
     if (!items.length) {
-      els.deliverySuggestions.innerHTML = '<div class="suggestion-empty">Поставки не найдены в выбранном периоде.</div>';
+      els.deliverySuggestions.innerHTML = '<div class="suggestion-empty">Поставки не найдены.</div>';
       els.deliverySuggestions.classList.remove('hidden');
       return;
     }
@@ -1161,7 +1136,6 @@
 
   async function runReconciliation() {
     if (!state.selectedSpecId) return;
-    if (!validateDateRange(els.runMessage)) return;
     els.runBtn.disabled = true;
     els.exportBtn.disabled = true;
     els.runBtn.textContent = 'Проверяем...';
@@ -1173,9 +1147,7 @@
         await wait(1200);
         state.run = demoRun();
       } else {
-        const from = els.dateFromInput.value || '2025-01-01';
-        const to = els.dateToInput.value || new Date().toISOString().slice(0, 10);
-        const params = new URLSearchParams({ spec_id: state.selectedSpecId, date_from: from, date_to: to, persist_log: '1' });
+        const params = new URLSearchParams({ spec_id: state.selectedSpecId, persist_log: '1' });
         const resp = await api('/api/reconciliation/run?' + params.toString());
         const payload = await resp.json();
         if (!resp.ok || payload.ok !== true) throw new Error(payload.message || 'Сверка не выполнена');
@@ -1355,7 +1327,7 @@
     }
     els.coveragePanel.classList.remove('hidden');
     els.coverageRetrievedAt.textContent = coverage.retrieved_at ? `получено ${fmtDateTime(coverage.retrieved_at)}` : '';
-    els.coveragePeriod.textContent = `${fmtDate(coverage.date_from)} — ${fmtDate(coverage.date_to)}`;
+    els.coveragePeriod.textContent = `автоматически: ${fmtDate(coverage.date_from)} — ${fmtDate(coverage.date_to)}`;
     const filters = coverage.filters || {};
     els.coverageContracts.textContent = [filters.buyer_contract_code1c, filters.committent_contract_code1c].filter(Boolean).join(', ') || 'не заданы';
     const counts = coverage.returned_blocks || {};
@@ -1731,14 +1703,13 @@
     }
     await exportMatrixItemsXlsx({
       items: visibleItems,
-      filename: `akt-sverki-matrix-${els.clientIdInput.value || 'client'}-${els.dateFromInput.value || 'from'}-${els.dateToInput.value || 'to'}.xlsx`,
+      filename: `akt-sverki-matrix-${els.clientIdInput.value || 'client'}.xlsx`,
       startMessage: 'Формируем XLSX по текущей матрице...',
       successMessage: 'XLSX матрицы сформирован.',
     });
   }
 
   async function exportMatrixAllXlsx() {
-    if (!validateDateRange(els.matrixMessage)) return;
     if (!validateClientFilter(els.matrixMessage)) return;
     if (!validateDogFilter(els.matrixMessage)) return;
     const params = queryParams();
@@ -1759,7 +1730,7 @@
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `akt-sverki-matrix-all-${els.clientIdInput.value || 'client'}-${els.dateFromInput.value || 'from'}-${els.dateToInput.value || 'to'}.xlsx`;
+      link.download = `akt-sverki-matrix-all-${els.clientIdInput.value || 'client'}.xlsx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1903,9 +1874,6 @@
   }
 
   function initDefaults() {
-    const now = new Date();
-    els.dateToInput.value = inputDateValue(now);
-    els.dateFromInput.value = inputDateValue(new Date(now.getFullYear(), 0, 1));
     const params = initialParams;
     if (params.get('client_id')) els.clientIdInput.value = params.get('client_id');
     if (params.get('client_id')) els.clientIdInput.dataset.clientId = params.get('client_id');
@@ -1916,23 +1884,7 @@
       state.selectedSpecId = initialSpecId;
       localStorage.setItem('recon_selected_spec', String(initialSpecId));
     }
-    if (params.get('date_from')) els.dateFromInput.value = params.get('date_from');
-    if (params.get('date_to')) els.dateToInput.value = params.get('date_to');
     if (params.get('limit')) els.limitInput.value = params.get('limit');
-  }
-
-  function setCurrentYear() {
-    const now = new Date();
-    els.dateToInput.value = inputDateValue(now);
-    els.dateFromInput.value = inputDateValue(new Date(now.getFullYear(), 0, 1));
-  }
-
-  function setLast90Days() {
-    const now = new Date();
-    const start = new Date(now);
-    start.setDate(start.getDate() - 90);
-    els.dateToInput.value = inputDateValue(now);
-    els.dateFromInput.value = inputDateValue(start);
   }
 
   function resetFilters() {
@@ -1944,7 +1896,6 @@
     clearDeliveryFilter();
     if (els.matrixStatusFilter) els.matrixStatusFilter.value = 'all';
     els.limitInput.value = '50';
-    setCurrentYear();
     state.matrix = [];
     state.matrixPayload = null;
     state.matrixOffset = 0;
@@ -2013,8 +1964,6 @@
       }
       updateActionState();
     });
-    els.presetYearBtn.addEventListener('click', setCurrentYear);
-    els.preset90Btn.addEventListener('click', setLast90Days);
     els.resetFiltersBtn.addEventListener('click', resetFilters);
     els.matrixSelectionReconBtn.addEventListener('click', openReconGuarded);
     els.matrixSelectionDetailsBtn.addEventListener('click', toggleMatrixDetails);

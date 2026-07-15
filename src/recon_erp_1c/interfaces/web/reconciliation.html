@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light">
   <title>Контроль документов ERP и 1С</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23C4122F'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='26' font-family='Arial' font-weight='700' fill='white'%3EV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/reconciliation.css?v=20260715_mvp_scope">
-  <script src="/reconciliation.js?v=20260715_mvp_scope" defer></script>
+  <link rel="stylesheet" href="/reconciliation.css?v=20260715_entity_filters">
+  <script src="/reconciliation.js?v=20260715_entity_filters" defer></script>
 </head>
 <body>
   <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
@@ -135,36 +135,16 @@
             <div class="suggestions hidden" id="dogSuggestions"></div>
           </div>
           <div class="field search-field delivery-search-field">
-            <label for="deliveryInput">Поставка</label>
-            <input id="deliveryInput" autocomplete="off" placeholder="Полное название или ID поставки">
+            <label for="deliveryInput">Поставка / спецификация ERP</label>
+            <input id="deliveryInput" autocomplete="off" placeholder="Введите название, номер или ID">
             <div class="suggestions hidden" id="deliverySuggestions"></div>
           </div>
-          <div class="field">
-            <label for="dateFromInput">Период с</label>
-            <input id="dateFromInput" type="date">
-          </div>
-          <div class="field">
-            <label for="dateToInput">Период по</label>
-            <input id="dateToInput" type="date">
-          </div>
-          <div class="field compact">
-            <label for="limitInput">Строк на странице</label>
-            <input id="limitInput" type="number" value="50" min="1" max="500">
-          </div>
-          <div class="field compact">
-            <label for="matrixStatusFilter">Статус</label>
-            <select id="matrixStatusFilter">
-              <option value="all">Все</option>
-              <option value="problems">Долг/переплата</option>
-              <option value="debt">Долг</option>
-              <option value="overpayment">Переплата</option>
-              <option value="closed">Закрыто</option>
-            </select>
-          </div>
+          <input id="limitInput" type="hidden" value="50">
+          <select id="matrixStatusFilter" class="hidden" aria-hidden="true" tabindex="-1">
+            <option value="all">Все</option>
+          </select>
           <div class="filter-actions">
             <button class="btn btn-primary" id="loadMatrixBtn" type="button">Найти поставки</button>
-            <button class="btn btn-outline" id="presetYearBtn" type="button">Год</button>
-            <button class="btn btn-outline" id="preset90Btn" type="button">90 дней</button>
             <button class="btn btn-ghost" id="resetFiltersBtn" type="button">Сбросить</button>
           </div>
         </section>
@@ -242,7 +222,7 @@
             <span id="coverageRetrievedAt">—</span>
           </div>
           <div class="coverage-facts">
-            <span><b>Период</b><em id="coveragePeriod">—</em></span>
+            <span><b>Охват 1С</b><em id="coveragePeriod">—</em></span>
             <span><b>Договоры</b><em id="coverageContracts">—</em></span>
             <span><b>Получено</b><em id="coverageCounts">—</em></span>
             <span><b>Полнота</b><em id="coverageCompleteness">—</em></span>

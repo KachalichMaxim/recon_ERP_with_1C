@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from time import perf_counter
 from uuid import uuid4
@@ -29,7 +29,7 @@ from recon_erp_1c.domain.value_objects import ContractRole, DateRange, Money, Re
 @dataclass(frozen=True, slots=True)
 class ReconcileDeliveryCommand:
     spec_id: int
-    period: DateRange
+    period: DateRange | None = None
     persist_log: bool = True
 
 
@@ -55,11 +55,12 @@ class ReconcileDeliveryUseCase:
         else:
             erp_documents = self.erp_repository.list_delivery_documents(command.spec_id)
             erp_balance = self.erp_repository.get_delivery_balance(command.spec_id)
+        period = command.period or _automatic_delivery_period(delivery, erp_documents)
         erp_ms = (perf_counter() - erp_started) * 1000
         onec_started = perf_counter()
         onec_snapshot = self.onec_repository.fetch_snapshot(
             delivery=delivery,
-            period=command.period,
+            period=period,
             contracts=contracts,
             erp_documents=erp_documents,
         )
@@ -84,18 +85,19 @@ class ReconcileDeliveryUseCase:
             run_id=str(uuid4()),
             delivery=delivery,
             created_at=datetime.now(),
-            period=command.period,
+            period=period,
             issues=issues,
             balance_comparison=balance_comparison,
             source_warnings=onec_snapshot.warnings,
             coverage=SnapshotCoverage(
                 requested_scope="delivery_snapshot",
-                date_from=command.period.date_from,
-                date_to=command.period.date_to,
+                date_from=period.date_from,
+                date_to=period.date_to,
                 filters={
                     "spec_id": delivery.erp_spec_id,
                     "spec_number": delivery.spec_number,
                     "base_contract_number": delivery.base_contract_number,
+                    "period_mode": "erp_document_dates_with_31_day_buffer",
                     "organization_code1c": delivery.organization.code1c,
                     "counterparty_code1c": delivery.counterparty.code1c,
                     "buyer_contract_code1c": delivery.contract_codes.buyer_contract_code,
@@ -137,6 +139,22 @@ class ReconcileDeliveryUseCase:
         if command.persist_log and self.log_repository is not None:
             self.log_repository.save_run(run)
         return run
+
+
+def _automatic_delivery_period(
+    delivery: Delivery,
+    documents: list[AccountingDocument],
+) -> DateRange:
+    """Cover the selected delivery without exposing a date filter to the user."""
+    dates = [document.date for document in documents if document.date is not None]
+    if delivery.spec_date is not None:
+        dates.append(delivery.spec_date)
+    if not dates:
+        dates.append(datetime.now().date())
+    return DateRange(
+        date_from=min(dates) - timedelta(days=31),
+        date_to=max(dates) + timedelta(days=31),
+    )
 
 
 def _contracts_from_delivery(delivery: Delivery) -> list[Contract]:

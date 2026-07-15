@@ -586,7 +586,7 @@ textarea::placeholder {
 }
 
 .delivery-search-field {
-  grid-column: span 2;
+  min-width: 240px;
 }
 
 .delivery-search-field .suggestion-title {
