@@ -140,6 +140,8 @@ class BalanceComparison:
     contract_codes: tuple[str, ...] = ()
     direct_onec_balance: Money | None = None
     allocated_adjustment: Money | None = None
+    comparable: bool = True
+    explanation: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -701,6 +701,19 @@ textarea::placeholder {
   color: var(--green);
 }
 
+.balance-compare.warning #balanceDifference,
+.balance-compare.warning #balanceStatus {
+  color: var(--yellow);
+}
+
+.balance-explanation {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .kpi {
   min-width: 0;
   overflow: hidden;

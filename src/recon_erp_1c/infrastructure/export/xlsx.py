@@ -88,6 +88,8 @@ def reconciliation_run_xlsx(run: dict[str, Any]) -> bytes:
                 ["Остаток 1С по договорам поставки", _nested_money_amount(balance.get("onec_balance"))],
                 ["Разница сальдо ERP - 1С", _nested_money_amount(balance.get("difference"))],
                 ["Статус сальдо", balance.get("status") or ""],
+                ["Сальдо сопоставимо", "Да" if balance.get("comparable", True) else "Нет"],
+                ["Пояснение сальдо", balance.get("explanation") or ""],
             ]
         )
     metrics = run.get("metrics") if isinstance(run.get("metrics"), dict) else {}

@@ -103,6 +103,7 @@
     balanceOnec: $('balanceOnec'),
     balanceDifference: $('balanceDifference'),
     balanceStatus: $('balanceStatus'),
+    balanceExplanation: $('balanceExplanation'),
     summaryCards: $('summaryCards'),
     resultSearchInput: $('resultSearchInput'),
     statusFilter: $('statusFilter'),
@@ -1276,15 +1277,23 @@
     const onec = comparison.onec_balance || {};
     const difference = comparison.difference || {};
     const matches = comparison.status === 'match';
+    const incomplete = comparison.status === 'not_comparable' || comparison.comparable === false;
     els.balanceCompare.classList.remove('hidden');
     els.balanceCompare.classList.toggle('ok', matches);
-    els.balanceCompare.classList.toggle('problem', !matches);
+    els.balanceCompare.classList.toggle('problem', !matches && !incomplete);
+    els.balanceCompare.classList.toggle('warning', incomplete);
     els.balanceErp.textContent = fmtMoneyValue(erp.amount, erp.currency || 'RUB');
     els.balanceOnecDirect.textContent = fmtMoneyValue(direct.amount, direct.currency || 'RUB');
     els.balanceOnecAdjustment.textContent = fmtMoneyValue(adjustment.amount, adjustment.currency || 'RUB');
     els.balanceOnec.textContent = fmtMoneyValue(onec.amount, onec.currency || 'RUB');
     els.balanceDifference.textContent = fmtMoneyValue(difference.amount, difference.currency || 'RUB');
-    els.balanceStatus.textContent = matches ? 'Сальдо совпало' : 'Сальдо расходится';
+    els.balanceStatus.textContent = matches
+      ? 'Сальдо совпало'
+      : incomplete
+        ? 'Не подтверждено документами'
+        : 'Сальдо расходится';
+    els.balanceExplanation.textContent = comparison.explanation || '';
+    els.balanceExplanation.classList.toggle('hidden', !comparison.explanation);
   }
 
   function renderResults() {

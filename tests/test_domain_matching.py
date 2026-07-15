@@ -478,6 +478,37 @@ def test_balance_comparison_uses_credit_minus_debit_for_1c() -> None:
     assert comparison.allocated_adjustment.amount == Decimal("0.00")
     assert comparison.difference.amount == Decimal("-599.92")
     assert comparison.status == ReconciliationStatus.AMOUNT_MISMATCH
+    assert comparison.comparable is True
+
+
+def test_balance_is_not_comparable_without_erp_closing_documents() -> None:
+    balances = [
+        AccountingBalance(
+            contract_code1c="БП-095697",
+            opening_debit=Money.of("0"),
+            opening_credit=Money.of("0"),
+            turnover_debit=Money.of("0"),
+            turnover_credit=Money.of("946696.03"),
+            closing_debit=Money.of("0"),
+            closing_credit=Money.of("946696.03"),
+        )
+    ]
+    missing_sale = ReconciliationIssue(
+        status=ReconciliationStatus.MISSING_ERP_CLOSING_DOCUMENT,
+        message="Нет закрывающего документа",
+    )
+
+    comparison = compare_balances(
+        Money.of("19999.92"),
+        balances,
+        ("БП-095697", "БП-095698"),
+        [missing_sale],
+    )
+
+    assert comparison is not None
+    assert comparison.status == ReconciliationStatus.NOT_COMPARABLE
+    assert comparison.comparable is False
+    assert "get_realizsum" in comparison.explanation
 
 
 def test_unlinked_erp_sale_rows_match_distinct_1c_document_lines() -> None:

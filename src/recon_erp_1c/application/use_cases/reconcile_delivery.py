@@ -755,7 +755,20 @@ def compare_balances(
     allocated_adjustment = Money.of(_allocated_external_adjustment(issues or [], codes, currency), currency)
     onec_balance = Money.of(direct_onec_balance.amount + allocated_adjustment.amount, currency)
     difference = Money.of(erp_balance.amount - onec_balance.amount, currency)
-    status = ReconciliationStatus.MATCH if difference.amount == Decimal("0.00") else ReconciliationStatus.AMOUNT_MISMATCH
+    missing_closing_documents = sum(
+        1 for issue in issues or [] if issue.status == ReconciliationStatus.MISSING_ERP_CLOSING_DOCUMENT
+    )
+    comparable = missing_closing_documents == 0
+    if not comparable:
+        status = ReconciliationStatus.NOT_COMPARABLE
+        explanation = (
+            f"ERP рассчитывает реализацию через get_realizsum, но по {missing_closing_documents} "
+            f"операциям отсутствуют связанные исходящие закрывающие документы. "
+            "Счета покупателю не формируют дебетовый оборот 1С."
+        )
+    else:
+        status = ReconciliationStatus.MATCH if difference.amount == Decimal("0.00") else ReconciliationStatus.AMOUNT_MISMATCH
+        explanation = "Сопоставлены расчетное сальдо ERP и бухгалтерский остаток 1С по договорам поставки."
     return BalanceComparison(
         erp_balance=erp_balance,
         onec_balance=onec_balance,
@@ -764,6 +777,8 @@ def compare_balances(
         contract_codes=codes,
         direct_onec_balance=direct_onec_balance,
         allocated_adjustment=allocated_adjustment,
+        comparable=comparable,
+        explanation=explanation,
     )
 
 
