@@ -1849,10 +1849,10 @@
     els.runBtn.disabled = !hasSpec;
     els.runBtn.textContent = hasRun ? 'Обновить проверку' : 'Проверить в 1С';
     els.exportBtn.disabled = !hasRun;
-    els.refreshBtn.classList.toggle('hidden', isMatrixView && !hasMatrix);
-    els.refreshBtn.disabled = isMatrixView && !hasMatrix;
-    els.refreshBtn.textContent = isMatrixView ? '↻ Обновить список' : '↻ Обновить проверку';
-    els.refreshBtn.title = isMatrixView ? 'Обновить список поставок' : 'Обновить проверку документов в 1С';
+    els.refreshBtn.classList.toggle('hidden', !isMatrixView || !hasMatrix);
+    els.refreshBtn.disabled = !isMatrixView || !hasMatrix;
+    els.refreshBtn.textContent = '↻ Обновить список';
+    els.refreshBtn.title = 'Обновить список поставок';
     updateWorkflowState();
   }
 
