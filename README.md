@@ -155,6 +155,8 @@ Production-baseline от 2026-07-08 на договоре `client_id=221`, `dog_
 
 ## Проверки
 
+Сценарный протокол для встречи с заказчиком: `docs/testing/CUSTOMER_RULE_VALIDATION_SCENARIOS.md`. В нем зафиксированы покрытые общие правила, реальные контрольные поставки, ожидаемые статусы и решения, которые нельзя принимать без владельца процесса.
+
 ```bash
 python3 -m py_compile $(find src -name '*.py')
 PYTHONPATH=src python3 -m pytest tests -q
