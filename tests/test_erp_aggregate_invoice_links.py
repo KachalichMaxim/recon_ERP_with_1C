@@ -47,3 +47,31 @@ def test_aggregate_invoice_serializes_every_child_invoice_and_operation_link() -
             "operation_url": "http://erp.vedagent/veda/?pgid=35&invtb=145&obid=256961#",
         },
     ]
+
+
+def test_aggregated_purchase_source_ids_produce_one_working_document_link() -> None:
+    document = _row_to_document(
+        {
+            "document_kind": "purchase",
+            "code1c": "0ЛБП-000788",
+            "document_number": "2905",
+            "document_date": date(2026, 2, 20),
+            "amount_total": Decimal("18321.38"),
+            "currency": "RUB",
+            "contract_code1c": "БП-042109",
+            "source_id": "214724,214724",
+            "operation_id": 0,
+            "vat_rate": "0%",
+            "reimbursement_type": "",
+            "deleted": 0,
+            "paid_amount": None,
+        }
+    )
+
+    payload = document_to_dict(document)
+
+    assert payload is not None
+    assert payload["erp_url"] == "http://erp.vedagent/veda/?pgid=83&obid=214724"
+    assert payload["erp_links"] == [
+        {"label": "0ЛБП-000788", "url": "http://erp.vedagent/veda/?pgid=83&obid=214724"}
+    ]

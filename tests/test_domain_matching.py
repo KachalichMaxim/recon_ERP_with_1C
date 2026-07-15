@@ -102,6 +102,7 @@ def test_documents_are_aggregated_by_kind_and_1c_code() -> None:
 
     assert len(aggregated) == 1
     assert aggregated[0].amount.amount == Decimal("411296.92")
+    assert aggregated[0].source_id == "bank-doc-1"
 
 
 def test_compare_documents_currency_mismatch_is_amount_issue() -> None:

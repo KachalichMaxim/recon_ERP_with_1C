@@ -509,7 +509,7 @@ def aggregate_documents(documents: list[AccountingDocument]) -> list[AccountingD
                 incoming_number=first.incoming_number,
                 posted=all(row.posted for row in rows),
                 deleted=all(row.deleted for row in rows),
-                source_id=",".join(row.source_id for row in rows if row.source_id),
+                source_id=_joined_source_ids(rows),
                 source_number=first.source_number,
                 operation_id=None,
                 parent_operation_id=first.parent_operation_id,
@@ -628,7 +628,7 @@ def _combine_documents(rows: list[AccountingDocument]) -> AccountingDocument:
         incoming_number=first.incoming_number,
         posted=all(row.posted for row in rows),
         deleted=all(row.deleted for row in rows),
-        source_id=",".join(row.source_id for row in rows if row.source_id),
+        source_id=_joined_source_ids(rows),
         source_number=first.source_number,
         operation_id=None,
         parent_operation_id=first.parent_operation_id,
@@ -861,3 +861,7 @@ def _allocated_external_adjustment(
         elif erp_doc.kind.value == "sale":
             adjustment -= onec_doc.amount.amount
     return adjustment
+
+
+def _joined_source_ids(documents: list[AccountingDocument]) -> str:
+    return ",".join(dict.fromkeys(document.source_id for document in documents if document.source_id))

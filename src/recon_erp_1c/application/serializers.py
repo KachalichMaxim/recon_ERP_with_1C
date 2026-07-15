@@ -32,7 +32,17 @@ def document_to_dict(document: AccountingDocument | None) -> dict[str, Any] | No
         return None
     payload = to_jsonable(document)
     if document.source.value == "erp":
-        payload["erp_url"] = _erp_document_url(document)
+        source_urls = _erp_source_urls(document.kind.value, document.source_id)
+        payload["erp_url"] = source_urls[0] if source_urls else ""
+        payload["erp_links"] = [
+            {
+                "label": (document.code1c or document.number or "ERP документ")
+                if index == 0
+                else f"ERP запись {index + 1}",
+                "url": url,
+            }
+            for index, url in enumerate(source_urls)
+        ]
         payload["operation_url"] = (
             f"http://erp.vedagent/veda/?pgid=35&invtb=145&obid={document.operation_id}#"
             if document.operation_id
@@ -61,7 +71,13 @@ def document_to_dict(document: AccountingDocument | None) -> dict[str, Any] | No
 
 
 def _erp_document_url(document: AccountingDocument) -> str:
-    return _erp_source_url(document.kind.value, document.source_id)
+    urls = _erp_source_urls(document.kind.value, document.source_id)
+    return urls[0] if urls else ""
+
+
+def _erp_source_urls(kind: str, source_ids: str) -> list[str]:
+    ids = dict.fromkeys(value.strip() for value in source_ids.split(",") if value.strip().isdigit())
+    return [url for source_id in ids if (url := _erp_source_url(kind, source_id))]
 
 
 def _erp_source_url(kind: str, source_id: str) -> str:

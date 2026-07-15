@@ -975,12 +975,16 @@ def _doc_rows(
 
 
 def _erp_document_url(document: AccountingDocument) -> str:
-    if not document.source_id or not document.source_id.isdigit():
+    source_id = next(
+        (value.strip() for value in document.source_id.split(",") if value.strip().isdigit()),
+        "",
+    )
+    if not source_id:
         return ""
     if document.kind == DocumentKind.CUSTOMER_INVOICE:
-        return f"http://erp.vedagent/veda/?pgid=17&obid={document.source_id}#"
+        return f"http://erp.vedagent/veda/?pgid=17&obid={source_id}#"
     if document.kind in {DocumentKind.SALE, DocumentKind.PURCHASE, DocumentKind.CLOSING_DOCUMENT}:
-        return f"http://erp.vedagent/veda/?pgid=83&obid={document.source_id}"
+        return f"http://erp.vedagent/veda/?pgid=83&obid={source_id}"
     return ""
 
 

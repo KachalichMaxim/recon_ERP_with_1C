@@ -944,7 +944,7 @@
       ? `<button class="select-spec-btn ${selected ? 'selected' : ''}" type="button" data-select-spec-id="${escapeHtml(specId || '')}" aria-label="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}" title="${selected ? 'Поставка выбрана' : 'Выбрать поставку'}"><span aria-hidden="true">${selected ? '●' : '○'}</span></button>`
       : '';
     const labelHtml = erpUrl
-      ? `<a class="matrix-link" href="${escapeHtml(erpUrl)}" target="_top" title="Открыть в ERP" onclick="event.stopPropagation()">${escapeHtml(label)}</a>`
+      ? `<a class="matrix-link" href="${escapeHtml(erpUrl)}" target="_blank" rel="noopener noreferrer" title="Открыть в ERP" onclick="event.stopPropagation()">${escapeHtml(label)}</a>`
       : `<span>${escapeHtml(label)}</span>`;
     return `<tr class="${rowClass}" ${rowAttrs}>
       <td class="select-col select-cell">${selectControl}</td>
@@ -1017,10 +1017,10 @@
   function matrixDetailDocumentHtml(item) {
     const title = escapeHtml(item.number || '—');
     const documentLink = item.erpUrl
-      ? `<a class="document-link" href="${escapeHtml(item.erpUrl)}" target="_top" title="Открыть документ в ERP">${title}</a>`
+      ? `<a class="document-link" href="${escapeHtml(item.erpUrl)}" target="_blank" rel="noopener noreferrer" title="Открыть документ в ERP">${title}</a>`
       : `<span>${title}</span>`;
     const operationLink = item.operationUrl
-      ? `<a class="operation-link" href="${escapeHtml(item.operationUrl)}" target="_top" title="Открыть операцию в ERP">Операция ERP</a>`
+      ? `<a class="operation-link" href="${escapeHtml(item.operationUrl)}" target="_blank" rel="noopener noreferrer" title="Открыть операцию в ERP">Операция ERP</a>`
       : '';
     return `<div class="document-links">${documentLink}${operationLink}</div>`;
   }
@@ -1551,34 +1551,44 @@
 
   function documentTitle(doc) {
     if (!doc || Object.keys(doc).length === 0) return '—';
-    return [doc.code1c || doc.number, doc.contract_code1c].filter(Boolean).join('\n') || '—';
+    return [
+      doc.code1c || doc.number,
+      doc.contract_code1c ? `договор: ${doc.contract_code1c}` : '',
+    ].filter(Boolean).join('\n') || '—';
   }
 
   function erpDocumentHtml(doc) {
     if (!doc || Object.keys(doc).length === 0) return '—';
+    const primaryNumber = doc.code1c || doc.number || doc.source_number || 'ERP документ';
     const sourceNumber = doc.source_number && doc.source_number !== doc.number
       ? `<span class="source-document-number">${escapeHtml(doc.source_number)}</span>`
       : '';
-    const title = `${sourceNumber}<span>${escapeHtml(documentTitle(doc))}</span>`;
+    const title = `${sourceNumber}<span>${escapeHtml(primaryNumber)}</span>`;
     const documentLink = doc.erp_url
-      ? `<a class="document-link" href="${escapeHtml(doc.erp_url)}" target="_top" title="Открыть документ в ERP">${title}</a>`
+      ? `<a class="document-link" href="${escapeHtml(doc.erp_url)}" target="_blank" rel="noopener noreferrer" title="Открыть документ в ERP">${title}</a>`
       : `<span>${title}</span>`;
+    const extraDocumentLinks = (doc.erp_links || []).slice(1).map((link) => (
+      `<a class="document-link extra-document-link" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" title="Открыть связанную ERP-запись">${escapeHtml(link.label || 'ERP запись')}</a>`
+    )).join('');
+    const contractContext = doc.contract_code1c
+      ? `<span class="document-contract">договор: ${escapeHtml(doc.contract_code1c)}</span>`
+      : '';
     const operationLink = doc.operation_url
-      ? `<a class="operation-link" href="${escapeHtml(doc.operation_url)}" target="_top" title="Открыть операцию в ERP">Операция ERP</a>`
+      ? `<a class="operation-link" href="${escapeHtml(doc.operation_url)}" target="_blank" rel="noopener noreferrer" title="Открыть операцию в ERP">Операция ERP</a>`
       : '';
     const parentOperationLink = doc.parent_operation_url
-      ? `<a class="operation-link parent-operation-link" href="${escapeHtml(doc.parent_operation_url)}" target="_top" title="Открыть клиентскую операцию в ERP">Клиентская операция ERP ${escapeHtml(doc.parent_operation_id)}</a>`
+      ? `<a class="operation-link parent-operation-link" href="${escapeHtml(doc.parent_operation_url)}" target="_blank" rel="noopener noreferrer" title="Открыть клиентскую операцию в ERP">Клиентская операция ERP ${escapeHtml(doc.parent_operation_id)}</a>`
       : '';
     const relatedLinks = (doc.related_erp_links || []).map((related) => {
       const relatedDocument = related.url
-        ? `<a class="document-link related-document-link" href="${escapeHtml(related.url)}" target="_top" title="Открыть документ в ERP">${escapeHtml(related.label || 'ERP документ')}</a>`
+        ? `<a class="document-link related-document-link" href="${escapeHtml(related.url)}" target="_blank" rel="noopener noreferrer" title="Открыть документ в ERP">${escapeHtml(related.label || 'ERP документ')}</a>`
         : `<span>${escapeHtml(related.label || 'ERP документ')}</span>`;
       const relatedOperation = related.operation_url
-        ? `<a class="operation-link" href="${escapeHtml(related.operation_url)}" target="_top" title="Открыть операцию в ERP">Операция ERP${related.operation_id ? ` ${escapeHtml(related.operation_id)}` : ''}</a>`
+        ? `<a class="operation-link" href="${escapeHtml(related.operation_url)}" target="_blank" rel="noopener noreferrer" title="Открыть операцию в ERP">Операция ERP${related.operation_id ? ` ${escapeHtml(related.operation_id)}` : ''}</a>`
         : '';
       return `<div class="related-document-row">${relatedDocument}${relatedOperation}</div>`;
     }).join('');
-    return `<div class="document-links">${documentLink}${operationLink}${parentOperationLink}${relatedLinks}</div>`;
+    return `<div class="document-links">${documentLink}${extraDocumentLinks}${contractContext}${operationLink}${parentOperationLink}${relatedLinks}</div>`;
   }
 
   function issueReason(row) {

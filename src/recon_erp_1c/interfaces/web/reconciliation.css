@@ -1038,6 +1038,12 @@ tr.matrix-detail-row td {
   font-weight: 700;
 }
 
+.document-contract {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .document-link {
   color: var(--blue);
   cursor: pointer;
