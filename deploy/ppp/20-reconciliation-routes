@@ -5,3 +5,4 @@
 
 ip route replace 10.54.1.28 via "$PPP_REMOTE" dev "$PPP_IFACE" 2>/dev/null || true
 ip route replace 10.54.1.25 via "$PPP_REMOTE" dev "$PPP_IFACE" 2>/dev/null || true
+ip route replace 10.54.1.17 via "$PPP_REMOTE" dev "$PPP_IFACE" 2>/dev/null || true
