@@ -1,7 +1,7 @@
 [project]
 name = "recon-erp-1c"
-version = "0.1.0"
-description = "ERP and 1C reconciliation service"
+version = "0.2.0"
+description = "Delivery-scoped ERP and 1C document control service"
 requires-python = ">=3.11"
 dependencies = [
   "openpyxl>=3.1,<4",

@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light">
-  <title>Сверка ERP и 1С</title>
+  <title>Контроль документов ERP и 1С</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23C4122F'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='26' font-family='Arial' font-weight='700' fill='white'%3EV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/reconciliation.css?v=20260715_audit_storage">
-  <script src="/reconciliation.js?v=20260715_restore_run" defer></script>
+  <link rel="stylesheet" href="/reconciliation.css?v=20260715_mvp_scope">
+  <script src="/reconciliation.js?v=20260715_mvp_scope" defer></script>
 </head>
 <body>
   <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
@@ -19,12 +19,12 @@
           <div class="brand-subtitle">интеграционные сервисы</div>
         </div>
       </div>
-      <h1 id="loginTitle">Сверка ERP ↔ 1С</h1>
+      <h1 id="loginTitle">Контроль документов ERP → 1С</h1>
       <p id="loginHint">Откройте модуль из ERP. Вход выполняется по токену пользователя.</p>
 
       <div class="service-chip">
         <span class="service-dot"></span>
-        <span>Read-only сервис сверки · ERP / 1С</span>
+        <span>Read-only проверка документов по поставке</span>
       </div>
 
       <div class="login-form" id="loginForm">
@@ -62,7 +62,7 @@
         </button>
         <button class="nav-item" id="navReconBtn" type="button">
           <span class="nav-icon">✓</span>
-          <span>Сверка ERP/1С</span>
+          <span>Контроль документов</span>
         </button>
         <div class="nav-section">Сервис</div>
         <button class="nav-item muted" type="button" disabled>
@@ -90,7 +90,7 @@
         <div>
           <div class="top-title-row">
             <button class="btn btn-ghost icon-btn" id="sidebarToggleBtn" type="button" title="Скрыть меню">☰</button>
-            <h1>Модуль сверки ERP и 1С</h1>
+            <h1>Взаиморасчеты и контроль документов</h1>
           </div>
           <div class="top-meta">
             <span id="erpStatusChip">ERP: ожидает запрос</span>
@@ -106,7 +106,7 @@
       <div class="workflow-steps" aria-label="Маршрут работы">
         <div class="workflow-step active" data-workflow-step="matrix"><span>1</span> Поиск</div>
         <div class="workflow-step" data-workflow-step="select"><span>2</span> Поставка</div>
-        <div class="workflow-step" data-workflow-step="recon"><span>3</span> Сверка с 1С</div>
+        <div class="workflow-step" data-workflow-step="recon"><span>3</span> Проверка в 1С</div>
         <div class="workflow-step" data-workflow-step="review"><span>4</span> Расхождения</div>
       </div>
 
@@ -223,12 +223,12 @@
       <section class="screen hidden" id="reconScreen" aria-labelledby="reconTitle">
         <div class="section-heading">
           <div>
-            <h2 id="reconTitle">Документная сверка ERP ↔ 1С</h2>
-            <p>Сравнение выполняется по кодам 1С, датам, суммам, валюте, договорам и НДС. Комментарии сохраняются в журнал разбора; при временной недоступности backend черновик остается локально.</p>
+            <h2 id="reconTitle">Проверка документов по выбранной ERP-поставке</h2>
+            <p>Сервис проверяет ожидаемые ERP-документы в доступной области 1С и помогает найти место исправления. Результат не является независимой полной сверкой всех документов ERP и 1С.</p>
           </div>
           <div class="button-row">
-            <button class="btn btn-primary" id="runBtn" type="button" disabled>Сверить с 1С</button>
-            <button class="btn btn-outline" id="exportBtn" type="button" disabled>Скачать сверку XLSX</button>
+            <button class="btn btn-primary" id="runBtn" type="button" disabled>Проверить в 1С</button>
+            <button class="btn btn-outline" id="exportBtn" type="button" disabled>Скачать результат XLSX</button>
           </div>
         </div>
 
@@ -236,11 +236,25 @@
           Выберите поставку на экране матрицы.
         </div>
 
+        <div class="coverage-panel hidden" id="coveragePanel" aria-live="polite">
+          <div class="coverage-heading">
+            <strong>Область проверки 1С</strong>
+            <span id="coverageRetrievedAt">—</span>
+          </div>
+          <div class="coverage-facts">
+            <span><b>Период</b><em id="coveragePeriod">—</em></span>
+            <span><b>Договоры</b><em id="coverageContracts">—</em></span>
+            <span><b>Получено</b><em id="coverageCounts">—</em></span>
+            <span><b>Полнота</b><em id="coverageCompleteness">—</em></span>
+          </div>
+          <p class="coverage-warning hidden" id="coverageWarnings"></p>
+        </div>
+
         <div class="loading-overlay hidden" id="loadingOverlay" aria-live="polite" aria-modal="true" role="dialog">
           <div class="loading-panel">
             <div class="loading-spinner" aria-hidden="true"></div>
             <div class="loading-copy">
-              <h3>Идет сверка ERP и 1С</h3>
+              <h3>Идет проверка документов ERP и 1С</h3>
               <p id="loadingStepText">Готовим запрос...</p>
             </div>
             <div class="progress" id="progressBox"></div>
@@ -259,12 +273,12 @@
         </div>
 
         <div class="kpi-grid recon-kpi" id="summaryCards">
-          <button class="kpi kpi-filter active" type="button" data-result-filter="all"><span>Проверено строк</span><b data-key="issues_total">0</b></button>
-          <button class="kpi kpi-filter ok" type="button" data-result-filter="match"><span>Совпало</span><b data-status="match">0</b></button>
-          <button class="kpi kpi-filter bad" type="button" data-result-filter="not_found_in_1c"><span>Не найдено в 1С</span><b data-status="not_found_in_1c">0</b></button>
-          <button class="kpi kpi-filter bad" type="button" data-result-filter="erp_code1c_missing"><span>Нет кода 1С в ERP</span><b data-status="erp_code1c_missing">0</b></button>
-          <button class="kpi kpi-filter warn" type="button" data-result-filter="not_linked_to_delivery_in_erp"><span>Нет связи ERP</span><b data-status="not_linked_to_delivery_in_erp">0</b></button>
-          <button class="kpi kpi-filter bad" type="button" data-result-filter="problems"><span>К разбору</span><b data-role="problems">0</b></button>
+          <button class="kpi kpi-filter active" type="button" data-result-filter="all"><span>Строк в области</span><b data-key="issues_total">0</b></button>
+          <button class="kpi kpi-filter ok" type="button" data-result-filter="match"><span>Совпало</span><b data-group="matched">0</b></button>
+          <button class="kpi kpi-filter bad" type="button" data-result-filter="cannot_check"><span>Нельзя проверить</span><b data-group="cannot_check">0</b></button>
+          <button class="kpi kpi-filter bad" type="button" data-result-filter="not_found"><span>Не найдено</span><b data-group="not_found">0</b></button>
+          <button class="kpi kpi-filter warn" type="button" data-result-filter="link_problem"><span>Нет связи</span><b data-group="link_problem">0</b></button>
+          <button class="kpi kpi-filter warn" type="button" data-result-filter="attribute_mismatch"><span>Расходятся реквизиты</span><b data-group="attribute_mismatch">0</b></button>
         </div>
 
         <div class="result-toolbar">
@@ -273,6 +287,10 @@
             <option value="all">Все статусы</option>
             <option value="problems">Только к разбору</option>
             <option value="match">Совпало</option>
+            <option value="cannot_check">Нельзя проверить</option>
+            <option value="not_found">Не найдено</option>
+            <option value="link_problem">Нет связи с поставкой</option>
+            <option value="attribute_mismatch">Расходятся реквизиты</option>
             <option value="not_found_in_1c">Не найдено в 1С</option>
             <option value="erp_code1c_missing">Не заполнен код 1С</option>
             <option value="not_linked_to_delivery_in_erp">Нет связи с поставкой ERP</option>

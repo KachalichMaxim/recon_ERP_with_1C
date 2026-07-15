@@ -125,18 +125,58 @@ def run_to_dict(run: ReconciliationRun) -> dict[str, Any]:
     counts: dict[str, int] = {}
     for issue in run.issues:
         counts[issue.status.value] = counts.get(issue.status.value, 0) + 1
+    groups = _status_groups(counts)
     return {
         "run_id": run.run_id,
         "created_at": run.created_at.isoformat(),
         "period": to_jsonable(run.period),
         "matched": run.matched,
+        "execution_status": run.execution_status,
+        "coverage_status": run.coverage_status,
+        "result_status": run.result_status,
+        "balance_status": run.balance_status,
+        "ruleset": {
+            "id": run.ruleset_id,
+            "version": run.ruleset_version,
+            "status": "experimental",
+        },
+        "application": {
+            "version": run.application_version,
+            "git_sha": run.git_sha,
+        },
         "delivery": to_jsonable(run.delivery),
         "summary": {
             "issues_total": len(run.issues),
             "by_status": counts,
+            "by_group": groups,
         },
         "balance_comparison": to_jsonable(run.balance_comparison),
+        "coverage": to_jsonable(run.coverage),
         "source_warnings": list(run.source_warnings),
         "metrics": to_jsonable(run.metrics),
         "issues": [issue_to_dict(issue, ordinal) for ordinal, issue in enumerate(run.issues)],
+    }
+
+
+def _status_groups(counts: dict[str, int]) -> dict[str, int]:
+    groups = {
+        "matched": {"match"},
+        "cannot_check": {"missing_erp_invoice", "missing_erp_closing_document", "erp_code1c_missing"},
+        "not_found": {"not_found_in_1c", "not_found_in_erp"},
+        "link_problem": {"not_linked_to_delivery_in_erp", "contract_context_missing"},
+        "attribute_mismatch": {
+            "amount_mismatch",
+            "date_mismatch",
+            "contract_mismatch",
+            "number_mismatch",
+            "vat_mismatch",
+            "duplicate_in_1c",
+            "ambiguous_match",
+            "aggregation_conflict",
+            "not_comparable",
+        },
+    }
+    return {
+        group: sum(counts.get(status, 0) for status in statuses)
+        for group, statuses in groups.items()
     }

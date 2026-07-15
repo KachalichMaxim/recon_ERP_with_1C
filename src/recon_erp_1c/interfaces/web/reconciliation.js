@@ -95,6 +95,13 @@
     matrixNextBtn: $('matrixNextBtn'),
     matrixToReconBtn: $('matrixToReconBtn'),
     selectedContext: $('selectedContext'),
+    coveragePanel: $('coveragePanel'),
+    coverageRetrievedAt: $('coverageRetrievedAt'),
+    coveragePeriod: $('coveragePeriod'),
+    coverageContracts: $('coverageContracts'),
+    coverageCounts: $('coverageCounts'),
+    coverageCompleteness: $('coverageCompleteness'),
+    coverageWarnings: $('coverageWarnings'),
     loadingOverlay: $('loadingOverlay'),
     loadingStepText: $('loadingStepText'),
     runBtn: $('runBtn'),
@@ -1135,12 +1142,12 @@
     }
     els.loadingOverlay.classList.remove('hidden');
     if (activeKey === 'done') {
-      els.loadingStepText.textContent = 'Сверка завершена.';
+      els.loadingStepText.textContent = 'Проверка завершена.';
       els.progressBox.innerHTML = steps.map(([, label]) => `<div class="step done"><span class="dot"></span><span>${escapeHtml(label)}</span></div>`).join('');
       return;
     }
     const activeStep = steps.find(([key]) => key === activeKey);
-    els.loadingStepText.textContent = activeStep ? activeStep[1] : 'Выполняем сверку...';
+    els.loadingStepText.textContent = activeStep ? activeStep[1] : 'Выполняем проверку...';
     els.progressBox.innerHTML = steps.map(([key, label]) => {
       const activeIndex = steps.findIndex((step) => step[0] === activeKey);
       const currentIndex = steps.findIndex((step) => step[0] === key);
@@ -1157,8 +1164,8 @@
     if (!validateDateRange(els.runMessage)) return;
     els.runBtn.disabled = true;
     els.exportBtn.disabled = true;
-    els.runBtn.textContent = 'Сверяем...';
-    setMessage(els.runMessage, 'Запускаем сверку...');
+    els.runBtn.textContent = 'Проверяем...';
+    setMessage(els.runMessage, 'Запускаем проверку...');
     renderProgress('erp_context');
     const timer = stagedProgress();
     try {
@@ -1181,7 +1188,7 @@
       const elapsed = state.run.metrics && state.run.metrics.total_ms
         ? ` · ${(Number(state.run.metrics.total_ms) / 1000).toFixed(2)} с`
         : '';
-      setMessage(els.runMessage, `Сверка завершена${elapsed}. Номер запуска: ${state.run.run_id}`);
+      setMessage(els.runMessage, `Проверка доступной области завершена${elapsed}. Номер запуска: ${state.run.run_id}`);
       syncBrowserUrl(state.run.run_id);
       els.onecStatusChip.textContent = state.matrixMode === 'ui_demo' ? '1С: UI demo' : '1С: ответ получен';
     } catch (err) {
@@ -1215,7 +1222,7 @@
       const elapsed = state.run.metrics && state.run.metrics.total_ms
         ? ` · ${(Number(state.run.metrics.total_ms) / 1000).toFixed(2)} с`
         : '';
-      setMessage(els.runMessage, `Сохраненный запуск${elapsed}. Номер запуска: ${state.run.run_id}`);
+      setMessage(els.runMessage, `Сохраненная проверка доступной области${elapsed}. Номер запуска: ${state.run.run_id}`);
       updateActionState();
       return true;
     } catch (error) {
@@ -1244,6 +1251,11 @@
       run_id: 'ui-demo-' + Date.now(),
       created_at: new Date().toISOString(),
       matched: false,
+      execution_status: 'completed',
+      coverage_status: 'delivery_snapshot',
+      result_status: 'issues_found',
+      balance_status: 'amount_mismatch',
+      ruleset: { id: 'delivery-document-control', version: '0.3.0', status: 'experimental' },
       delivery: {
         erp_spec_id: row.spec_id,
         spec_number: row.spec_number,
@@ -1256,6 +1268,20 @@
       summary: {
         issues_total: 5,
         by_status: { match: 2, amount_mismatch: 1, not_found_in_1c: 1, contract_mismatch: 1 },
+      },
+      coverage: {
+        requested_scope: 'delivery_snapshot',
+        date_from: '2025-07-01',
+        date_to: '2025-08-31',
+        filters: {
+          buyer_contract_code1c: row.buyer_contract_code,
+          committent_contract_code1c: row.committent_contract_code,
+        },
+        returned_blocks: { customer_invoices: 3, payments: 1, sales: 2, purchases: 4, document_lines: 12 },
+        warnings: [],
+        complete: null,
+        retrieved_at: new Date().toISOString(),
+        contract_version: 'reconciliation.v1',
       },
       balance_comparison: {
         erp_balance: { amount: '-6666.82', currency: 'RUB' },
@@ -1299,16 +1325,63 @@
 
   function renderSummary() {
     const by = state.run && state.run.summary ? state.run.summary.by_status || {} : {};
+    const groups = state.run && state.run.summary ? state.run.summary.by_group || buildStatusGroups(by) : {};
     const total = state.run && state.run.summary ? state.run.summary.issues_total || 0 : 0;
     els.summaryCards.querySelector('[data-key="issues_total"]').textContent = total;
-    els.summaryCards.querySelector('[data-status="match"]').textContent = by.match || 0;
-    els.summaryCards.querySelector('[data-status="not_found_in_1c"]').textContent = by.not_found_in_1c || 0;
-    els.summaryCards.querySelector('[data-status="erp_code1c_missing"]').textContent = by.erp_code1c_missing || 0;
-    els.summaryCards.querySelector('[data-status="not_linked_to_delivery_in_erp"]').textContent = by.not_linked_to_delivery_in_erp || 0;
-    const problems = Math.max(0, Number(total) - Number(by.match || 0));
-    els.summaryCards.querySelector('[data-role="problems"]').textContent = problems;
+    els.summaryCards.querySelectorAll('[data-group]').forEach((node) => {
+      node.textContent = groups[node.getAttribute('data-group')] || 0;
+    });
+    renderCoverage();
     renderBalanceComparison();
     updateWorkflowState();
+  }
+
+  function buildStatusGroups(by) {
+    const sum = (statuses) => statuses.reduce((total, status) => total + Number(by[status] || 0), 0);
+    return {
+      matched: sum(['match']),
+      cannot_check: sum(['missing_erp_invoice', 'missing_erp_closing_document', 'erp_code1c_missing']),
+      not_found: sum(['not_found_in_1c', 'not_found_in_erp']),
+      link_problem: sum(['not_linked_to_delivery_in_erp', 'contract_context_missing']),
+      attribute_mismatch: sum(['amount_mismatch', 'date_mismatch', 'contract_mismatch', 'number_mismatch', 'vat_mismatch', 'duplicate_in_1c', 'ambiguous_match', 'aggregation_conflict', 'not_comparable']),
+    };
+  }
+
+  function renderCoverage() {
+    const coverage = state.run && state.run.coverage;
+    if (!coverage) {
+      els.coveragePanel.classList.add('hidden');
+      return;
+    }
+    els.coveragePanel.classList.remove('hidden');
+    els.coverageRetrievedAt.textContent = coverage.retrieved_at ? `получено ${fmtDateTime(coverage.retrieved_at)}` : '';
+    els.coveragePeriod.textContent = `${fmtDate(coverage.date_from)} — ${fmtDate(coverage.date_to)}`;
+    const filters = coverage.filters || {};
+    els.coverageContracts.textContent = [filters.buyer_contract_code1c, filters.committent_contract_code1c].filter(Boolean).join(', ') || 'не заданы';
+    const counts = coverage.returned_blocks || {};
+    const countLabels = [
+      ['customer_invoices', 'счетов'],
+      ['payments', 'оплат'],
+      ['sales', 'реализаций'],
+      ['purchases', 'поступлений'],
+      ['document_lines', 'строк'],
+    ].filter(([key]) => Number(counts[key] || 0) > 0).map(([key, label]) => `${counts[key]} ${label}`);
+    els.coverageCounts.textContent = countLabels.join(' · ') || `${counts.documents || 0} документов`;
+    els.coverageCompleteness.textContent = coverage.complete === true
+      ? 'подтверждена источником'
+      : coverage.complete === false
+        ? 'источник сообщил о неполных данных'
+        : 'независимо не подтверждена';
+    const warnings = coverage.warnings || [];
+    els.coverageWarnings.textContent = warnings.length ? `Предупреждения 1С: ${warnings.join('; ')}` : '';
+    els.coverageWarnings.classList.toggle('hidden', !warnings.length);
+  }
+
+  function fmtDateTime(value) {
+    if (!value) return '—';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
   }
 
   function renderBalanceComparison() {
@@ -1349,6 +1422,10 @@
     syncResultFilterTiles(filter);
     let rows = issues;
     if (filter === 'problems') rows = rows.filter((row) => row.status !== 'match');
+    else if (filter === 'cannot_check') rows = rows.filter((row) => ['missing_erp_invoice', 'missing_erp_closing_document', 'erp_code1c_missing'].includes(row.status));
+    else if (filter === 'not_found') rows = rows.filter((row) => ['not_found_in_1c', 'not_found_in_erp'].includes(row.status));
+    else if (filter === 'link_problem') rows = rows.filter((row) => ['not_linked_to_delivery_in_erp', 'contract_context_missing'].includes(row.status));
+    else if (filter === 'attribute_mismatch') rows = rows.filter((row) => ['amount_mismatch', 'date_mismatch', 'contract_mismatch', 'number_mismatch', 'vat_mismatch', 'duplicate_in_1c', 'ambiguous_match', 'aggregation_conflict', 'not_comparable'].includes(row.status));
     else if (filter === 'mismatches') rows = rows.filter((row) => [
       'amount_mismatch',
       'date_mismatch',
@@ -1610,7 +1687,7 @@
       return;
     }
     if (!state.run) return;
-    setMessage(els.runMessage, 'Формируем XLSX по результату сверки...');
+    setMessage(els.runMessage, 'Формируем XLSX по результату проверки...');
     try {
       const resp = await api('/api/reconciliation/run.xlsx', {
         method: 'POST',
@@ -1770,12 +1847,12 @@
     }
     if (els.matrixHint) els.matrixHint.classList.toggle('hidden', !visibleCount || hasSpec);
     els.runBtn.disabled = !hasSpec;
-    els.runBtn.textContent = hasRun ? 'Обновить сверку' : 'Сверить с 1С';
+    els.runBtn.textContent = hasRun ? 'Обновить проверку' : 'Проверить в 1С';
     els.exportBtn.disabled = !hasRun;
     els.refreshBtn.classList.toggle('hidden', isMatrixView && !hasMatrix);
     els.refreshBtn.disabled = isMatrixView && !hasMatrix;
-    els.refreshBtn.textContent = isMatrixView ? '↻ Обновить список' : '↻ Обновить сверку';
-    els.refreshBtn.title = isMatrixView ? 'Обновить список поставок' : 'Обновить сверку с 1С';
+    els.refreshBtn.textContent = isMatrixView ? '↻ Обновить список' : '↻ Обновить проверку';
+    els.refreshBtn.title = isMatrixView ? 'Обновить список поставок' : 'Обновить проверку документов в 1С';
     updateWorkflowState();
   }
 

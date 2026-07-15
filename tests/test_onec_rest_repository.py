@@ -134,6 +134,15 @@ def test_repository_keeps_lines_allocations_and_balances() -> None:
     assert sale.vat_rate == "20%"
     assert result.balances[0].signed_closing_balance.amount.__str__() == "-50.00"
     assert result.warnings == ("Часть аналитики недоступна",)
+    assert result.metadata["contract_version"] == "reconciliation.v1"
+    assert result.metadata["counts_by_block"] == {
+        "customer_invoices": 0,
+        "payments": 1,
+        "sales": 1,
+        "purchases": 1,
+        "document_lines": 2,
+        "balances": 1,
+    }
     assert len(client.requests) == 1
 
 

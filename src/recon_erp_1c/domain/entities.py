@@ -129,6 +129,20 @@ class OneCSnapshot:
     documents: tuple[AccountingDocument, ...]
     balances: tuple[AccountingBalance, ...] = ()
     warnings: tuple[str, ...] = ()
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotCoverage:
+    requested_scope: str
+    date_from: date
+    date_to: date
+    filters: dict[str, object]
+    returned_blocks: dict[str, int]
+    warnings: tuple[str, ...]
+    complete: bool | None
+    retrieved_at: datetime
+    contract_version: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +181,11 @@ class ReconciliationRun:
     issues: list[ReconciliationIssue] = field(default_factory=list)
     balance_comparison: BalanceComparison | None = None
     source_warnings: tuple[str, ...] = ()
+    coverage: SnapshotCoverage | None = None
+    ruleset_id: str = "delivery-document-control"
+    ruleset_version: str = "0.3.0"
+    application_version: str = "0.1.0"
+    git_sha: str = ""
     metrics: dict[str, float | int] = field(default_factory=dict)
 
     @property
@@ -174,3 +193,29 @@ class ReconciliationRun:
         documents_matched = all(issue.status == ReconciliationStatus.MATCH for issue in self.issues)
         balance_matched = self.balance_comparison is None or self.balance_comparison.status == ReconciliationStatus.MATCH
         return documents_matched and balance_matched
+
+    @property
+    def execution_status(self) -> str:
+        return "completed"
+
+    @property
+    def coverage_status(self) -> str:
+        if self.coverage is None:
+            return "unknown"
+        if self.coverage.warnings:
+            return "delivery_snapshot_with_warnings"
+        return "delivery_snapshot"
+
+    @property
+    def result_status(self) -> str:
+        return "no_issues_in_available_scope" if all(
+            issue.status == ReconciliationStatus.MATCH for issue in self.issues
+        ) else "issues_found"
+
+    @property
+    def balance_status(self) -> str:
+        if self.balance_comparison is None:
+            return "not_checked"
+        if not self.balance_comparison.comparable:
+            return "not_comparable"
+        return self.balance_comparison.status.value

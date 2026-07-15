@@ -528,8 +528,10 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                         id, run_external_id, scope, scope_id, spec_id, client_id, source_mode,
                         period_from, period_to, base_contract_number, spec_number,
                         onec_docs_count, erp_docs_count, matched_count, unresolved_count,
-                        status, balance_status, erp_balance, onec_balance, balance_difference,
-                        balance_comparable, summary_json, created_at, completed_at
+                        status, execution_status, coverage_status, result_status,
+                        ruleset_id, ruleset_version, application_version, git_sha,
+                        balance_status, erp_balance, onec_balance, balance_difference,
+                        balance_comparable, summary_json, coverage_json, created_at, completed_at
                     FROM veda_reconciliation_runs
                     {where}
                     ORDER BY id DESC
@@ -545,6 +547,10 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 summary = json.loads(row.get("summary_json") or "{}")
             except json.JSONDecodeError:
                 summary = {}
+            try:
+                coverage = json.loads(row.get("coverage_json") or "null")
+            except json.JSONDecodeError:
+                coverage = None
             items.append(
                 {
                     "id": row.get("id"),
@@ -563,12 +569,24 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                     "matched_count": row.get("matched_count"),
                     "unresolved_count": row.get("unresolved_count"),
                     "status": row.get("status"),
+                    "execution_status": row.get("execution_status"),
+                    "coverage_status": row.get("coverage_status"),
+                    "result_status": row.get("result_status"),
+                    "ruleset": {
+                        "id": row.get("ruleset_id"),
+                        "version": row.get("ruleset_version"),
+                    },
+                    "application": {
+                        "version": row.get("application_version"),
+                        "git_sha": row.get("git_sha"),
+                    },
                     "balance_status": row.get("balance_status"),
                     "erp_balance": str(row.get("erp_balance")) if row.get("erp_balance") is not None else None,
                     "onec_balance": str(row.get("onec_balance")) if row.get("onec_balance") is not None else None,
                     "balance_difference": str(row.get("balance_difference")) if row.get("balance_difference") is not None else None,
                     "balance_comparable": bool(row.get("balance_comparable")),
                     "summary": summary,
+                    "coverage": coverage,
                     "created_at": str(row.get("created_at") or ""),
                     "completed_at": str(row.get("completed_at") or ""),
                 }

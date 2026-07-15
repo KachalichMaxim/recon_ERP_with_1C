@@ -1,0 +1,64 @@
+ruleset:
+  id: delivery-document-control
+  version: 0.3.0
+  status: experimental
+  effective_from: 2026-07-15
+  scope: selected_erp_delivery
+
+rules:
+  - id: ERP-INVOICE-REQUIRED
+    title: Для клиентской операции должен существовать связанный счет покупателю
+    status: hypothesis
+    severity: critical
+    result: missing_erp_invoice
+    owner_hint: ERP
+
+  - id: ERP-CLOSING-DOC-REQUIRED
+    title: Для реализованной операции должен существовать связанный закрывающий документ
+    status: hypothesis
+    severity: critical
+    result: missing_erp_closing_document
+    owner_hint: ERP
+
+  - id: ERP-CODE1C-REQUIRED
+    title: Для точечной проверки переданного ERP-документа требуется код 1С
+    status: validated_by_data
+    severity: critical
+    result: erp_code1c_missing
+    owner_hint: ERP_OR_EXCHANGE
+
+  - id: ONEC-DOCUMENT-PRESENCE
+    title: Документ ERP с кодом 1С должен находиться в доступной области 1С
+    status: under_validation
+    severity: critical
+    result: not_found_in_1c
+    owner_hint: EXCHANGE_OR_COVERAGE
+
+  - id: ERP-DELIVERY-LINK
+    title: Дополнительный документ 1С должен иметь доказанную связь с выбранной поставкой ERP
+    status: under_validation
+    severity: warning
+    result: not_linked_to_delivery_in_erp
+    owner_hint: ERP_LINKAGE
+
+  - id: ONEC-CONTRACT-CONTEXT
+    title: Другой договор 1С допустим при подтвержденной связи строки или распределения с поставкой
+    status: hypothesis
+    severity: info
+    result: match
+    owner_hint: NONE
+
+  - id: DOCUMENT-ATTRIBUTES
+    title: Для найденной пары сравниваются номер, дата, сумма, валюта и ставка НДС
+    status: under_validation
+    severity: warning
+    result: attribute_mismatch
+    owner_hint: MANUAL_REVIEW
+
+change_log:
+  - version: 0.3.0
+    date: 2026-07-15
+    changes:
+      - Зафиксирована поставка как пользовательская точка входа, а не строгая граница данных.
+      - Другой договор 1С перестал считаться ошибкой при подтвержденной связи строки.
+      - Разделены предусловия ERP, отсутствие документов, проблемы связи и расхождения реквизитов.

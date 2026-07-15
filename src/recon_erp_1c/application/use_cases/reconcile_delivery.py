@@ -19,7 +19,9 @@ from recon_erp_1c.domain.entities import (
     PaymentAllocation,
     ReconciliationIssue,
     ReconciliationRun,
+    SnapshotCoverage,
 )
+from recon_erp_1c.domain.ruleset import APPLICATION_VERSION, RULESET_ID, RULESET_VERSION, git_sha
 from recon_erp_1c.domain.services import compare_documents, normalize_document_number
 from recon_erp_1c.domain.value_objects import ContractRole, DateRange, Money, ReconciliationStatus, SourceSystem
 
@@ -86,6 +88,37 @@ class ReconcileDeliveryUseCase:
             issues=issues,
             balance_comparison=balance_comparison,
             source_warnings=onec_snapshot.warnings,
+            coverage=SnapshotCoverage(
+                requested_scope="delivery_snapshot",
+                date_from=command.period.date_from,
+                date_to=command.period.date_to,
+                filters={
+                    "spec_id": delivery.erp_spec_id,
+                    "spec_number": delivery.spec_number,
+                    "base_contract_number": delivery.base_contract_number,
+                    "organization_code1c": delivery.organization.code1c,
+                    "counterparty_code1c": delivery.counterparty.code1c,
+                    "buyer_contract_code1c": delivery.contract_codes.buyer_contract_code,
+                    "committent_contract_code1c": delivery.contract_codes.committent_contract_code,
+                },
+                returned_blocks={
+                    "documents": len(onec_snapshot.documents),
+                    "balances": len(onec_snapshot.balances),
+                    **{
+                        str(key): int(value)
+                        for key, value in (onec_snapshot.metadata.get("counts_by_block") or {}).items()
+                        if isinstance(value, int)
+                    },
+                },
+                warnings=onec_snapshot.warnings,
+                complete=None,
+                retrieved_at=datetime.now(),
+                contract_version=str(onec_snapshot.metadata.get("contract_version") or "reconciliation.v1"),
+            ),
+            ruleset_id=RULESET_ID,
+            ruleset_version=RULESET_VERSION,
+            application_version=APPLICATION_VERSION,
+            git_sha=git_sha(),
             metrics={
                 "erp_read_ms": round(erp_ms, 2),
                 "onec_rest_ms": round(onec_ms, 2),

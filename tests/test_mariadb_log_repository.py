@@ -97,5 +97,9 @@ def test_log_repository_persists_missing_operation_id_as_zero_in_one_transaction
     assert factory.connection.params[0]["run_external_id"] == "run-1"
     assert factory.connection.params[0]["unresolved_count"] == 0
     assert factory.connection.params[0]["matched_count"] == 1
+    assert factory.connection.params[0]["execution_status"] == "completed"
+    assert factory.connection.params[0]["coverage_status"] == "unknown"
+    assert factory.connection.params[0]["result_status"] == "no_issues_in_available_scope"
+    assert factory.connection.params[0]["ruleset_version"] == "0.3.0"
     assert factory.connection.params[1]["oper_id"] == 0
     assert len(factory.connection.params[1]["issue_key"]) == 64

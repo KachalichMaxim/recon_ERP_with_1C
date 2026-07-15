@@ -57,10 +57,29 @@ class OneCRestReadRepository:
         warnings = tuple(
             dict.fromkeys(_warning_text(item) for item in snapshot.get("warnings", []) if _warning_text(item))
         )
+        metadata = dict(snapshot.get("metadata") or {})
+        metadata["contract_version"] = str(
+            metadata.get("contract_version")
+            or response.get("contract_version")
+            or base_request.get("contract_version")
+            or "reconciliation.v1"
+        )
+        metadata["counts_by_block"] = {
+            block_name: len(snapshot.get(block_name, []))
+            for block_name in (
+                "customer_invoices",
+                "payments",
+                "sales",
+                "purchases",
+                "document_lines",
+                "balances",
+            )
+        }
         result = OneCSnapshot(
             documents=tuple(_documents_from_snapshot(snapshot)),
             balances=tuple(_balances_from_snapshot(snapshot)),
             warnings=warnings,
+            metadata=metadata,
         )
         metrics_snapshot = getattr(self.client, "metrics_snapshot", None)
         self.last_metrics = metrics_snapshot() if callable(metrics_snapshot) else {}

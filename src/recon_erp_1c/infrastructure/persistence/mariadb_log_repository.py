@@ -45,7 +45,9 @@ class MariaDbReconciliationLogRepository:
                             period_from, period_to, base_contract_number, spec_number,
                             buyer_contract_code, committent_contract_code,
                             onec_docs_count, erp_docs_count, matched_count, unresolved_count,
-                            status, balance_status, erp_balance, onec_balance, balance_difference,
+                            status, execution_status, coverage_status, result_status,
+                            ruleset_id, ruleset_version, application_version, git_sha, coverage_json,
+                            balance_status, erp_balance, onec_balance, balance_difference,
                             balance_comparable, summary_json, run_json, completed_at
                         )
                     VALUES
@@ -55,7 +57,9 @@ class MariaDbReconciliationLogRepository:
                             %(period_from)s, %(period_to)s, %(base_contract_number)s, %(spec_number)s,
                             %(buyer_contract_code)s, %(committent_contract_code)s,
                             %(onec_docs_count)s, %(erp_docs_count)s, %(matched_count)s, %(unresolved_count)s,
-                            %(status)s, %(balance_status)s, %(erp_balance)s, %(onec_balance)s, %(balance_difference)s,
+                            %(status)s, %(execution_status)s, %(coverage_status)s, %(result_status)s,
+                            %(ruleset_id)s, %(ruleset_version)s, %(application_version)s, %(git_sha)s, %(coverage_json)s,
+                            %(balance_status)s, %(erp_balance)s, %(onec_balance)s, %(balance_difference)s,
                             %(balance_comparable)s, %(summary_json)s, %(run_json)s, CURRENT_TIMESTAMP
                         )
                     """,
@@ -78,7 +82,15 @@ class MariaDbReconciliationLogRepository:
                         "matched_count": matched_count,
                         "unresolved_count": unresolved_count,
                         "status": status,
-                        "balance_status": comparison.status.value if comparison else None,
+                        "execution_status": run.execution_status,
+                        "coverage_status": run.coverage_status,
+                        "result_status": run.result_status,
+                        "ruleset_id": run.ruleset_id,
+                        "ruleset_version": run.ruleset_version,
+                        "application_version": run.application_version,
+                        "git_sha": run.git_sha or None,
+                        "coverage_json": json.dumps(payload.get("coverage"), ensure_ascii=False),
+                        "balance_status": run.balance_status,
                         "erp_balance": comparison.erp_balance.amount if comparison else None,
                         "onec_balance": comparison.onec_balance.amount if comparison else None,
                         "balance_difference": comparison.difference.amount if comparison else None,
