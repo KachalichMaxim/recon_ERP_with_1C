@@ -36,16 +36,34 @@ def document_to_dict(document: AccountingDocument | None) -> dict[str, Any] | No
             if document.operation_id
             else ""
         )
+        payload["related_erp_links"] = [
+            {
+                "label": related.number or f"ERP документ {related.source_id}",
+                "url": _erp_source_url(document.kind.value, related.source_id),
+                "operation_id": related.operation_id,
+                "operation_url": (
+                    f"http://erp.vedagent/veda/?pgid=35&invtb=145&obid={related.operation_id}#"
+                    if related.operation_id
+                    else ""
+                ),
+            }
+            for related in document.related_documents
+            if related.source_id
+        ]
     return payload
 
 
 def _erp_document_url(document: AccountingDocument) -> str:
-    if not document.source_id or not document.source_id.isdigit():
+    return _erp_source_url(document.kind.value, document.source_id)
+
+
+def _erp_source_url(kind: str, source_id: str) -> str:
+    if not source_id or not source_id.isdigit():
         return ""
-    if document.kind.value == "customer_invoice":
-        return f"http://erp.vedagent/veda/?pgid=17&obid={document.source_id}#"
-    if document.kind.value in {"sale", "purchase", "closing_document"}:
-        return f"http://erp.vedagent/veda/?pgid=83&obid={document.source_id}"
+    if kind == "customer_invoice":
+        return f"http://erp.vedagent/veda/?pgid=17&obid={source_id}#"
+    if kind in {"sale", "purchase", "closing_document"}:
+        return f"http://erp.vedagent/veda/?pgid=83&obid={source_id}"
     return ""
 
 

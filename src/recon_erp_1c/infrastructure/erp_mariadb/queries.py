@@ -403,6 +403,27 @@ SELECT DISTINCT
     END AS contract_code1c,
     COALESCE(schet.f_id, 0) AS source_id,
     COALESCE(schet.f_operid, 0) AS operation_id,
+    COALESCE((
+        SELECT GROUP_CONCAT(child.f_id ORDER BY child.f_id SEPARATOR '||')
+        FROM veda_schets child
+        WHERE child.f_maininv = schet.f_id
+          AND child.f_type = 1
+          AND child.f_status <> 9
+    ), '') AS related_source_ids,
+    COALESCE((
+        SELECT GROUP_CONCAT(COALESCE(child.f_num, '') ORDER BY child.f_id SEPARATOR '||')
+        FROM veda_schets child
+        WHERE child.f_maininv = schet.f_id
+          AND child.f_type = 1
+          AND child.f_status <> 9
+    ), '') AS related_document_numbers,
+    COALESCE((
+        SELECT GROUP_CONCAT(COALESCE(child.f_operid, 0) ORDER BY child.f_id SEPARATOR '||')
+        FROM veda_schets child
+        WHERE child.f_maininv = schet.f_id
+          AND child.f_type = 1
+          AND child.f_status <> 9
+    ), '') AS related_operation_ids,
     COALESCE(nds.f_name, '') AS vat_rate,
     '' AS reimbursement_type,
     CASE WHEN schet.f_status = 9 THEN 1 ELSE 0 END AS deleted,
@@ -432,6 +453,27 @@ SELECT DISTINCT
     END AS contract_code1c,
     COALESCE(schet.f_id, 0) AS source_id,
     COALESCE(schet.f_operid, 0) AS operation_id,
+    COALESCE((
+        SELECT GROUP_CONCAT(child.f_id ORDER BY child.f_id SEPARATOR '||')
+        FROM veda_schets child
+        WHERE child.f_maininv = schet.f_id
+          AND child.f_type = 1
+          AND child.f_status <> 9
+    ), '') AS related_source_ids,
+    COALESCE((
+        SELECT GROUP_CONCAT(COALESCE(child.f_num, '') ORDER BY child.f_id SEPARATOR '||')
+        FROM veda_schets child
+        WHERE child.f_maininv = schet.f_id
+          AND child.f_type = 1
+          AND child.f_status <> 9
+    ), '') AS related_document_numbers,
+    COALESCE((
+        SELECT GROUP_CONCAT(COALESCE(child.f_operid, 0) ORDER BY child.f_id SEPARATOR '||')
+        FROM veda_schets child
+        WHERE child.f_maininv = schet.f_id
+          AND child.f_type = 1
+          AND child.f_status <> 9
+    ), '') AS related_operation_ids,
     COALESCE(nds.f_name, '') AS vat_rate,
     '' AS reimbursement_type,
     CASE WHEN schet.f_status = 9 THEN 1 ELSE 0 END AS deleted,

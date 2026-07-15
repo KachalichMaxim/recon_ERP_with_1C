@@ -1438,7 +1438,16 @@
     const operationLink = doc.operation_url
       ? `<a class="operation-link" href="${escapeHtml(doc.operation_url)}" target="_blank" rel="noopener">Операция ERP</a>`
       : '';
-    return `<div class="document-links">${documentLink}${operationLink}</div>`;
+    const relatedLinks = (doc.related_erp_links || []).map((related) => {
+      const relatedDocument = related.url
+        ? `<a class="document-link related-document-link" href="${escapeHtml(related.url)}" target="_blank" rel="noopener">${escapeHtml(related.label || 'ERP документ')}</a>`
+        : `<span>${escapeHtml(related.label || 'ERP документ')}</span>`;
+      const relatedOperation = related.operation_url
+        ? `<a class="operation-link" href="${escapeHtml(related.operation_url)}" target="_blank" rel="noopener">Операция ERP${related.operation_id ? ` ${escapeHtml(related.operation_id)}` : ''}</a>`
+        : '';
+      return `<div class="related-document-row">${relatedDocument}${relatedOperation}</div>`;
+    }).join('');
+    return `<div class="document-links">${documentLink}${operationLink}${relatedLinks}</div>`;
   }
 
   function issueReason(row) {

@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from recon_erp_1c.domain.entities import AccountingDocument, Contract, Counterparty, Delivery, Organization
+from recon_erp_1c.domain.entities import AccountingDocument, Contract, Counterparty, Delivery, Organization, RelatedDocument
 from recon_erp_1c.domain.value_objects import ContractRole, DocumentKind, Money, OneCContractCodes, SourceSystem
 from recon_erp_1c.infrastructure.erp_mariadb.connection import MariaDbConnectionFactory
 from recon_erp_1c.infrastructure.erp_mariadb import queries
@@ -577,7 +577,35 @@ def _row_to_document(row: dict[str, Any]) -> AccountingDocument:
         payment_amount=Money.of(row.get("paid_amount") or Decimal("0"), "RUB")
         if row.get("paid_amount") is not None
         else None,
+        related_documents=_related_documents(row),
     )
+
+
+def _related_documents(row: dict[str, Any]) -> tuple[RelatedDocument, ...]:
+    source_ids = _str(row.get("related_source_ids")).split("||") if row.get("related_source_ids") else []
+    numbers = (
+        _str(row.get("related_document_numbers")).split("||")
+        if row.get("related_document_numbers")
+        else []
+    )
+    operation_ids = (
+        _str(row.get("related_operation_ids")).split("||")
+        if row.get("related_operation_ids")
+        else []
+    )
+    result: list[RelatedDocument] = []
+    for index, source_id in enumerate(source_ids):
+        source_id = source_id.strip()
+        if not source_id:
+            continue
+        result.append(
+            RelatedDocument(
+                source_id=source_id,
+                number=numbers[index].strip() if index < len(numbers) else "",
+                operation_id=_int_or_none(operation_ids[index]) if index < len(operation_ids) else None,
+            )
+        )
+    return tuple(result)
 
 
 def _document_kind(value: object) -> DocumentKind:

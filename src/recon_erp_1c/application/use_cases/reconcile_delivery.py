@@ -465,6 +465,9 @@ def aggregate_documents(documents: list[AccountingDocument]) -> list[AccountingD
                 linked_contract_codes=tuple(dict.fromkeys(code for row in rows for code in row.linked_contract_codes)),
                 lines=tuple(line for row in rows for line in row.lines),
                 allocations=tuple(allocation for row in rows for allocation in row.allocations),
+                related_documents=tuple(
+                    dict.fromkeys(related for row in rows for related in row.related_documents)
+                ),
             )
         )
     return result
@@ -582,6 +585,9 @@ def _combine_documents(rows: list[AccountingDocument]) -> AccountingDocument:
         ),
         lines=tuple(line for row in rows for line in row.lines),
         allocations=tuple(allocation for row in rows for allocation in row.allocations),
+        related_documents=tuple(
+            dict.fromkeys(related for row in rows for related in row.related_documents)
+        ),
         tax_invoice_number=first.tax_invoice_number,
         tax_invoice_date=first.tax_invoice_date,
     )

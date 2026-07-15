@@ -74,6 +74,13 @@ class PaymentAllocation:
 
 
 @dataclass(frozen=True, slots=True)
+class RelatedDocument:
+    source_id: str
+    number: str
+    operation_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class AccountingBalance:
     contract_code1c: str
     opening_debit: Money
@@ -113,6 +120,7 @@ class AccountingDocument:
     linked_contract_codes: tuple[str, ...] = ()
     lines: tuple[DocumentLine, ...] = ()
     allocations: tuple[PaymentAllocation, ...] = ()
+    related_documents: tuple[RelatedDocument, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
