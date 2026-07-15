@@ -4,6 +4,7 @@
   const initialParams = new URLSearchParams(location.search);
   const routeSpecMatch = location.pathname.match(/\/reconciliation\/spec\/(\d+)\/?$/);
   const initialSpecId = Number((routeSpecMatch && routeSpecMatch[1]) || initialParams.get('spec_id') || 0) || null;
+  const initialRunId = (initialParams.get('run_id') || '').trim();
 
   const feedbackReasons = [
     ['', 'Не выбрано'],
@@ -381,6 +382,7 @@
         els.deliveryInput.value = String(initialSpecId);
         els.deliveryInput.dataset.specId = String(initialSpecId);
         await loadMatrix(0);
+        if (initialRunId) await loadStoredRun(initialRunId);
         setView(state.selectedSpecId ? 'recon' : 'matrix');
       } else {
         setView('matrix');
@@ -1193,6 +1195,35 @@
     }
   }
 
+  async function loadStoredRun(runId) {
+    if (!runId) return false;
+    setMessage(els.runMessage, 'Открываем сохраненный запуск...');
+    try {
+      const response = await api('/api/reconciliation/history/' + encodeURIComponent(runId));
+      const payload = await response.json();
+      if (!response.ok || payload.ok !== true || !payload.run) {
+        throw new Error(payload.message || 'Сохраненный запуск не найден');
+      }
+      const storedSpecId = Number(payload.run.delivery && payload.run.delivery.erp_spec_id || 0);
+      if (storedSpecId && storedSpecId !== Number(state.selectedSpecId)) {
+        throw new Error('Сохраненный запуск относится к другой поставке');
+      }
+      state.run = payload.run;
+      await loadRunComments();
+      renderResults();
+      renderSummary();
+      const elapsed = state.run.metrics && state.run.metrics.total_ms
+        ? ` · ${(Number(state.run.metrics.total_ms) / 1000).toFixed(2)} с`
+        : '';
+      setMessage(els.runMessage, `Сохраненный запуск${elapsed}. Номер запуска: ${state.run.run_id}`);
+      updateActionState();
+      return true;
+    } catch (error) {
+      setMessage(els.runMessage, normalizeErrorMessage(error), true);
+      return false;
+    }
+  }
+
   function stagedProgress() {
     let idx = 1;
     return setInterval(() => {
@@ -1948,6 +1979,7 @@
     }
     if (state.token && initialSpecId) {
       await loadMatrix(0);
+      if (initialRunId) await loadStoredRun(initialRunId);
       if (state.selectedSpecId) setView('recon');
       else setView('matrix');
     } else {
