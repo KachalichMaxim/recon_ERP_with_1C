@@ -86,17 +86,83 @@ button {
 }
 
 .login-brand {
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 22px;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--line);
 }
 
-.login-brand-logo {
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-symbol {
+  position: relative;
   display: block;
-  width: 154px;
-  height: auto;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+}
+
+.brand-symbol i,
+.brand-symbol b {
+  position: absolute;
+  top: 2px;
+  display: block;
+  background: #d20f3c;
+}
+
+.brand-symbol i {
+  left: 2px;
+  width: 23px;
+  height: 34px;
+  clip-path: polygon(0 0, 52% 0, 100% 100%, 48% 100%);
+}
+
+.brand-symbol b {
+  right: 1px;
+  width: 17px;
+  height: 22px;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.brand-symbol.compact {
+  width: 30px;
+  height: 30px;
+}
+
+.brand-symbol.compact i {
+  width: 19px;
+  height: 27px;
+}
+
+.brand-symbol.compact b {
+  width: 14px;
+  height: 18px;
+}
+
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+.brand-copy strong {
+  color: #d20f3c;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+}
+
+.brand-copy small {
+  margin-top: 5px;
+  color: #5d6169;
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
 }
 
 .product-name {
@@ -143,35 +209,33 @@ button {
 }
 
 .side-brand {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 5px;
-  padding: 8px;
-  border-radius: var(--radius-sm);
-  background: #fff;
-}
-
-.side-brand-logo {
-  display: block;
-  width: 132px;
-  max-width: 100%;
-  height: auto;
-  margin: 0 auto;
-}
-
-.side-product-name {
   display: flex;
-  justify-content: space-between;
-  color: var(--ink-2);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 6px 14px;
+  border-bottom: 1px solid var(--side-line);
 }
 
-.side-product-name span {
-  color: var(--muted);
+.side-brand-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.side-brand-copy strong {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+}
+
+.side-brand-copy small {
+  margin-top: 3px;
+  color: #9ca3af;
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0;
 }
 
 .login-card h1 {

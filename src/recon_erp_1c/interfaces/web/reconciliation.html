@@ -5,16 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light">
   <title>VEDAGENT SUIT — Сверка ERP и 1С</title>
-  <link rel="icon" type="image/png" href="/vedagent-logo.png">
-  <link rel="apple-touch-icon" href="/vedagent-logo.png">
-  <link rel="stylesheet" href="/reconciliation.css?v=20260716_brand_payment">
-  <script src="/reconciliation.js?v=20260716_brand_payment" defer></script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M8 7h17l23 50H31z' fill='%23d20f3c'/%3E%3Cpath d='M34 7h22L45 31z' fill='%23d20f3c'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/reconciliation.css?v=20260716_brand_transparent">
+  <script src="/reconciliation.js?v=20260716_brand_transparent" defer></script>
 </head>
 <body>
   <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
     <div class="login-card">
       <div class="login-brand">
-        <img class="login-brand-logo" src="/vedagent-logo.png" alt="VEDAGENT Import &amp; Export Company">
+        <div class="brand-lockup" aria-label="VEDAGENT">
+          <span class="brand-symbol" aria-hidden="true"><i></i><b></b></span>
+          <span class="brand-copy"><strong>VEDAGENT</strong><small>IMPORT &amp; EXPORT COMPANY</small></span>
+        </div>
         <div class="product-name">SUIT <span>· сверка ERP и 1С</span></div>
       </div>
       <h1 id="loginTitle">Контроль документов ERP → 1С</h1>
@@ -45,8 +47,8 @@
   <div class="app hidden" id="workArea">
     <aside class="sidebar" aria-label="Основная навигация">
       <div class="side-brand">
-        <img class="side-brand-logo" src="/vedagent-logo.png" alt="VEDAGENT">
-        <div class="side-product-name">SUIT <span>ERP ↔ 1С</span></div>
+        <span class="brand-symbol compact" aria-hidden="true"><i></i><b></b></span>
+        <span class="side-brand-copy"><strong>VEDAGENT</strong><small>SUIT · ERP ↔ 1С</small></span>
       </div>
 
       <nav class="side-nav">

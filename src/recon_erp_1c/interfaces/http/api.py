@@ -47,12 +47,10 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 "/reconciliation.html",
                 "/reconciliation.css",
                 "/reconciliation.js",
-                "/vedagent-logo.png",
                 "/akt_sverki/index.html",
                 "/akt_sverki/reconciliation.html",
                 "/akt_sverki/reconciliation.css",
                 "/akt_sverki/reconciliation.js",
-                "/akt_sverki/vedagent-logo.png",
             }:
                 self._static(parsed.path)
                 return
@@ -711,12 +709,10 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             "/reconciliation.html": "reconciliation.html",
             "/reconciliation.css": "reconciliation.css",
             "/reconciliation.js": "reconciliation.js",
-            "/vedagent-logo.png": "vedagent-logo.png",
             "/akt_sverki/index.html": "reconciliation.html",
             "/akt_sverki/reconciliation.html": "reconciliation.html",
             "/akt_sverki/reconciliation.css": "reconciliation.css",
             "/akt_sverki/reconciliation.js": "reconciliation.js",
-            "/akt_sverki/vedagent-logo.png": "vedagent-logo.png",
         }
         name = names[path]
         file_path = web_root / name
@@ -1362,8 +1358,6 @@ def _static_content_type(name: str) -> str:
         return "text/css; charset=utf-8"
     if name.endswith(".js"):
         return "application/javascript; charset=utf-8"
-    if name.endswith(".png"):
-        return "image/png"
     return "application/octet-stream"
 
 
