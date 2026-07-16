@@ -1442,7 +1442,7 @@
       <td>${escapeHtml(issueType(issueRow))}</td>
       <td class="mono">${erpDocumentHtml(erp)}</td>
       <td class="mono">${escapeHtml(documentTitle(onec))}</td>
-      <td class="mono">${escapeHtml(fmtDate(erp.date || onec.date))}</td>
+      <td class="mono">${comparisonDateHtml(erp, onec)}</td>
       <td class="num">${escapeHtml(fmtDocMoney(erp))}</td>
       <td class="num">${escapeHtml(fmtDocMoney(onec))}</td>
       <td>${escapeHtml(issueReason(issueRow))}</td>
@@ -1451,6 +1451,16 @@
         <textarea data-feedback-comment="${escapeHtml(key)}" placeholder="Комментарий для разбора">${escapeHtml(feedback.comment || '')}</textarea>
       </td>
     </tr>`;
+  }
+
+  function comparisonDateHtml(erp, onec) {
+    const erpDate = erp && erp.date ? fmtDate(erp.date) : '';
+    const onecDate = onec && onec.date ? fmtDate(onec.date) : '';
+    if (erpDate && onecDate && erp.date === onec.date) return escapeHtml(erpDate);
+    const rows = [];
+    if (erpDate) rows.push(`<span><b>ERP, дата 1С:</b> ${escapeHtml(erpDate)}</span>`);
+    if (onecDate) rows.push(`<span><b>1С, дата документа:</b> ${escapeHtml(onecDate)}</span>`);
+    return rows.length ? `<div class="date-comparison">${rows.join('')}</div>` : '—';
   }
 
   function bindFeedbackControls() {
@@ -1603,6 +1613,8 @@
       const onecVat = row.onec_document?.vat_rate || 'не указана';
       return `Ставка НДС: ERP — ${erpVat}, 1С — ${onecVat}`;
     }
+    const erpDate = row.erp_document?.date ? fmtDate(row.erp_document.date) : 'не указана';
+    const onecDate = row.onec_document?.date ? fmtDate(row.onec_document.date) : 'не указана';
     const labels = {
       code1c: 'код 1С',
       date: 'дата',
@@ -1612,7 +1624,11 @@
       contract_context: 'аналитика поставки',
       vat_rate: 'ставка НДС',
     };
-    const fields = (row.fields || []).map((field) => labels[field] || field);
+    const fields = (row.fields || []).map((field) => (
+      field === 'date'
+        ? `дата: ERP, поле «Дата 1С» — ${erpDate}; документ 1С — ${onecDate}`
+        : labels[field] || field
+    ));
     const basisLabels = {
       document_header: 'по документу',
       payment_header_allocations: 'по документу и распределениям оплаты',

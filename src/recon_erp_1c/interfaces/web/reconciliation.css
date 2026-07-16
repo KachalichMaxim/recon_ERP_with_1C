@@ -1033,6 +1033,21 @@ tr.matrix-detail-row td {
   white-space: pre-line;
 }
 
+.date-comparison {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 132px;
+  white-space: normal;
+}
+
+.date-comparison b {
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 750;
+}
+
 .source-document-number {
   color: var(--text);
   font-weight: 700;
