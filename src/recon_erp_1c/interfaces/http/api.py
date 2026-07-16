@@ -306,6 +306,8 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             dog_id=_optional_int(query, "dog_id"),
             date_from=_optional_date(query, "date_from"),
             date_to=_optional_date(query, "date_to"),
+            client_handover_from=_optional_date(query, "client_handover_from"),
+            client_handover_to=_optional_date(query, "client_handover_to"),
             limit=_optional_int(query, "limit") or 50,
             offset=_optional_int(query, "offset") or 0,
         )
@@ -363,6 +365,8 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 dog_id=_optional_int(query, "dog_id"),
                 date_from=_optional_date(query, "date_from"),
                 date_to=_optional_date(query, "date_to"),
+                client_handover_from=_optional_date(query, "client_handover_from"),
+                client_handover_to=_optional_date(query, "client_handover_to"),
                 limit=limit,
             )
         self._json(
@@ -775,6 +779,10 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
     spec_id = _optional_int(query, "spec_id")
     date_from = _optional_date(query, "date_from")
     date_to = _optional_date(query, "date_to")
+    client_handover_from = _optional_date(query, "client_handover_from")
+    client_handover_to = _optional_date(query, "client_handover_to")
+    if client_handover_from and client_handover_to and client_handover_from > client_handover_to:
+        raise ValueError("Дата передачи клиенту «с» не может быть позже даты «по»")
     started = time.perf_counter()
     total_count = repository.count_deliveries(
         spec_id=spec_id,
@@ -782,6 +790,8 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
         dog_id=dog_id,
         date_from=date_from,
         date_to=date_to,
+        client_handover_from=client_handover_from,
+        client_handover_to=client_handover_to,
     )
     total_summary = (
         repository.matrix_total_summary(
@@ -790,6 +800,8 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
             dog_id=dog_id,
             date_from=date_from,
             date_to=date_to,
+            client_handover_from=client_handover_from,
+            client_handover_to=client_handover_to,
         )
         if include_total and spec_id is None
         else None
@@ -802,6 +814,8 @@ def _matrix_payload(query: dict[str, list[str]]) -> dict[str, object]:
         dog_id=dog_id,
         date_from=date_from,
         date_to=date_to,
+        client_handover_from=client_handover_from,
+        client_handover_to=client_handover_to,
         limit=limit,
         offset=offset,
     )
@@ -900,7 +914,7 @@ def _matrix_row(
         "invoice_rows": _doc_rows(invoices, payments_by_operation),
         "payment_numbers": _doc_numbers(payments),
         "payment_rows": _doc_rows(payments),
-        "sf_numbers": _doc_numbers(sales),
+        "sf_numbers": _doc_labels_with_dates(sales),
         "sf_rows": _doc_rows(sales),
         "documents_count": len(documents),
         "erp_url": f"http://erp.vedagent/veda/?pgid=15&obid={spec_id}&typeid=1#tabs-0" if spec_id else "",
@@ -940,13 +954,32 @@ def _doc_numbers(documents: list[AccountingDocument]) -> list[str]:
     return numbers
 
 
+def _doc_labels_with_dates(documents: list[AccountingDocument]) -> list[str]:
+    seen: set[tuple[str, str]] = set()
+    labels: list[str] = []
+    for doc in documents:
+        number = doc.code1c or doc.number
+        document_date = doc.date.strftime("%d.%m.%Y") if doc.date else ""
+        key = (number, document_date)
+        if not number or key in seen:
+            continue
+        seen.add(key)
+        labels.append(f"{number} от {document_date}" if document_date else number)
+    return labels
+
+
 def _doc_rows(
     documents: list[AccountingDocument],
     payments_by_operation: dict[int, Money] | None = None,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
+    payment_operations_used: set[int] = set()
     for doc in documents:
-        linked_payment = payments_by_operation.get(doc.operation_id) if payments_by_operation and doc.operation_id else None
+        linked_payment = None
+        if payments_by_operation and doc.operation_id and doc.operation_id not in payment_operations_used:
+            linked_payment = payments_by_operation.get(doc.operation_id)
+            if linked_payment is not None:
+                payment_operations_used.add(doc.operation_id)
         rows.append(
             {
                 "number": doc.number or doc.code1c,

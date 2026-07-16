@@ -38,6 +38,7 @@ SELECT
     COALESCE(NULLIF(spec_type.f_name, ''), NULLIF(spec_type.f_dopprstr, ''), NULLIF(spec_type.f_uslstr, ''), '') AS spec_type_name,
     s.f_dt AS spec_date,
     s.f_dtclose AS closure_date,
+    s.f_dttoclnt AS client_handover_date,
     COALESCE(s.f_status, 0) AS spec_status,
     COALESCE(s.f_kod1cb, '') AS buyer_contract_code,
     COALESCE(s.f_kod1cp, '') AS committent_contract_code,
@@ -66,6 +67,8 @@ WHERE (%(spec_id)s IS NULL OR s.f_id = %(spec_id)s)
   AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
   AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
   AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s)
+  AND (%(client_handover_from)s IS NULL OR s.f_dttoclnt >= %(client_handover_from)s)
+  AND (%(client_handover_to)s IS NULL OR s.f_dttoclnt <= %(client_handover_to)s)
 ORDER BY s.f_dt DESC, s.f_id DESC
 LIMIT %(limit)s OFFSET %(offset)s;
 """
@@ -78,7 +81,9 @@ WHERE (%(spec_id)s IS NULL OR s.f_id = %(spec_id)s)
   AND (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
   AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
   AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
-  AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s);
+  AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s)
+  AND (%(client_handover_from)s IS NULL OR s.f_dttoclnt >= %(client_handover_from)s)
+  AND (%(client_handover_to)s IS NULL OR s.f_dttoclnt <= %(client_handover_to)s);
 """
 
 MATRIX_TOTAL_SUMMARY = """
@@ -102,6 +107,8 @@ FROM (
       AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
       AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
       AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s)
+      AND (%(client_handover_from)s IS NULL OR s.f_dttoclnt >= %(client_handover_from)s)
+      AND (%(client_handover_to)s IS NULL OR s.f_dttoclnt <= %(client_handover_to)s)
 ) filtered_specs
 LEFT JOIN (
     SELECT
@@ -191,6 +198,7 @@ SELECT
     COALESCE(s.f_num, '') AS spec_number,
     COALESCE(NULLIF(spec_type.f_name, ''), NULLIF(spec_type.f_dopprstr, ''), NULLIF(spec_type.f_uslstr, ''), '') AS spec_type_name,
     s.f_dt AS spec_date,
+    s.f_dttoclnt AS client_handover_date,
     d.f_id AS dog_id,
     COALESCE(d.f_dogname, '') AS base_contract_number,
     COALESCE(org.f_abbr, '') AS organization_abbr,
@@ -213,6 +221,8 @@ WHERE s.f_id = %(spec_id)s
   AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
   AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
   AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s)
+  AND (%(client_handover_from)s IS NULL OR s.f_dttoclnt >= %(client_handover_from)s)
+  AND (%(client_handover_to)s IS NULL OR s.f_dttoclnt <= %(client_handover_to)s)
 LIMIT 1;
 """
 
@@ -222,6 +232,7 @@ SELECT
     COALESCE(s.f_num, '') AS spec_number,
     COALESCE(NULLIF(spec_type.f_name, ''), NULLIF(spec_type.f_dopprstr, ''), NULLIF(spec_type.f_uslstr, ''), '') AS spec_type_name,
     s.f_dt AS spec_date,
+    s.f_dttoclnt AS client_handover_date,
     d.f_id AS dog_id,
     COALESCE(d.f_dogname, '') AS base_contract_number,
     COALESCE(org.f_abbr, '') AS organization_abbr,
@@ -243,6 +254,8 @@ WHERE (%(client_id)s IS NULL OR d.f_contrid = %(client_id)s)
   AND (%(dog_id)s IS NULL OR d.f_id = %(dog_id)s)
   AND (%(date_from)s IS NULL OR s.f_dt >= %(date_from)s)
   AND (%(date_to)s IS NULL OR s.f_dt <= %(date_to)s)
+  AND (%(client_handover_from)s IS NULL OR s.f_dttoclnt >= %(client_handover_from)s)
+  AND (%(client_handover_to)s IS NULL OR s.f_dttoclnt <= %(client_handover_to)s)
   AND (
       COALESCE(s.f_num, '') LIKE %(query_like)s
       OR COALESCE(d.f_dogname, '') LIKE %(query_like)s
@@ -746,8 +759,8 @@ SELECT
         ELSE 'sale'
     END AS document_kind,
     COALESCE(
-        NULLIF(akt.f_kod1c, ''),
         NULLIF(main_akt.f_kod1c, ''),
+        NULLIF(akt.f_kod1c, ''),
         CASE
             WHEN main_akt.f_dt1c IS NOT NULL AND main_akt.f_dt1c <> '0000-00-00'
                 THEN NULLIF(main_akt.f_num, '')
@@ -763,9 +776,10 @@ SELECT
     END AS document_date,
     COALESCE(akt.f_sum, 0) AS amount_total,
     COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
-    COALESCE(akt.f_id, 0) AS source_id,
-    COALESCE(NULLIF(akt.f_num, ''), '') AS source_number,
+    COALESCE(main_akt.f_id, akt.f_id, 0) AS source_id,
+    COALESCE(NULLIF(main_akt.f_num, ''), NULLIF(akt.f_num, ''), '') AS source_number,
     COALESCE(NULLIF(dog.f_kod1c, ''), '') AS dog_code1c,
+    CASE WHEN main_akt.f_id IS NOT NULL THEN 1 ELSE 0 END AS is_aggregate,
     CASE WHEN akt.f_status = 9 OR main_akt.f_status = 9 THEN 1 ELSE 0 END AS deleted
 FROM veda_akts akt
 LEFT JOIN veda_akts main_akt ON main_akt.f_id = NULLIF(akt.f_mainakt, 0)
@@ -783,8 +797,8 @@ SELECT
         ELSE 'sale'
     END AS document_kind,
     COALESCE(
-        NULLIF(akt.f_kod1c, ''),
         NULLIF(main_akt.f_kod1c, ''),
+        NULLIF(akt.f_kod1c, ''),
         CASE
             WHEN main_akt.f_dt1c IS NOT NULL AND main_akt.f_dt1c <> '0000-00-00'
                 THEN NULLIF(main_akt.f_num, '')
@@ -800,9 +814,10 @@ SELECT
     END AS document_date,
     COALESCE(details_opers.f_sum, akt.f_sum, 0) AS amount_total,
     COALESCE(NULLIF(val.f_dopprstr, ''), NULLIF(val.f_uslstr, ''), NULLIF(val.f_namedop, ''), 'RUB') AS currency,
-    COALESCE(akt.f_id, 0) AS source_id,
-    COALESCE(NULLIF(akt.f_num, ''), '') AS source_number,
+    COALESCE(main_akt.f_id, akt.f_id, 0) AS source_id,
+    COALESCE(NULLIF(main_akt.f_num, ''), NULLIF(akt.f_num, ''), '') AS source_number,
     COALESCE(NULLIF(dog.f_kod1c, ''), '') AS dog_code1c,
+    CASE WHEN main_akt.f_id IS NOT NULL THEN 1 ELSE 0 END AS is_aggregate,
     CASE WHEN akt.f_status = 9 OR main_akt.f_status = 9 THEN 1 ELSE 0 END AS deleted
 FROM veda_akts_details_opers details_opers
 JOIN veda_akts_details details ON details.f_id = details_opers.f_akts_detailsid

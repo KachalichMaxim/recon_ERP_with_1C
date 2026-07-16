@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light">
   <title>Контроль документов ERP и 1С</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23C4122F'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='26' font-family='Arial' font-weight='700' fill='white'%3EV%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/reconciliation.css?v=20260716_compare_dates">
-  <script src="/reconciliation.js?v=20260716_compare_dates" defer></script>
+  <link rel="stylesheet" href="/reconciliation.css?v=20260716_handover_aggregate">
+  <script src="/reconciliation.js?v=20260716_handover_aggregate" defer></script>
 </head>
 <body>
   <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
@@ -138,6 +138,14 @@
             <label for="deliveryInput">Поставка / спецификация ERP</label>
             <input id="deliveryInput" autocomplete="off" placeholder="Введите название, номер или ID">
             <div class="suggestions hidden" id="deliverySuggestions"></div>
+          </div>
+          <div class="field date-field">
+            <label for="clientHandoverFromInput">Передано клиенту с</label>
+            <input id="clientHandoverFromInput" type="date">
+          </div>
+          <div class="field date-field">
+            <label for="clientHandoverToInput">Передано клиенту по</label>
+            <input id="clientHandoverToInput" type="date">
           </div>
           <input id="limitInput" type="hidden" value="50">
           <select id="matrixStatusFilter" class="hidden" aria-hidden="true" tabindex="-1">

@@ -17,6 +17,8 @@ class ErpReadRepository(Protocol):
         dog_id: int | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
+        client_handover_from: date | None = None,
+        client_handover_to: date | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, object]]:

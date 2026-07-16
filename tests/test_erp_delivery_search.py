@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 from recon_erp_1c.infrastructure.erp_mariadb import queries
-from recon_erp_1c.infrastructure.erp_mariadb.repository import MariaDbErpReadRepository
+from recon_erp_1c.infrastructure.erp_mariadb.repository import MariaDbErpReadRepository, _prefer_aggregate_closing_rows
 from recon_erp_1c.interfaces.http import api
 
 
@@ -25,6 +25,7 @@ def _row() -> dict[str, object]:
         "spec_number": "1051",
         "spec_type_name": "Заявка",
         "spec_date": date(2025, 7, 30),
+        "client_handover_date": date(2025, 8, 1),
         "dog_id": 88,
         "base_contract_number": "660/1",
         "organization_abbr": "ВА",
@@ -54,6 +55,8 @@ def test_full_delivery_name_search_uses_source_tables_and_context_filters() -> N
         dog_id=88,
         date_from=date(2025, 1, 1),
         date_to=date(2025, 12, 31),
+        client_handover_from=date(2025, 7, 1),
+        client_handover_to=date(2025, 8, 31),
     )
 
     assert repository.last_query == queries.SEARCH_DELIVERIES
@@ -61,6 +64,9 @@ def test_full_delivery_name_search_uses_source_tables_and_context_filters() -> N
     assert repository.last_params["query_like"] == "%660/1/1051%"
     assert repository.last_params["client_id"] == 221
     assert repository.last_params["dog_id"] == 88
+    assert repository.last_params["client_handover_from"] == date(2025, 7, 1)
+    assert repository.last_params["client_handover_to"] == date(2025, 8, 31)
+    assert result[0]["client_handover_date"] == "2025-08-01"
     assert result[0]["spec_type_name"] == "Заявка"
 
 
@@ -100,3 +106,16 @@ def test_exact_delivery_matrix_reuses_page_summary_for_total(monkeypatch) -> Non
 
     assert payload["total_count"] == 1
     assert payload["total_summary"] == payload["page_summary"]
+
+
+def test_aggregate_closing_document_hides_children_for_same_operation_and_kind() -> None:
+    rows = [
+        {"operation_id": 418878, "document_kind": "sale", "source_id": 201378, "is_aggregate": 0},
+        {"operation_id": 418878, "document_kind": "sale", "source_id": 201510, "is_aggregate": 1},
+        {"operation_id": 418878, "document_kind": "purchase", "source_id": 201511, "is_aggregate": 0},
+        {"operation_id": 500000, "document_kind": "sale", "source_id": 201512, "is_aggregate": 0},
+    ]
+
+    selected = _prefer_aggregate_closing_rows(rows)
+
+    assert [row["source_id"] for row in selected] == [201510, 201511, 201512]

@@ -13,6 +13,8 @@ class ListDeliveriesCommand:
     dog_id: int | None = None
     date_from: date | None = None
     date_to: date | None = None
+    client_handover_from: date | None = None
+    client_handover_to: date | None = None
     limit: int = 50
     offset: int = 0
 
@@ -28,6 +30,8 @@ class ListDeliveriesUseCase:
             dog_id=command.dog_id,
             date_from=command.date_from,
             date_to=command.date_to,
+            client_handover_from=command.client_handover_from,
+            client_handover_to=command.client_handover_to,
             limit=command.limit,
             offset=command.offset,
         )

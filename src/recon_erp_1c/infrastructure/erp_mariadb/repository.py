@@ -26,6 +26,8 @@ class MariaDbErpReadRepository:
         dog_id: int | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
+        client_handover_from: date | None = None,
+        client_handover_to: date | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, object]]:
@@ -39,6 +41,8 @@ class MariaDbErpReadRepository:
                 "dog_id": dog_id,
                 "date_from": date_from,
                 "date_to": date_to,
+                "client_handover_from": client_handover_from,
+                "client_handover_to": client_handover_to,
                 "limit": limit,
                 "offset": offset,
             },
@@ -50,6 +54,7 @@ class MariaDbErpReadRepository:
                 "spec_type_name": row.get("spec_type_name") or "",
                 "spec_date": _date_to_iso(row.get("spec_date")),
                 "closure_date": _date_to_iso(row.get("closure_date")),
+                "client_handover_date": _date_to_iso(row.get("client_handover_date")),
                 "spec_status": int(row.get("spec_status") or 0),
                 "buyer_contract_code": row.get("buyer_contract_code") or "",
                 "committent_contract_code": row.get("committent_contract_code") or "",
@@ -74,6 +79,8 @@ class MariaDbErpReadRepository:
         dog_id: int | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
+        client_handover_from: date | None = None,
+        client_handover_to: date | None = None,
     ) -> int:
         row = self._fetch_one(
             queries.COUNT_DELIVERIES,
@@ -83,6 +90,8 @@ class MariaDbErpReadRepository:
                 "dog_id": dog_id,
                 "date_from": date_from,
                 "date_to": date_to,
+                "client_handover_from": client_handover_from,
+                "client_handover_to": client_handover_to,
             },
         )
         return int(row.get("total_count") or 0) if row else 0
@@ -95,6 +104,8 @@ class MariaDbErpReadRepository:
         dog_id: int | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
+        client_handover_from: date | None = None,
+        client_handover_to: date | None = None,
     ) -> dict[str, object]:
         row = self._fetch_one(
             queries.MATRIX_TOTAL_SUMMARY,
@@ -104,6 +115,8 @@ class MariaDbErpReadRepository:
                 "dog_id": dog_id,
                 "date_from": date_from,
                 "date_to": date_to,
+                "client_handover_from": client_handover_from,
+                "client_handover_to": client_handover_to,
             },
         )
         if row is None:
@@ -157,6 +170,8 @@ class MariaDbErpReadRepository:
         dog_id: int | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
+        client_handover_from: date | None = None,
+        client_handover_to: date | None = None,
         limit: int = 12,
     ) -> list[dict[str, object]]:
         text = query.strip()
@@ -167,6 +182,8 @@ class MariaDbErpReadRepository:
             "dog_id": dog_id,
             "date_from": date_from,
             "date_to": date_to,
+            "client_handover_from": client_handover_from,
+            "client_handover_to": client_handover_to,
             "limit": max(1, min(int(limit or 12), 30)),
         }
         if text.isdigit():
@@ -182,6 +199,7 @@ class MariaDbErpReadRepository:
                 "spec_number": row.get("spec_number") or "",
                 "spec_type_name": row.get("spec_type_name") or "",
                 "spec_date": _date_to_iso(row.get("spec_date")),
+                "client_handover_date": _date_to_iso(row.get("client_handover_date")),
                 "dog_id": row.get("dog_id"),
                 "base_contract_number": row.get("base_contract_number") or "",
                 "organization_abbr": row.get("organization_abbr") or "",
@@ -351,7 +369,10 @@ class MariaDbErpReadRepository:
             if int(row.get("operation_id") or 0) > 0
         }
         closing_by_operation: dict[int, list[dict[str, Any]]] = {}
-        for row in self._fetch_operation_rows(queries.OPERATION_CLOSING_DOCS_BY_OPERATION_IDS, operation_ids):
+        closing_rows = _prefer_aggregate_closing_rows(
+            self._fetch_operation_rows(queries.OPERATION_CLOSING_DOCS_BY_OPERATION_IDS, operation_ids)
+        )
+        for row in closing_rows:
             operation_id = int(row.get("operation_id") or 0)
             if operation_id:
                 closing_by_operation.setdefault(operation_id, []).append(row)
@@ -636,6 +657,22 @@ def _delivery_invoice_candidates(
         and int(row.get("source_id") or 0) > 0
     ]
     return candidates if len(candidates) == 1 else []
+
+
+def _prefer_aggregate_closing_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Hide child closing documents when an aggregate exists for the operation."""
+    aggregate_keys = {
+        (int(row.get("operation_id") or 0), _str(row.get("document_kind")) or "sale")
+        for row in rows
+        if bool(row.get("is_aggregate"))
+    }
+    return [
+        row
+        for row in rows
+        if bool(row.get("is_aggregate"))
+        or (int(row.get("operation_id") or 0), _str(row.get("document_kind")) or "sale")
+        not in aggregate_keys
+    ]
 
 
 def _related_documents(row: dict[str, Any]) -> tuple[RelatedDocument, ...]:

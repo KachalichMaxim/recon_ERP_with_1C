@@ -71,6 +71,8 @@
     dogSuggestions: $('dogSuggestions'),
     deliveryInput: $('deliveryInput'),
     deliverySuggestions: $('deliverySuggestions'),
+    clientHandoverFromInput: $('clientHandoverFromInput'),
+    clientHandoverToInput: $('clientHandoverToInput'),
     limitInput: $('limitInput'),
     matrixStatusFilter: $('matrixStatusFilter'),
     loadMatrixBtn: $('loadMatrixBtn'),
@@ -404,6 +406,8 @@
       ['client_id', clientId],
       ['dog_id', dogId],
       ['spec_id', specId],
+      ['client_handover_from', els.clientHandoverFromInput.value],
+      ['client_handover_to', els.clientHandoverToInput.value],
       ['limit', els.limitInput.value || '50'],
       ['offset', String(state.matrixOffset || 0)],
     ].forEach(([key, value]) => {
@@ -664,6 +668,8 @@
       const dogId = selectedDogId();
       if (clientId) params.set('client_id', clientId);
       if (dogId) params.set('dog_id', dogId);
+      if (els.clientHandoverFromInput.value) params.set('client_handover_from', els.clientHandoverFromInput.value);
+      if (els.clientHandoverToInput.value) params.set('client_handover_to', els.clientHandoverToInput.value);
       const resp = await api('/api/reconciliation/deliveries?' + params.toString());
       const payload = await resp.json();
       if (!resp.ok || payload.ok !== true) throw new Error(payload.message || 'Не удалось найти поставки');
@@ -691,7 +697,7 @@
       const type = item.spec_type_name || 'Поставка';
       return `<button class="suggestion-item" type="button" data-spec-id="${escapeHtml(item.spec_id)}" data-delivery-label="${escapeHtml(label)}">
         <span class="suggestion-title">${escapeHtml(label)}</span>
-        <span class="suggestion-meta">${escapeHtml(type)} №${escapeHtml(item.spec_number || '—')} · ${escapeHtml(fmtDate(item.spec_date))} · ID ${escapeHtml(item.spec_id || '—')}</span>
+        <span class="suggestion-meta">${escapeHtml(type)} №${escapeHtml(item.spec_number || '—')} · ${escapeHtml(fmtDate(item.spec_date))}${item.client_handover_date ? ` · передано ${escapeHtml(fmtDate(item.client_handover_date))}` : ''} · ID ${escapeHtml(item.spec_id || '—')}</span>
       </button>`;
     }).join('');
     els.deliverySuggestions.classList.remove('hidden');
@@ -806,7 +812,7 @@
             html.push(matrixRowHtml({
               level: 3,
               label: deliveryLabel(row),
-              subtext: [row.delivery_full_name, fmtDate(row.spec_date)].filter(Boolean).join(' · '),
+              subtext: [row.delivery_full_name, fmtDate(row.spec_date), row.client_handover_date ? `передано ${fmtDate(row.client_handover_date)}` : ''].filter(Boolean).join(' · '),
               aggregate: row,
               specText: row.spec_number || '—',
               specId: row.spec_id,
@@ -1912,6 +1918,8 @@
       localStorage.setItem('recon_selected_spec', String(initialSpecId));
     }
     if (params.get('limit')) els.limitInput.value = params.get('limit');
+    if (params.get('client_handover_from')) els.clientHandoverFromInput.value = params.get('client_handover_from');
+    if (params.get('client_handover_to')) els.clientHandoverToInput.value = params.get('client_handover_to');
   }
 
   function resetFilters() {
@@ -1921,6 +1929,8 @@
     renderClientSuggestions([]);
     clearDogFilter();
     clearDeliveryFilter();
+    els.clientHandoverFromInput.value = '';
+    els.clientHandoverToInput.value = '';
     if (els.matrixStatusFilter) els.matrixStatusFilter.value = 'all';
     els.limitInput.value = '50';
     state.matrix = [];

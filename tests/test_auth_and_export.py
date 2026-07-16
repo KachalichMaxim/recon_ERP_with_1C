@@ -187,3 +187,77 @@ def test_matrix_row_uses_procedure_calculation_instead_of_document_totals() -> N
     assert row["non_reimbursable_sum"] == "38394.01"
     assert row["balance"] == "-6666.82"
     assert row["balance_label"] == "Долг"
+
+
+def test_matrix_payment_is_assigned_once_and_closing_document_has_date() -> None:
+    invoices = [
+        AccountingDocument(
+            source=SourceSystem.ERP,
+            kind=DocumentKind.CUSTOMER_INVOICE,
+            code1c=code,
+            number=code,
+            date=date(2025, 7, 1),
+            amount=Money.of(amount),
+            contract_code1c="B",
+            operation_id=777,
+        )
+        for code, amount in (("INV-1", "52000"), ("INV-2", "7802"))
+    ]
+    payment = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.PAYMENT,
+        code1c="PAY-1",
+        number="PAY-1",
+        date=date(2025, 7, 2),
+        amount=Money.of("59802"),
+        contract_code1c="B",
+        operation_id=777,
+    )
+    sale = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.SALE,
+        code1c="SF-1",
+        number="SF-1",
+        date=date(2025, 7, 3),
+        amount=Money.of("59802"),
+        contract_code1c="B",
+        operation_id=777,
+        reimbursement_type="non_reimbursable",
+    )
+
+    row = _matrix_row(
+        None,
+        {"spec_id": 1, "spec_number": "56", "buyer_contract_code": "B"},
+        [*invoices, payment, sale],
+    )
+
+    assert [invoice["paid_amount"] for invoice in row["invoice_rows"]] == ["59802.00", ""]
+    assert row["sf_numbers"] == ["SF-1 от 03.07.2025"]
+
+
+def test_matrix_xlsx_never_adds_negative_unlinked_payment_row() -> None:
+    raw = reconciliation_matrix_xlsx(
+        {
+            "mode": "test",
+            "items": [
+                {
+                    "spec_number": "56",
+                    "invoice_rows": [
+                        {"number": "INV-1", "operation_id": 777, "amount": "52000", "paid_amount": "59802"},
+                        {"number": "INV-2", "operation_id": 777, "amount": "7802", "paid_amount": "59802"},
+                    ],
+                    "payment_sum": "59802",
+                    "reimbursable_sum": "0",
+                    "non_reimbursable_sum": "445776.70",
+                    "balance": "4960",
+                    "sf_numbers": ["SF-1 от 03.07.2025"],
+                }
+            ],
+        }
+    )
+
+    ws = load_workbook(BytesIO(raw))["Выгрузка"]
+    values = [cell.value for row in ws.iter_rows() for cell in row]
+    assert "Оплата без счета" not in values
+    assert "Оплата, не связанная со счетом" not in values
+    assert all(not (isinstance(value, (int, float)) and value == -59802) for value in values)
