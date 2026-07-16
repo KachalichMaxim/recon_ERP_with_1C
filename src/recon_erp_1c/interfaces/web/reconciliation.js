@@ -5,6 +5,10 @@
   const routeSpecMatch = location.pathname.match(/\/reconciliation\/spec\/(\d+)\/?$/);
   const initialSpecId = Number((routeSpecMatch && routeSpecMatch[1]) || initialParams.get('spec_id') || 0) || null;
   const initialRunId = (initialParams.get('run_id') || '').trim();
+  const requestedView = (initialParams.get('view') || '').trim();
+  const initialView = location.pathname.replace(/\/$/, '') === '/reconciliation/history'
+    ? 'history'
+    : (['matrix', 'recon'].includes(requestedView) ? requestedView : (initialSpecId ? 'recon' : 'matrix'));
 
   const feedbackReasons = [
     ['', 'Не выбрано'],
@@ -27,7 +31,7 @@
   const state = {
     token: localStorage.getItem('recon_session') || '',
     profile: JSON.parse(localStorage.getItem('recon_profile') || 'null'),
-    view: initialSpecId ? 'recon' : (localStorage.getItem('recon_view') || 'matrix'),
+    view: initialView,
     matrix: [],
     matrixPayload: null,
     matrixMode: '',
@@ -37,6 +41,10 @@
     sidebarCollapsed: localStorage.getItem('recon_sidebar_collapsed') === '1',
     selectedSpecId: initialSpecId || Number(localStorage.getItem('recon_selected_spec') || 0) || null,
     run: null,
+    history: [],
+    historyOffset: 0,
+    historyTotal: 0,
+    historyLimit: 25,
     feedback: JSON.parse(localStorage.getItem('recon_feedback_v1') || '{}'),
     config: null,
   };
@@ -58,8 +66,11 @@
     logoutBtn: $('logoutBtn'),
     navMatrixBtn: $('navMatrixBtn'),
     navReconBtn: $('navReconBtn'),
+    navHistoryBtn: $('navHistoryBtn'),
     matrixScreen: $('matrixScreen'),
     reconScreen: $('reconScreen'),
+    historyScreen: $('historyScreen'),
+    workflowSteps: $('workflowSteps'),
     erpStatusChip: $('erpStatusChip'),
     onecStatusChip: $('onecStatusChip'),
     modeStatusChip: $('modeStatusChip'),
@@ -118,6 +129,13 @@
     resultSearchInput: $('resultSearchInput'),
     statusFilter: $('statusFilter'),
     resultRows: $('resultRows'),
+    historyStatusFilter: $('historyStatusFilter'),
+    historyLoadBtn: $('historyLoadBtn'),
+    historyMessage: $('historyMessage'),
+    historyRows: $('historyRows'),
+    historyPrevBtn: $('historyPrevBtn'),
+    historyNextBtn: $('historyNextBtn'),
+    historyPagerText: $('historyPagerText'),
   };
 
   let clientSearchTimer = 0;
@@ -182,22 +200,36 @@
     state.view = view;
     localStorage.setItem('recon_view', view);
     const isMatrix = view === 'matrix';
+    const isRecon = view === 'recon';
+    const isHistory = view === 'history';
     els.matrixScreen.classList.toggle('hidden', !isMatrix);
-    els.reconScreen.classList.toggle('hidden', isMatrix);
+    els.reconScreen.classList.toggle('hidden', !isRecon);
+    els.historyScreen.classList.toggle('hidden', !isHistory);
     els.navMatrixBtn.classList.toggle('active', isMatrix);
-    els.navReconBtn.classList.toggle('active', !isMatrix);
+    els.navReconBtn.classList.toggle('active', isRecon);
+    els.navHistoryBtn.classList.toggle('active', isHistory);
+    els.workflowSteps.classList.toggle('hidden', isHistory);
     updateWorkflowState();
     updateActionState();
-    if (state.selectedSpecId && location.pathname.startsWith('/reconciliation/spec/')) syncBrowserUrl();
+    syncBrowserUrl();
+    if (isHistory && state.token && !state.history.length) loadHistory(0);
   }
 
   function syncBrowserUrl(runId = '') {
+    if (state.view === 'history') {
+      history.replaceState({}, document.title, '/reconciliation/history');
+      return;
+    }
+    if (state.view === 'matrix') {
+      history.replaceState({}, document.title, '/reconciliation?view=matrix');
+      return;
+    }
     if (!state.selectedSpecId) {
-      history.replaceState({}, document.title, '/reconciliation.html');
+      history.replaceState({}, document.title, '/reconciliation?view=matrix');
       return;
     }
     const params = new URLSearchParams();
-    params.set('view', state.view);
+    params.set('view', 'recon');
     if (runId || (state.run && state.run.run_id)) params.set('run_id', runId || state.run.run_id);
     const next = `/reconciliation/spec/${state.selectedSpecId}?${params.toString()}`;
     history.replaceState({}, document.title, next);
@@ -365,7 +397,9 @@
       localStorage.setItem('recon_profile', JSON.stringify(state.profile));
       setMessage(els.loginMessage, '');
       applyAuthState();
-      if (initialSpecId) {
+      if (initialView === 'history') {
+        setView('history');
+      } else if (initialSpecId && initialView === 'recon') {
         state.selectedSpecId = initialSpecId;
         els.deliveryInput.value = String(initialSpecId);
         els.deliveryInput.dataset.specId = String(initialSpecId);
@@ -1208,6 +1242,137 @@
     }
   }
 
+  async function loadHistory(offset) {
+    state.historyOffset = Math.max(0, Number(offset == null ? state.historyOffset : offset) || 0);
+    els.historyLoadBtn.disabled = true;
+    els.historyRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Загружаем сохранённые запуски...</td></tr>';
+    setMessage(els.historyMessage, 'Читаем журнал сверок...');
+    try {
+      const params = new URLSearchParams({
+        limit: String(state.historyLimit),
+        offset: String(state.historyOffset),
+      });
+      const status = (els.historyStatusFilter.value || '').trim();
+      if (status) params.set('status', status);
+      const response = await api('/api/reconciliation/history?' + params.toString());
+      const payload = await response.json();
+      if (!response.ok || payload.ok !== true) throw new Error(payload.message || 'История запусков недоступна');
+      state.history = payload.items || [];
+      state.historyOffset = Number(payload.offset || 0);
+      state.historyTotal = Number(payload.total_count || state.history.length || 0);
+      renderHistory(payload);
+      setMessage(
+        els.historyMessage,
+        state.historyTotal ? `Загружена история: ${state.historyTotal} запусков.` : 'Сохранённых запусков по выбранному фильтру нет.'
+      );
+    } catch (error) {
+      state.history = [];
+      state.historyTotal = 0;
+      renderHistory({});
+      setMessage(els.historyMessage, normalizeErrorMessage(error), true);
+    } finally {
+      els.historyLoadBtn.disabled = false;
+      updateActionState();
+    }
+  }
+
+  function renderHistory(payload) {
+    const items = state.history || [];
+    if (!items.length) {
+      els.historyRows.innerHTML = '<tr><td colspan="10" class="empty-cell">Сохранённых запусков не найдено.</td></tr>';
+    } else {
+      els.historyRows.innerHTML = items.map((item) => {
+        const matched = Number(item.matched_count || 0);
+        const unresolved = Number(item.unresolved_count || 0);
+        const resultOk = item.status === 'MATCHED';
+        const resultLabel = resultOk ? 'Совпало' : 'Есть расхождения';
+        const resultClass = resultOk ? 'match' : 'bad';
+        const specLabel = item.spec_number ? `Поставка №${item.spec_number}` : `Поставка ${item.spec_id || '—'}`;
+        const user = item.triggered_by_name || item.triggered_by_user || '—';
+        const runUrl = `/reconciliation/spec/${encodeURIComponent(item.spec_id)}?view=recon&run_id=${encodeURIComponent(item.run_id)}`;
+        const difference = item.balance_difference == null ? '—' : fmtMoneyValue(item.balance_difference);
+        return `<tr>
+          <td><span class="history-date">${escapeHtml(fmtDateTime(item.completed_at || item.created_at))}</span></td>
+          <td><strong>${escapeHtml(specLabel)}</strong></td>
+          <td>${escapeHtml(item.base_contract_number || '—')}</td>
+          <td><span class="badge ${resultClass}">${escapeHtml(resultLabel)}</span></td>
+          <td class="num">${escapeHtml(String(item.erp_docs_count || 0))} / ${escapeHtml(String(item.onec_docs_count || 0))}</td>
+          <td class="num">${escapeHtml(String(matched))}</td>
+          <td class="num ${unresolved ? 'negative' : ''}">${escapeHtml(String(unresolved))}</td>
+          <td class="num">${escapeHtml(difference)}</td>
+          <td>${escapeHtml(user)}</td>
+          <td>
+            <div class="history-actions">
+              <a class="btn btn-outline compact-btn" href="${escapeHtml(runUrl)}">Открыть</a>
+              <button class="btn btn-ghost compact-btn" type="button" data-history-export="${escapeHtml(item.run_id)}" data-history-spec="${escapeHtml(item.spec_number || item.spec_id || 'run')}">XLSX</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+    const count = items.length;
+    const from = count ? state.historyOffset + 1 : 0;
+    const to = state.historyOffset + count;
+    els.historyPagerText.textContent = state.historyTotal ? `Показано ${from}-${to} из ${state.historyTotal}` : 'Запуски не найдены';
+    els.historyPrevBtn.disabled = state.historyOffset <= 0;
+    els.historyNextBtn.disabled = !(payload && payload.has_more);
+  }
+
+  function fmtDateTime(value) {
+    if (!value) return '—';
+    const text = String(value).replace('T', ' ');
+    if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
+      const datePart = `${text.slice(8, 10)}.${text.slice(5, 7)}.${text.slice(0, 4)}`;
+      const timePart = text.length >= 16 ? text.slice(11, 16) : '';
+      return `${datePart}${timePart ? ' ' + timePart : ''}`;
+    }
+    return text;
+  }
+
+  function historyPage(direction) {
+    const next = Math.max(0, state.historyOffset + direction * state.historyLimit);
+    loadHistory(next);
+  }
+
+  async function exportHistoryRun(runId, specLabel) {
+    if (!runId) return;
+    setMessage(els.historyMessage, 'Формируем XLSX из сохранённого запуска...');
+    try {
+      const storedResponse = await api('/api/reconciliation/history/' + encodeURIComponent(runId));
+      const storedPayload = await storedResponse.json();
+      if (!storedResponse.ok || storedPayload.ok !== true || !storedPayload.run) {
+        throw new Error(storedPayload.message || 'Сохранённый запуск не найден');
+      }
+      const response = await api('/api/reconciliation/run.xlsx', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ run: storedPayload.run }),
+      });
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try { message = (await response.json()).message || message; } catch (_) {}
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      if (!blob.size) throw new Error('Сервис вернул пустой XLSX');
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const suffix = String(specLabel || 'run').replace(/[^\wа-яА-Я-]+/g, '_');
+      link.href = url;
+      link.download = `sverka-erp-1c-${suffix}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setMessage(els.historyMessage, 'Сохранённый результат передан браузеру для скачивания.');
+    } catch (error) {
+      setMessage(els.historyMessage, normalizeErrorMessage(error), true);
+    }
+  }
+
   function stagedProgress() {
     let idx = 1;
     return setInterval(() => {
@@ -1867,6 +2032,7 @@
     const hasMatrix = Boolean(state.matrix.length);
     const visibleCount = matrixVisibleItems().length;
     const isMatrixView = state.view === 'matrix';
+    const isHistoryView = state.view === 'history';
     els.matrixToReconBtn.disabled = !hasSpec;
     els.matrixToReconBtn.title = hasSpec ? 'Сверить выбранную поставку с 1С' : 'Сначала отметьте кружок в колонке “Выбор”';
     if (els.matrixExportBtn) {
@@ -1890,10 +2056,11 @@
     els.runBtn.disabled = !hasSpec;
     els.runBtn.textContent = hasRun ? 'Обновить проверку' : 'Проверить в 1С';
     els.exportBtn.disabled = !hasRun;
-    els.refreshBtn.classList.toggle('hidden', !isMatrixView || !hasMatrix);
-    els.refreshBtn.disabled = !isMatrixView || !hasMatrix;
-    els.refreshBtn.textContent = '↻ Обновить список';
-    els.refreshBtn.title = 'Обновить список поставок';
+    const showRefresh = isHistoryView || (isMatrixView && hasMatrix);
+    els.refreshBtn.classList.toggle('hidden', !showRefresh);
+    els.refreshBtn.disabled = !showRefresh;
+    els.refreshBtn.textContent = isHistoryView ? '↻ Обновить историю' : '↻ Обновить список';
+    els.refreshBtn.title = isHistoryView ? 'Обновить историю запусков' : 'Обновить список поставок';
     updateWorkflowState();
   }
 
@@ -1994,11 +2161,22 @@
     els.logoutBtn.addEventListener('click', logout);
     els.navMatrixBtn.addEventListener('click', () => setView('matrix'));
     els.navReconBtn.addEventListener('click', openReconGuarded);
+    els.navHistoryBtn.addEventListener('click', () => setView('history'));
     els.matrixToReconBtn.addEventListener('click', openReconGuarded);
     els.sidebarToggleBtn.addEventListener('click', toggleSidebar);
     els.refreshBtn.addEventListener('click', () => {
       if (state.view === 'matrix') loadMatrix(state.matrixOffset);
+      else if (state.view === 'history') loadHistory(state.historyOffset);
       else if (openReconGuarded()) runReconciliation();
+    });
+    els.historyLoadBtn.addEventListener('click', () => loadHistory(0));
+    els.historyStatusFilter.addEventListener('change', () => loadHistory(0));
+    els.historyPrevBtn.addEventListener('click', () => historyPage(-1));
+    els.historyNextBtn.addEventListener('click', () => historyPage(1));
+    els.historyRows.addEventListener('click', (event) => {
+      const button = event.target && event.target.closest('[data-history-export]');
+      if (!button) return;
+      exportHistoryRun(button.getAttribute('data-history-export'), button.getAttribute('data-history-spec'));
     });
     els.loadMatrixBtn.addEventListener('click', () => loadMatrix(0));
     els.clientIdInput.addEventListener('input', scheduleClientSearch);
@@ -2077,7 +2255,9 @@
       els.deliveryInput.value = String(initialSpecId);
       els.deliveryInput.dataset.specId = String(initialSpecId);
     }
-    if (state.token && initialSpecId) {
+    if (state.token && initialView === 'history') {
+      setView('history');
+    } else if (state.token && initialSpecId && initialView === 'recon') {
       await loadMatrix(0);
       if (initialRunId) await loadStoredRun(initialRunId);
       if (state.selectedSpecId) setView('recon');

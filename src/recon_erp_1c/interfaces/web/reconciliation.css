@@ -1036,6 +1036,47 @@ textarea::placeholder {
   max-height: calc(100vh - 380px);
 }
 
+.history-filters {
+  grid-template-columns: minmax(220px, 320px) auto;
+  justify-content: start;
+}
+
+.history-wrap {
+  max-height: calc(100vh - 305px);
+}
+
+.history-table {
+  min-width: 1180px;
+}
+
+.history-table td {
+  vertical-align: middle;
+}
+
+.history-date {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.compact-btn {
+  min-height: 28px;
+  padding: 4px 9px;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.negative {
+  color: var(--red-strong);
+  font-weight: 800;
+}
+
 table {
   width: 100%;
   min-width: 1180px;

@@ -46,6 +46,8 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             if parsed.path in {
                 "/",
                 "/reconciliation.html",
+                "/reconciliation",
+                "/reconciliation/history",
                 "/reconciliation.css",
                 "/reconciliation.js",
                 "/akt_sverki/index.html",
@@ -568,22 +570,43 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
     def _history(self, query: dict[str, list[str]]) -> None:
         self._require_context()
         limit = max(1, min(_optional_int(query, "limit") or 20, 100))
+        offset = max(0, _optional_int(query, "offset") or 0)
         spec_id = _optional_int(query, "spec_id")
         client_id = _optional_int(query, "client_id")
+        status = _first(query, "status").strip().upper()
+        if status and status not in {"MATCHED", "HAS_ISSUES"}:
+            raise ValueError("status must be MATCHED or HAS_ISSUES")
         if _app_config().ui_demo:
-            self._json(HTTPStatus.OK, {"ok": True, "items": [], "count": 0, "mode": "ui_demo"})
+            self._json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "items": [],
+                    "count": 0,
+                    "total_count": 0,
+                    "limit": limit,
+                    "offset": offset,
+                    "has_more": False,
+                    "mode": "ui_demo",
+                },
+            )
             return
         conditions = []
-        params: dict[str, object] = {"limit": limit}
+        params: dict[str, object] = {"limit": limit, "offset": offset}
         if spec_id is not None:
             conditions.append("spec_id = %(spec_id)s")
             params["spec_id"] = spec_id
         if client_id is not None:
             conditions.append("client_id = %(client_id)s")
             params["client_id"] = client_id
+        if status:
+            conditions.append("status = %(status)s")
+            params["status"] = status
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         with _storage_connection_factory().connect() as connection:
             with connection.cursor() as cursor:
+                cursor.execute(f"SELECT COUNT(*) AS total_count FROM veda_reconciliation_runs {where}", params)
+                total_count = int((cursor.fetchone() or {}).get("total_count") or 0)
                 cursor.execute(
                     f"""
                     SELECT
@@ -593,11 +616,12 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                         status, execution_status, coverage_status, result_status,
                         ruleset_id, ruleset_version, application_version, git_sha,
                         balance_status, erp_balance, onec_balance, balance_difference,
-                        balance_comparable, summary_json, coverage_json, created_at, completed_at
+                        balance_comparable, summary_json, coverage_json,
+                        triggered_by_user, triggered_by_name, created_at, completed_at
                     FROM veda_reconciliation_runs
                     {where}
                     ORDER BY id DESC
-                    LIMIT %(limit)s
+                    LIMIT %(limit)s OFFSET %(offset)s
                     """,
                     params,
                 )
@@ -647,13 +671,26 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                     "onec_balance": str(row.get("onec_balance")) if row.get("onec_balance") is not None else None,
                     "balance_difference": str(row.get("balance_difference")) if row.get("balance_difference") is not None else None,
                     "balance_comparable": bool(row.get("balance_comparable")),
+                    "triggered_by_user": row.get("triggered_by_user"),
+                    "triggered_by_name": row.get("triggered_by_name"),
                     "summary": summary,
                     "coverage": coverage,
                     "created_at": str(row.get("created_at") or ""),
                     "completed_at": str(row.get("completed_at") or ""),
                 }
             )
-        self._json(HTTPStatus.OK, {"ok": True, "items": items, "count": len(items)})
+        self._json(
+            HTTPStatus.OK,
+            {
+                "ok": True,
+                "items": items,
+                "count": len(items),
+                "total_count": total_count,
+                "limit": limit,
+                "offset": offset,
+                "has_more": offset + len(items) < total_count,
+            },
+        )
 
     def _history_run(self, path: str) -> None:
         self._require_context()
@@ -751,6 +788,8 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
         names = {
             "/": "reconciliation.html",
             "/reconciliation.html": "reconciliation.html",
+            "/reconciliation": "reconciliation.html",
+            "/reconciliation/history": "reconciliation.html",
             "/reconciliation.css": "reconciliation.css",
             "/reconciliation.js": "reconciliation.js",
             "/akt_sverki/index.html": "reconciliation.html",

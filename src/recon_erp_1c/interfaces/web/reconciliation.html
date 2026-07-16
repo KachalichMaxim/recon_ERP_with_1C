@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light">
   <title>VEDAGENT SUIT — Сверка ERP и 1С</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M8 7h17l23 50H31z' fill='%23d20f3c'/%3E%3Cpath d='M34 7h22L45 31z' fill='%23d20f3c'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/reconciliation.css?v=20260716_brand_transparent">
-  <script src="/reconciliation.js?v=20260716_brand_transparent" defer></script>
+  <link rel="stylesheet" href="/reconciliation.css?v=20260716_history">
+  <script src="/reconciliation.js?v=20260716_history" defer></script>
 </head>
 <body>
   <section class="login-screen" id="loginPanel" aria-labelledby="loginTitle">
@@ -62,7 +62,7 @@
           <span>Контроль документов</span>
         </button>
         <div class="nav-section">Сервис</div>
-        <button class="nav-item muted" type="button" disabled>
+        <button class="nav-item" id="navHistoryBtn" type="button">
           <span class="nav-icon">↧</span>
           <span>Выгрузки</span>
         </button>
@@ -100,7 +100,7 @@
         </div>
       </header>
 
-      <div class="workflow-steps" aria-label="Маршрут работы">
+      <div class="workflow-steps" id="workflowSteps" aria-label="Маршрут работы">
         <div class="workflow-step active" data-workflow-step="matrix"><span>1</span> Поиск</div>
         <div class="workflow-step" data-workflow-step="select"><span>2</span> Поставка</div>
         <div class="workflow-step" data-workflow-step="recon"><span>3</span> Проверка в 1С</div>
@@ -202,6 +202,57 @@
           <span id="matrixPagerText">Поставки не загружены</span>
           <span class="pager-note">“Скачать страницу” выгружает видимые строки; “Скачать весь фильтр” выгружает все найденные поставки по текущим фильтрам.</span>
           <button class="btn btn-outline" id="matrixNextBtn" type="button">Дальше</button>
+        </div>
+      </section>
+
+      <section class="screen hidden" id="historyScreen" aria-labelledby="historyTitle">
+        <div class="section-heading">
+          <div>
+            <h2 id="historyTitle">История запусков и выгрузок</h2>
+            <p>Сохранённые проверки ERP и 1С. Результат можно открыть без повторного запроса в 1С или скачать в XLSX.</p>
+          </div>
+        </div>
+
+        <section class="filters history-filters" aria-label="Фильтры истории">
+          <div class="field">
+            <label for="historyStatusFilter">Результат</label>
+            <select id="historyStatusFilter">
+              <option value="">Все запуски</option>
+              <option value="HAS_ISSUES">Есть расхождения</option>
+              <option value="MATCHED">Совпало</option>
+            </select>
+          </div>
+          <div class="filter-actions">
+            <button class="btn btn-primary" id="historyLoadBtn" type="button">Показать</button>
+          </div>
+        </section>
+        <div class="message" id="historyMessage" role="status" aria-live="polite"></div>
+
+        <div class="table-wrap history-wrap">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Дата запуска</th>
+                <th>Поставка</th>
+                <th>Договор</th>
+                <th>Результат</th>
+                <th class="num">Документы ERP / 1С</th>
+                <th class="num">Совпало</th>
+                <th class="num">Расхождения</th>
+                <th class="num">Разница ERP − 1С</th>
+                <th>Пользователь</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody id="historyRows">
+              <tr><td colspan="10" class="empty-cell">Откройте раздел, чтобы загрузить историю.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pager" id="historyPager">
+          <button class="btn btn-outline" id="historyPrevBtn" type="button">Назад</button>
+          <span id="historyPagerText">История не загружена</span>
+          <button class="btn btn-outline" id="historyNextBtn" type="button">Дальше</button>
         </div>
       </section>
 
