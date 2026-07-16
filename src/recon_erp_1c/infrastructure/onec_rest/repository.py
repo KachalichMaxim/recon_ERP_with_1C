@@ -20,8 +20,9 @@ from recon_erp_1c.infrastructure.onec_rest.client import OneCRestClient
 
 
 class OneCRestReadRepository:
-    def __init__(self, client: OneCRestClient) -> None:
+    def __init__(self, client: OneCRestClient, *, request_id: str = "") -> None:
         self.client = client
+        self.request_id = request_id.strip()
         self.lookup_workers = max(1, min(8, int(os.environ.get("RECON_ONEC_LOOKUP_WORKERS", "6") or "6")))
         self.last_metrics: dict[str, int | float] = {}
 
@@ -42,6 +43,7 @@ class OneCRestReadRepository:
             period=period,
             contracts=contracts,
             erp_documents=erp_documents,
+            request_id=self.request_id,
         )
         response = self.client.get_reconciliation_snapshot(base_request)
         base_snapshot = response.get("snapshot") if isinstance(response.get("snapshot"), dict) else {}
@@ -53,6 +55,7 @@ class OneCRestReadRepository:
             period=period,
             erp_documents=erp_documents,
             lookup_workers=self.lookup_workers,
+            request_id=self.request_id,
         )
         warnings = tuple(
             dict.fromkeys(_warning_text(item) for item in snapshot.get("warnings", []) if _warning_text(item))
@@ -92,9 +95,10 @@ def _snapshot_request(
     period: DateRange,
     contracts: list[Contract],
     erp_documents: list[AccountingDocument],
+    request_id: str = "",
 ) -> dict[str, Any]:
     return {
-        "request_id": f"spec-{delivery.erp_spec_id}-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        "request_id": request_id or f"spec-{delivery.erp_spec_id}-{datetime.now().strftime('%Y%m%d%H%M%S')}",
         "mode": "delivery_reconciliation",
         "contract_version": "reconciliation.v1",
         "period": {
@@ -189,6 +193,7 @@ def _merge_known_document_lookups(
     period: DateRange,
     erp_documents: list[AccountingDocument],
     lookup_workers: int,
+    request_id: str = "",
 ) -> None:
     lookups: list[tuple[str, str, AccountingDocument, dict[str, Any]]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -219,7 +224,7 @@ def _merge_known_document_lookups(
                 code,
                 document,
                 {
-                    "request_id": f"doc-{delivery.erp_spec_id}-{code}",
+                    "request_id": f"{request_id}-doc-{code}" if request_id else f"doc-{delivery.erp_spec_id}-{code}",
                     "period": {
                         "date_from": period.date_from.isoformat(),
                         "date_to": period.date_to.isoformat(),

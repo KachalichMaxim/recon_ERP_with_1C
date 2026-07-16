@@ -39,6 +39,7 @@ def _app_config() -> AppConfig:
 
 class ReconciliationHttpHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - stdlib callback name
+        self._begin_trace()
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
         try:
@@ -128,8 +129,11 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                     "message": "ERP temporarily unavailable. Please retry the request.",
                 },
             )
+        finally:
+            self._finish_trace()
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib callback name
+        self._begin_trace()
         parsed = urlparse(self.path)
         try:
             if parsed.path == "/api/auth/login":
@@ -176,6 +180,38 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                     "message": "ERP temporarily unavailable. Please retry the request.",
                 },
             )
+        finally:
+            self._finish_trace()
+
+    def send_response(self, code: int, message: str | None = None) -> None:
+        self._trace_status = code
+        super().send_response(code, message)
+
+    def end_headers(self) -> None:
+        trace_id = getattr(self, "_trace_id", "")
+        if trace_id:
+            self.send_header("X-Trace-ID", trace_id)
+        super().end_headers()
+
+    def _begin_trace(self) -> None:
+        incoming = str(self.headers.get("X-Request-ID") or self.headers.get("X-Trace-ID") or "").strip()
+        self._trace_id = incoming[:128] if incoming and all(ch.isalnum() or ch in "-_." for ch in incoming) else str(uuid4())
+        self._trace_started = time.perf_counter()
+        self._trace_status = 0
+
+    def _finish_trace(self) -> None:
+        duration_ms = round((time.perf_counter() - getattr(self, "_trace_started", time.perf_counter())) * 1000, 2)
+        self._trace_event(
+            "http_request_completed",
+            method=self.command,
+            path=urlparse(self.path).path,
+            status=getattr(self, "_trace_status", 0),
+            duration_ms=duration_ms,
+        )
+
+    def _trace_event(self, event: str, **fields: object) -> None:
+        payload = {"event": event, "trace_id": getattr(self, "_trace_id", ""), **fields}
+        self.log_message("TRACE %s", json.dumps(payload, ensure_ascii=False, default=str))
 
     def _health(self) -> None:
         config = _app_config()
@@ -383,12 +419,20 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
     def _run_reconciliation(self, query: dict[str, list[str]]) -> None:
         context = self._require_context()
         started = time.perf_counter()
-        run = _execute_reconciliation(query, actor=context)
+        run = _execute_reconciliation(query, actor=context, trace_id=self._trace_id)
         payload = run_to_dict(run)
+        payload["trace_id"] = self._trace_id
         payload["metrics"] = {
             **payload.get("metrics", {}),
             "http_total_ms": round((time.perf_counter() - started) * 1000, 2),
         }
+        self._trace_event(
+            "reconciliation_completed",
+            run_id=run.run_id,
+            spec_id=run.delivery.erp_spec_id,
+            user=context.user_email,
+            metrics=payload["metrics"],
+        )
         self._json(HTTPStatus.OK, {"ok": True, "run": payload})
 
     def _run_reconciliation_xlsx(self, query: dict[str, list[str]]) -> None:
@@ -733,6 +777,8 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _json(self, status: HTTPStatus, payload: dict[str, object]) -> None:
+        if self.path.startswith("/api/") and getattr(self, "_trace_id", "") and "trace_id" not in payload:
+            payload = {**payload, "trace_id": self._trace_id}
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status.value)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -746,6 +792,7 @@ def _execute_reconciliation(
     *,
     default_persist_log: bool = True,
     actor: RequestContext | None = None,
+    trace_id: str = "",
 ):
     spec_id = _required_int(query, "spec_id")
     date_from = _optional_date(query, "date_from")
@@ -766,7 +813,10 @@ def _execute_reconciliation(
         )
     use_case = ReconcileDeliveryUseCase(
         erp_repository=erp_repository,
-        onec_repository=OneCRestReadRepository(OneCRestClient(OneCRestConfig.from_env())),
+        onec_repository=OneCRestReadRepository(
+            OneCRestClient(OneCRestConfig.from_env()),
+            request_id=trace_id,
+        ),
         log_repository=log_repository,
     )
     run = use_case.execute(

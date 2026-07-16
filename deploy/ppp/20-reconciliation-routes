@@ -6,3 +6,13 @@
 ip route replace 10.54.1.28 via "$PPP_REMOTE" dev "$PPP_IFACE" 2>/dev/null || true
 ip route replace 10.54.1.25 via "$PPP_REMOTE" dev "$PPP_IFACE" 2>/dev/null || true
 ip route replace 10.54.1.17 via "$PPP_REMOTE" dev "$PPP_IFACE" 2>/dev/null || true
+
+# Internal DNS is reachable only through PPP. Bind the corporate zone to the
+# current interface instead of relying on a stale ppp0/ppp1 link number.
+ip route replace 10.54.1.4 via "$PPP_REMOTE" dev "$PPP_IFACE" 2>/dev/null || true
+ip route replace 10.54.1.1 via "$PPP_REMOTE" dev "$PPP_IFACE" 2>/dev/null || true
+if command -v resolvectl >/dev/null 2>&1; then
+    resolvectl dns "$PPP_IFACE" 10.54.1.4 10.54.1.1 2>/dev/null || true
+    resolvectl domain "$PPP_IFACE" "~vedagent" 2>/dev/null || true
+    resolvectl flush-caches 2>/dev/null || true
+fi

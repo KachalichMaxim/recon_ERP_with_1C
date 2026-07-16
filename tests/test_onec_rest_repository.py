@@ -114,7 +114,7 @@ def test_repository_keeps_lines_allocations_and_balances() -> None:
         "warnings": [{"code": "partial", "message": "Часть аналитики недоступна"}],
     }
     client = _FakeClient(snapshot)
-    repository = OneCRestReadRepository(client)  # type: ignore[arg-type]
+    repository = OneCRestReadRepository(client, request_id="trace-test-20334")  # type: ignore[arg-type]
 
     result = repository.fetch_snapshot(
         delivery=_delivery(),
@@ -144,6 +144,7 @@ def test_repository_keeps_lines_allocations_and_balances() -> None:
         "balances": 1,
     }
     assert len(client.requests) == 1
+    assert client.requests[0]["request_id"] == "trace-test-20334"
 
 
 def test_onec_url_does_not_duplicate_contract_root() -> None:
