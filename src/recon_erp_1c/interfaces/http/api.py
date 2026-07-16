@@ -47,10 +47,12 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                 "/reconciliation.html",
                 "/reconciliation.css",
                 "/reconciliation.js",
+                "/vedagent-logo.png",
                 "/akt_sverki/index.html",
                 "/akt_sverki/reconciliation.html",
                 "/akt_sverki/reconciliation.css",
                 "/akt_sverki/reconciliation.js",
+                "/akt_sverki/vedagent-logo.png",
             }:
                 self._static(parsed.path)
                 return
@@ -193,6 +195,9 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                     "required": config.require_erp_token,
                     "direct_login_enabled": config.direct_login_enabled,
                     "demo": config.ui_demo,
+                    "launch_token_validation": "erp_endpoint"
+                    if config.erp_token_validate_url
+                    else "erp_mariadb",
                 },
             },
         )
@@ -212,7 +217,10 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                     "direct_login_enabled": config.direct_login_enabled,
                     "demo": config.ui_demo,
                     "session_secret_configured": bool(os.environ.get("RECON_SESSION_SECRET", "").strip()),
-                    "launch_token_validation_configured": bool(config.erp_token_validate_url),
+                    "launch_token_validation_configured": bool(config.erp_token_validate_url or config.erp_db.configured),
+                    "launch_token_validation": "erp_endpoint"
+                    if config.erp_token_validate_url
+                    else "erp_mariadb",
                 },
             },
         )
@@ -703,10 +711,12 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
             "/reconciliation.html": "reconciliation.html",
             "/reconciliation.css": "reconciliation.css",
             "/reconciliation.js": "reconciliation.js",
+            "/vedagent-logo.png": "vedagent-logo.png",
             "/akt_sverki/index.html": "reconciliation.html",
             "/akt_sverki/reconciliation.html": "reconciliation.html",
             "/akt_sverki/reconciliation.css": "reconciliation.css",
             "/akt_sverki/reconciliation.js": "reconciliation.js",
+            "/akt_sverki/vedagent-logo.png": "vedagent-logo.png",
         }
         name = names[path]
         file_path = web_root / name
@@ -984,10 +994,31 @@ def _doc_rows(
     payment_operations_used: set[int] = set()
     for doc in documents:
         linked_payment = None
-        if payments_by_operation and doc.operation_id and doc.operation_id not in payment_operations_used:
-            linked_payment = payments_by_operation.get(doc.operation_id)
-            if linked_payment is not None:
-                payment_operations_used.add(doc.operation_id)
+        linked_operation_ids: list[int] = []
+        if payments_by_operation:
+            operation_ids = {
+                operation_id
+                for operation_id in (
+                    doc.operation_id,
+                    *(related.operation_id for related in doc.related_documents),
+                )
+                if operation_id and operation_id not in payment_operations_used
+            }
+            linked_payments = [
+                payments_by_operation[operation_id]
+                for operation_id in operation_ids
+                if operation_id in payments_by_operation
+            ]
+            if linked_payments:
+                linked_operation_ids = sorted(
+                    operation_id for operation_id in operation_ids if operation_id in payments_by_operation
+                )
+                currencies = {payment.currency for payment in linked_payments}
+                linked_payment = Money.of(
+                    sum((payment.amount for payment in linked_payments), Decimal("0.00")),
+                    currencies.pop() if len(currencies) == 1 else "RUB",
+                )
+                payment_operations_used.update(operation_ids)
         rows.append(
             {
                 "number": doc.number or doc.code1c,
@@ -1010,6 +1041,7 @@ def _doc_rows(
                 "paid_currency": linked_payment.currency
                 if linked_payment
                 else (doc.payment_amount.currency if doc.payment_amount else ""),
+                "payment_operation_ids": linked_operation_ids,
             }
         )
     return rows
@@ -1330,6 +1362,8 @@ def _static_content_type(name: str) -> str:
         return "text/css; charset=utf-8"
     if name.endswith(".js"):
         return "application/javascript; charset=utf-8"
+    if name.endswith(".png"):
+        return "image/png"
     return "application/octet-stream"
 
 
@@ -1343,7 +1377,10 @@ def _validate_erp_launch_token(launch_token: str) -> dict[str, object]:
             "structure_code": "DEV",
         }
     if not config.erp_token_validate_url:
-        raise RuntimeError("ERP launch token validation endpoint is not configured")
+        profile = _erp_repository().find_user_by_api_token(launch_token)
+        if not profile:
+            raise AuthenticationError("Invalid or expired ERP launch token")
+        return profile
 
     request_body = json.dumps(
         {"token": launch_token, "audience": "reconciliation"},

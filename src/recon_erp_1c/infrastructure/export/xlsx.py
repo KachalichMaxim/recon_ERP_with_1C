@@ -201,7 +201,7 @@ def reconciliation_matrix_xlsx(matrix: dict[str, Any]) -> bytes:
             "Только счета покупателю; по каждому счету отдельная строка. Если backend не передал invoice_rows, номер берется из invoice_numbers, а агрегатная сумма ставится в первую строку блока.",
         ],
         ["Сумма по счету", "ERP veda_schets.f_sum", "Сумма конкретного счета покупателю."],
-        ["Сумма оплаты", "ERP get_paidsum(veda_schets.f_operid)", "Сумма оплаты назначается операции один раз. Только положительный остаток, не связанный со счетом, выводится отдельной строкой; отрицательные технические строки запрещены."],
+        ["Сумма оплаты", "ERP get_paidsum(veda_schets.f_operid)", "Сумма оплаты назначается операции один раз. Для агрегированного счета складываются оплаты операций его дочерних счетов. Только положительный остаток без доказанной связи со счетом выводится отдельной строкой; отрицательные технические строки запрещены."],
         ["Возмещаемые расходы", "ERP get_realizsum по операциям f_isvozm=1", "Итог по поставке; объединяется по строкам счетов."],
         ["Невозмещаемые расходы", "ERP get_realizsum по операциям f_isvozm=2", "Итог по поставке; объединяется по строкам счетов."],
         ["№ счф", "ERP/1С закрывающие документы", "Номер и дата каждого документа выводятся с переносом строки. Если есть агрегированный документ, дочерние документы не выводятся."],
@@ -376,7 +376,9 @@ def _invoice_rows(item: dict[str, Any]) -> list[dict[str, Any]]:
             prepared.append(
                 {
                     **row,
-                    "paid_amount": row.get("paid_amount") if row.get("operation_id") else "",
+                    "paid_amount": row.get("paid_amount")
+                    if row.get("operation_id") or row.get("payment_operation_ids")
+                    else "",
                 }
             )
         return _with_unassigned_payment(prepared or [{"number": "—", "amount": item.get("invoice_sum")}], item)
@@ -397,7 +399,13 @@ def _with_unassigned_payment(rows: list[dict[str, Any]], item: dict[str, Any]) -
     total = _to_decimal(item.get("payment_sum"))
     unassigned = total - assigned
     if unassigned > Decimal("0.00"):
-        rows.append({"number": "Оплата, не связанная со счетом", "amount": "", "paid_amount": str(unassigned)})
+        rows.append(
+            {
+                "number": "Оплата по операциям без установленной связи со счетом",
+                "amount": "",
+                "paid_amount": str(unassigned),
+            }
+        )
     return rows
 
 

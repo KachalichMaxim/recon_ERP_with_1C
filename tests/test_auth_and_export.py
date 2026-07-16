@@ -7,10 +7,12 @@ from zipfile import ZipFile
 
 from openpyxl import load_workbook
 
-from recon_erp_1c.domain.entities import AccountingDocument
+from recon_erp_1c.domain.entities import AccountingDocument, RelatedDocument
 from recon_erp_1c.domain.value_objects import DocumentKind, Money, SourceSystem
 from recon_erp_1c.infrastructure.export.xlsx import reconciliation_matrix_xlsx, reconciliation_run_xlsx
 from recon_erp_1c.interfaces.http.api import _matrix_row
+from recon_erp_1c.interfaces.http import api as http_api
+from recon_erp_1c.interfaces.http.auth import AuthenticationError
 from recon_erp_1c.interfaces.http.auth import create_session_token, verify_session_token
 
 
@@ -23,6 +25,36 @@ def test_session_token_roundtrip() -> None:
     assert payload["sub"] == "7"
     assert payload["email"] == "user@example.com"
     assert payload["name"] == "User Name"
+
+
+def test_erp_launch_token_can_be_validated_read_only_in_erp_mariadb(monkeypatch) -> None:
+    class Repository:
+        def find_user_by_api_token(self, token: str):
+            assert token == "launch-token"
+            return {"user_id": 7, "login": "user@example.com", "name": "User Name", "structure_code": "FIN"}
+
+    monkeypatch.delenv("RECON_ERP_TOKEN_VALIDATE_URL", raising=False)
+    monkeypatch.setattr(http_api, "_erp_repository", lambda: Repository())
+
+    profile = http_api._validate_erp_launch_token("launch-token")
+
+    assert profile["user_id"] == 7
+    assert profile["login"] == "user@example.com"
+
+
+def test_invalid_erp_launch_token_is_rejected(monkeypatch) -> None:
+    class Repository:
+        def find_user_by_api_token(self, token: str):
+            return None
+
+    monkeypatch.delenv("RECON_ERP_TOKEN_VALIDATE_URL", raising=False)
+    monkeypatch.setattr(http_api, "_erp_repository", lambda: Repository())
+
+    try:
+        http_api._validate_erp_launch_token("invalid")
+        assert False, "expected AuthenticationError"
+    except AuthenticationError as exc:
+        assert "Invalid or expired" in str(exc)
 
 
 def test_session_secret_required_in_production() -> None:
@@ -261,3 +293,52 @@ def test_matrix_xlsx_never_adds_negative_unlinked_payment_row() -> None:
     assert "Оплата без счета" not in values
     assert "Оплата, не связанная со счетом" not in values
     assert all(not (isinstance(value, (int, float)) and value == -59802) for value in values)
+
+
+def test_aggregate_invoice_collects_payments_from_child_operations() -> None:
+    invoice = AccountingDocument(
+        source=SourceSystem.ERP,
+        kind=DocumentKind.CUSTOMER_INVOICE,
+        code1c="VL-001599",
+        number="VL-001599",
+        date=date(2026, 6, 11),
+        amount=Money.of("589160"),
+        contract_code1c="BP-093741",
+        related_documents=(
+            RelatedDocument(source_id="1", number="VL-001903/0", operation_id=477611),
+            RelatedDocument(source_id="2", number="VL-001904/1", operation_id=477612),
+        ),
+    )
+    payments = [
+        AccountingDocument(
+            source=SourceSystem.ERP,
+            kind=DocumentKind.PAYMENT,
+            code1c="PAY-1",
+            number="466",
+            date=date(2026, 6, 16),
+            amount=Money.of("450260"),
+            contract_code1c="BP-093741",
+            operation_id=477611,
+        ),
+        AccountingDocument(
+            source=SourceSystem.ERP,
+            kind=DocumentKind.PAYMENT,
+            code1c="PAY-1",
+            number="466",
+            date=date(2026, 6, 16),
+            amount=Money.of("138900"),
+            contract_code1c="BP-093741",
+            operation_id=477612,
+        ),
+    ]
+
+    row = _matrix_row(
+        None,
+        {"spec_id": 28327, "spec_number": "37/1", "buyer_contract_code": "BP-093741"},
+        [invoice, *payments],
+    )
+
+    assert row["invoice_rows"][0]["paid_amount"] == "589160.00"
+    raw = reconciliation_matrix_xlsx({"items": [row]})
+    values = [cell.value for line in load_workbook(BytesIO(raw))["Выгрузка"].iter_rows() for cell in line]
+    assert "Оплата по операциям без установленной связи со счетом" not in values

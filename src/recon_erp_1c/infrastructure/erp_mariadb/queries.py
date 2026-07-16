@@ -918,3 +918,20 @@ WHERE u.f_login = %(login)s
   AND COALESCE(u.f_isactived, 0) = 1
 LIMIT 1;
 """
+
+USER_BY_API_TOKEN = """
+SELECT
+    u.f_id AS user_id,
+    COALESCE(u.f_login, '') AS login,
+    COALESCE(u.f_authtype, 0) AS auth_type,
+    COALESCE(u.f_name1, '') AS first_name,
+    COALESCE(u.f_name2, '') AS last_name,
+    COALESCE(u.f_struct_code, '') AS structure_code,
+    token.f_dttmcr AS token_created_at
+FROM veda_erp_api_tokens token
+JOIN veda_users u ON u.f_id = token.f_userid
+WHERE token.f_token = %(token)s
+  AND COALESCE(u.f_isactived, 0) = 1
+ORDER BY token.f_dttmcr DESC, token.f_id DESC
+LIMIT 1;
+"""

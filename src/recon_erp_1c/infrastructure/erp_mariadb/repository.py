@@ -583,17 +583,14 @@ class MariaDbErpReadRepository:
             return None
         if _str(row.get("password")) != password:
             return None
-        first_name = _str(row.get("first_name"))
-        last_name = _str(row.get("last_name"))
-        name = " ".join(part for part in (first_name, last_name) if part).strip() or _str(row.get("login"))
-        return {
-            "user_id": row.get("user_id"),
-            "login": row.get("login"),
-            "name": name,
-            "auth_type": row.get("auth_type"),
-            "structure_code": row.get("structure_code"),
-        }
+        return _user_profile(row)
 
+    def find_user_by_api_token(self, token: str) -> dict[str, object] | None:
+        value = token.strip()
+        if not value:
+            return None
+        row = self._fetch_one(queries.USER_BY_API_TOKEN, {"token": value})
+        return _user_profile(row) if row else None
     def _fetch_one(self, sql: str, params: dict[str, object]) -> dict[str, Any] | None:
         with self.connection_factory.connect() as connection:
             with connection.cursor() as cursor:
@@ -605,6 +602,19 @@ class MariaDbErpReadRepository:
             with connection.cursor() as cursor:
                 cursor.execute(sql, params)
                 return list(cursor.fetchall())
+
+
+def _user_profile(row: dict[str, Any]) -> dict[str, object]:
+    first_name = _str(row.get("first_name"))
+    last_name = _str(row.get("last_name"))
+    name = " ".join(part for part in (first_name, last_name) if part).strip() or _str(row.get("login"))
+    return {
+        "user_id": row.get("user_id"),
+        "login": row.get("login"),
+        "name": name,
+        "auth_type": row.get("auth_type"),
+        "structure_code": row.get("structure_code"),
+    }
 
 
 def _row_to_document(row: dict[str, Any]) -> AccountingDocument:
