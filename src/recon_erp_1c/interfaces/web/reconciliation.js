@@ -123,7 +123,6 @@
   let clientSearchTimer = 0;
   let dogSearchTimer = 0;
   let deliverySearchTimer = 0;
-  const feedbackSaveTimers = {};
 
   function api(path, options = {}) {
     const headers = Object.assign({ Accept: 'application/json' }, options.headers || {});
@@ -1455,6 +1454,10 @@
       <td class="feedback-cell">
         <select data-feedback-reason="${escapeHtml(key)}">${feedbackReasons.map(([value, label]) => `<option value="${escapeHtml(value)}" ${feedback.reason === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>
         <textarea data-feedback-comment="${escapeHtml(key)}" placeholder="Комментарий для разбора">${escapeHtml(feedback.comment || '')}</textarea>
+        <div class="feedback-actions">
+          <button class="btn btn-primary feedback-save" type="button" data-feedback-save="${escapeHtml(key)}">Сохранить</button>
+          <span class="feedback-status" data-feedback-status="${escapeHtml(key)}">${escapeHtml(feedback.updated_at ? `Сохранено ${feedback.user_name || feedback.user_login || ''}`.trim() : 'Не сохранено')}</span>
+        </div>
       </td>
     </tr>`;
   }
@@ -1471,27 +1474,37 @@
 
   function bindFeedbackControls() {
     els.resultRows.querySelectorAll('[data-feedback-reason]').forEach((node) => {
-      node.addEventListener('change', () => saveFeedback(node.getAttribute('data-feedback-reason'), { reason: node.value }));
+      node.addEventListener('change', () => updateFeedbackDraft(node, node.getAttribute('data-feedback-reason'), { reason: node.value }));
     });
     els.resultRows.querySelectorAll('[data-feedback-comment]').forEach((node) => {
-      node.addEventListener('input', () => saveFeedback(node.getAttribute('data-feedback-comment'), { comment: node.value }));
+      node.addEventListener('input', () => updateFeedbackDraft(node, node.getAttribute('data-feedback-comment'), { comment: node.value }));
+    });
+    els.resultRows.querySelectorAll('[data-feedback-save]').forEach((node) => {
+      node.addEventListener('click', () => postFeedback(node.getAttribute('data-feedback-save'), node));
     });
   }
 
-  function saveFeedback(key, patch) {
-    state.feedback[key] = Object.assign({}, state.feedback[key] || {}, patch);
+  function updateFeedbackDraft(node, key, patch) {
+    state.feedback[key] = Object.assign({}, state.feedback[key] || {}, patch, { updated_at: '', user_name: '' });
     localStorage.setItem('recon_feedback_v1', JSON.stringify(state.feedback));
-    queueFeedbackSave(key);
+    const cell = node.closest('.feedback-cell');
+    const status = cell ? cell.querySelector('[data-feedback-status]') : null;
+    if (status) {
+      status.textContent = 'Не сохранено';
+      status.className = 'feedback-status dirty';
+    }
   }
 
-  function queueFeedbackSave(key) {
-    clearTimeout(feedbackSaveTimers[key]);
-    feedbackSaveTimers[key] = setTimeout(() => postFeedback(key), 500);
-  }
-
-  async function postFeedback(key) {
+  async function postFeedback(key, button) {
     const feedback = state.feedback[key] || {};
     const row = findIssueByFeedbackKey(key);
+    const cell = button ? button.closest('.feedback-cell') : null;
+    const status = cell ? cell.querySelector('[data-feedback-status]') : null;
+    if (button) button.disabled = true;
+    if (status) {
+      status.textContent = 'Сохраняем...';
+      status.className = 'feedback-status saving';
+    }
     try {
       const response = await api('/api/reconciliation/comments', {
         method: 'POST',
@@ -1505,9 +1518,27 @@
           comment: feedback.comment || '',
         }),
       });
-      if (!response.ok) throw new Error('Комментарий не сохранен');
-    } catch (_) {
-      // Local draft remains in localStorage; backend retry will happen on the next edit.
+      let payload = {};
+      try { payload = await response.json(); } catch (_) {}
+      if (!response.ok || payload.ok !== true) throw new Error(payload.message || 'Комментарий не сохранен');
+      state.feedback[key] = Object.assign({}, feedback, {
+        updated_at: payload.updated_at || new Date().toISOString(),
+        user_name: payload.user_name || (state.profile && state.profile.name) || '',
+        user_login: payload.user_login || (state.profile && state.profile.login) || '',
+      });
+      localStorage.setItem('recon_feedback_v1', JSON.stringify(state.feedback));
+      if (status) {
+        status.textContent = `Сохранено${state.feedback[key].user_name ? ` · ${state.feedback[key].user_name}` : ''}`;
+        status.className = 'feedback-status saved';
+      }
+    } catch (err) {
+      if (status) {
+        status.textContent = `Ошибка: ${normalizeErrorMessage(err)}`;
+        status.className = 'feedback-status error';
+      }
+      setMessage(els.runMessage, 'Не удалось сохранить разбор. Проверьте подключение и повторите.', true);
+    } finally {
+      if (button) button.disabled = false;
     }
   }
 
@@ -1533,12 +1564,14 @@
   async function loadRunComments() {
     if (!state.run || !state.run.run_id) return;
     try {
-      const params = new URLSearchParams({ run_id: state.run.run_id, spec_id: String(state.selectedSpecId || 0) });
+      const params = new URLSearchParams({ spec_id: String(state.selectedSpecId || 0) });
       const response = await api('/api/reconciliation/comments?' + params.toString());
       const payload = await response.json();
       if (!response.ok || payload.ok !== true) return;
+      const loadedKeys = new Set();
       for (const item of payload.items || []) {
-        if (!item.key) continue;
+        if (!item.key || loadedKeys.has(item.key)) continue;
+        loadedKeys.add(item.key);
         state.feedback[item.key] = {
           reason: item.reason || '',
           comment: item.comment || '',
@@ -1692,6 +1725,7 @@
       return;
     }
     if (!state.run) return;
+    els.exportBtn.disabled = true;
     setMessage(els.runMessage, 'Формируем XLSX по результату проверки...');
     try {
       const resp = await api('/api/reconciliation/run.xlsx', {
@@ -1708,6 +1742,7 @@
         throw new Error(message);
       }
       const blob = await resp.blob();
+      if (!blob.size) throw new Error('Сервис вернул пустой XLSX');
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       const row = selectedSpec();
@@ -1717,10 +1752,12 @@
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
-      setMessage(els.runMessage, 'XLSX сформирован.');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setMessage(els.runMessage, 'XLSX сформирован и передан браузеру для скачивания.');
     } catch (err) {
       setMessage(els.runMessage, normalizeErrorMessage(err), true);
+    } finally {
+      updateActionState();
     }
   }
 

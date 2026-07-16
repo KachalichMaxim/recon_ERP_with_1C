@@ -461,7 +461,15 @@ class ReconciliationHttpHandler(BaseHTTPRequestHandler):
                         "user_name": context.user_name,
                     },
                 )
-        self._json(HTTPStatus.OK, {"ok": True})
+        self._json(
+            HTTPStatus.OK,
+            {
+                "ok": True,
+                "user_login": context.user_email,
+                "user_name": context.user_name,
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
     def _comments(self, query: dict[str, list[str]]) -> None:
         self._require_context()

@@ -1463,6 +1463,29 @@ th.sticky-right-balance {
   font-size: 12px;
 }
 
+.feedback-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.feedback-save {
+  min-height: 28px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.feedback-status {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.feedback-status.saved { color: #14733c; }
+.feedback-status.dirty { color: #8a6410; }
+.feedback-status.error { color: var(--red-strong); }
+
 @keyframes recon-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
