@@ -107,12 +107,21 @@ def test_reconciliation_xlsx_is_valid_zip_package() -> None:
                 "base_contract_number": "660/1",
                 "contract_codes": {"buyer_contract_code": "БП-051945", "committent_contract_code": "БП-051946"},
             },
-            "summary": {"issues_total": 1},
+            "summary": {"issues_total": 2, "by_status": {"match": 1, "date_mismatch": 1}},
+            "balance_comparison": {
+                "erp_balance": {"amount": "4960.00", "currency": "RUB"},
+                "onec_balance": {"amount": "4960.00", "currency": "RUB"},
+                "difference": {"amount": "0.00", "currency": "RUB"},
+                "status": "match",
+                "comparable": True,
+            },
             "issues": [
                 {
+                    "issue_key": "match-1",
                     "status": "match",
                     "message": "Документ совпал",
                     "fields": [],
+                    "match_basis": "payment_header_allocations",
                     "erp_document": {
                         "kind": "payment",
                         "code1c": "00БП-010299",
@@ -127,8 +136,37 @@ def test_reconciliation_xlsx_is_valid_zip_package() -> None:
                         "date": "2025-07-30",
                         "amount": {"amount": "442296.92", "currency": "RUB"},
                     },
-                }
+                },
+                {
+                    "issue_key": "date-1",
+                    "status": "date_mismatch",
+                    "message": "Есть расхождения по документу",
+                    "fields": ["date"],
+                    "match_basis": "document_header",
+                    "erp_document": {
+                        "kind": "customer_invoice",
+                        "code1c": "ВЛ-002578",
+                        "number": "ВЛ-002578",
+                        "date": "2025-11-24",
+                        "amount": {"amount": "52000.00", "currency": "RUB"},
+                        "erp_url": "http://erp.vedagent/veda/?pgid=17&obid=1",
+                    },
+                    "onec_document": {
+                        "kind": "customer_invoice",
+                        "code1c": "ВЛ-002578",
+                        "number": "ВЛ-002578",
+                        "date": "2025-11-27",
+                        "amount": {"amount": "52000.00", "currency": "RUB"},
+                    },
+                },
             ],
+            "review_feedback": {
+                "date-1": {
+                    "reason": "erp_data_error",
+                    "reason_label": "Ошибка данных ERP",
+                    "comment": "Исправить дату в ERP",
+                }
+            },
         }
     )
 
@@ -138,6 +176,19 @@ def test_reconciliation_xlsx_is_valid_zip_package() -> None:
     assert "[Content_Types].xml" in names
     assert "xl/workbook.xml" in names
     assert "xl/worksheets/sheet1.xml" in names
+
+    parsed = load_workbook(BytesIO(raw))
+    assert parsed.sheetnames == ["Итог", "К разбору", "Совпало", "Технические данные"]
+    assert parsed["Итог"]["A1"].value == "Проверка документов по поставке ERP ↔ 1С"
+    assert parsed["Итог"]["B6"].value == 2
+    assert parsed["Итог"]["B7"].value == 1
+    assert parsed["Итог"]["B8"].value == 1
+    assert parsed["К разбору"]["A2"].value == "Расходится дата"
+    assert parsed["К разбору"]["K2"].value == "Ошибка данных ERP"
+    assert parsed["К разбору"]["L2"].value == "Исправить дату в ERP"
+    assert parsed["К разбору"]["E2"].hyperlink.target == "http://erp.vedagent/veda/?pgid=17&obid=1"
+    assert parsed["Совпало"]["A2"].value == "Оплата покупателя"
+    assert parsed["Технические данные"]["B2"].value == "match"
 
 
 def test_matrix_xlsx_is_valid_zip_package() -> None:

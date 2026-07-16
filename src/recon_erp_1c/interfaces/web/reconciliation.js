@@ -1893,13 +1893,28 @@
     els.exportBtn.disabled = true;
     setMessage(els.runMessage, 'Формируем XLSX по результату проверки...');
     try {
+      const reviewFeedback = {};
+      for (const issue of (state.run.issues || [])) {
+        const key = feedbackKey(issue);
+        const item = state.feedback[key];
+        if (!item) continue;
+        const reasonEntry = feedbackReasons.find(([value]) => value === item.reason);
+        reviewFeedback[key] = {
+          reason: item.reason || '',
+          reason_label: reasonEntry ? reasonEntry[1] : '',
+          comment: item.comment || '',
+          updated_at: item.updated_at || '',
+          user_name: item.user_name || '',
+          user_login: item.user_login || '',
+        };
+      }
       const resp = await api('/api/reconciliation/run.xlsx', {
         method: 'POST',
         headers: {
           Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ run: state.run }),
+        body: JSON.stringify({ run: Object.assign({}, state.run, { review_feedback: reviewFeedback }) }),
       });
       if (!resp.ok) {
         let message = `HTTP ${resp.status}`;
